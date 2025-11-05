@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/pgprojBuilder/pgprojBuilder.csproj" Id="f6182bb0-468b-4b2a-8818-dab6a9adf76a" />
+  </Folder>
+  <Folder Name="/src/libs/">
+    <Project Path="src/libs/mbulava.PostgreSql.Dac/mbulava.PostgreSql.Dac.csproj" Id="d5af9418-6315-4c3d-bf79-4fd6058eba44" />
+  </Folder>
+</Solution>

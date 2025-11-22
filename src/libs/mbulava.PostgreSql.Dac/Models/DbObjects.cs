@@ -1,58 +1,133 @@
-﻿using System;
+﻿using PgQuery;
+using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace mbulava.PostgreSql.Dac.Models
 {
-    public record PgTable(string Name,  string Definition) : PgDbObject(Name, Definition)
-    {
-        public List<PgColumn> Columns { get; } = new();
-        public List<PgIndex> Indexes { get; } = new();
-        public List<PgConstraint> Constraints { get; } = new();
-
-    };
-    public record PgColumn(string Name, string DataType, bool IsNullable, string? DefaultValue);
-    public record PgIndex(string Name, string TableName, string Definition) : PgDbObject(Name, Definition);
-
-    public record PgConstraint(string Name, string TableName, string Type, string Definition) : PgDbObject(Name, Definition)
-    {
-        public string? ReferencedTable { get; init; } 
-
-    };
-
-    public record PgView(string Name, string Definition) : PgDbObject(Name, Definition);
-    public record PgFunction(string Name, string Definition): PgDbObject(Name, Definition);
-    public record PgTrigger(string Name, string Table, string Definition) : PgDbObject($"{Table}.{Name}", Definition);
-
-    public record PgType(string Name, string Schema, string Kind, string Definition);
-    public record PgSequence(string Name, string Schema, string Definition);
-
-    public class PgSchema
-    {
-        public string Name { get; set; } = "public";
-
-        public List<PgTable> Tables { get; } = new();
-        public List<PgView> Views { get; } = new();
-        public List<PgFunction> Functions { get; } = new();
-        public List<PgTrigger> Triggers { get; } = new();
-
-        public List<PgType> Types { get; } = new();   // NEW
-        public List<PgSequence> Sequences { get; } = new();   // NEW
-        
-
-    }
-
-
     public class PgProject
     {
         public string DatabaseName { get; set; } = string.Empty;
         public string PostgresVersion { get; set; } = string.Empty;
 
-        public DateTimeOffset ExtractionDate { get; set; } = DateTimeOffset.MinValue;
+        public List<PgSchema> Schemas { get; set; } = new();
+        public List<PgRole> Roles { get; set; } = new();   // ✅ new
 
-        public List<PgSchema> Schemas { get; } = new();
-        
     }
+
+    public class PgSchema
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Owner { get; set; } = string.Empty;
+
+        public CreateSchemaStmt Ast { get; set; }   // Parsed AST
+        public string? AstJson { get; set; }    // Optional JSON representation of AST
+        public List<PgTable> Tables { get; set; } = new();
+        public List<PgView> Views { get; set; } = new();
+        public List<PgFunction> Functions { get; set; } = new();
+        public List<PgType> Types { get; set; } = new();
+        public List<PgSequence> Sequences { get; set; } = new();
+        public List<PgTrigger> Triggers { get; set; } = new();
+    }
+
+    public class PgTable
+    {
+        public string Name { get; set; }
+        public string Definition { get; set; }   // Original SQL
+        public CreateStmt? Ast  { get; set; }      // Parsed AST
+        public string? AstJson { get; set; }    // Optional JSON representation of AST
+        public string Owner { get; set; } = string.Empty;
+
+        public List<PgColumn> Columns { get; set; } = new();
+        public List<PgConstraint> Constraints { get; set; } = new();
+        public List<PgIndex> Indexes { get; set; } = new();
+    }
+
+    public class PgColumn
+    {
+        public string Name { get; set; }
+        public string DataType { get; set; }
+        public bool IsNotNull { get; set; }
+        public string? DefaultExpression { get; set; }
+    }
+
+    public class PgConstraint
+    {
+        public string Name { get; set; }
+        public ConstrType Type { get; set; }
+        public List<string> Keys { get; set; } = new();
+        public string? CheckExpression { get; set; }
+        public string? ReferencedTable { get; set; }
+        public List<string>? ReferencedColumns { get; set; }
+    }
+
+    public class PgIndex
+    {
+        public string Name { get; set; }
+        public string Definition { get; set; }
+        public string Owner { get; set; } = string.Empty;
+    }
+
+    public class PgView
+    {
+        public string Name { get; set; }
+        public string Definition { get; set; }
+        public string? Ast { get; set; }
+        public string? AstJson { get; set; }    // Optional JSON representation of AST
+        public string Owner { get; set; } = string.Empty;
+    }
+
+    public class PgFunction
+    {
+        public string Name { get; set; }
+        public string Definition { get; set; }
+        public string? Ast { get; set; }
+        public string? AstJson { get; set; }    // Optional JSON representation of AST
+        public string Owner { get; set; } = string.Empty;
+    }
+
+    public class PgType
+    {
+        public string Name { get; set; }
+        public string Definition { get; set; }
+        public CreateStmt? Ast { get; set; }
+        public string? AstJson { get; set; }    // Optional JSON representation of AST
+        public string Owner { get; set; } = string.Empty;
+    }
+
+    public class PgSequence
+    {
+        public string Name { get; set; }
+        public string Definition { get; set; }
+        public CreateSeqStmt? Ast { get; set; }
+        public string? AstJson { get; set; }    // Optional JSON representation of AST
+        public string Owner { get; set; } = string.Empty;
+    }
+
+    public class PgTrigger
+    {
+        public string Name { get; set; }
+        public string Definition { get; set; }
+        public string Ast { get; set; }
+        public string Owner { get; set; } = string.Empty;
+    }
+
+    public class PgRole
+    {
+        public string Name { get; set; } = string.Empty;
+        public bool IsSuperUser { get; set; }
+        public bool CanLogin { get; set; }
+        public bool Inherit { get; set; }
+        public bool Replication { get; set; }
+        public bool BypassRLS { get; set; }
+        public string? Password { get; set; }   // optional, often null
+        public List<string> MemberOf { get; set; } = new(); // role memberships
+
+        public string Definition { get; set; } = string.Empty; // CREATE ROLE SQL
+    }
+
 }

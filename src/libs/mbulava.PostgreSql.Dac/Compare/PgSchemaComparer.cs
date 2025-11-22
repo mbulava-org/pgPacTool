@@ -13,141 +13,223 @@ namespace mbulava.PostgreSql.Dac.Compare
 {
     public class PgSchemaComparer
     {
-        public SchemaDiff Compare(PgProject source, PgProject target)
+        public List<ObjectDiff> CompareProjects(PgProject source, PgProject target)
         {
-            var diff = new SchemaDiff();
+            var diffs = new List<ObjectDiff>();
 
-            //foreach (var srcSchema in source.Schemas)
-            //{
-            //    var tgtSchema = target.Schemas.FirstOrDefault(s => s.Name == srcSchema.Name);
-            //    if (tgtSchema == null)
-            //    {
-            //        diff.MissingSchemas.Add(srcSchema);
-            //        continue;
-            //    }
-
-            //    CompareTypes(srcSchema, tgtSchema, diff);
-            //    CompareTables(srcSchema, tgtSchema, diff);
-                
-            //    CompareSequences(srcSchema, tgtSchema, diff);
-            //    CompareViews(srcSchema, tgtSchema, diff);
-            //    CompareFunctions(srcSchema, tgtSchema, diff);
-            //    CompareTriggers(srcSchema, tgtSchema, diff);
-            //}
-
-            return diff;
-        }
-
-        private void CompareTables(PgSchema srcSchema, PgSchema tgtSchema, SchemaDiff diff)
-        {
-            foreach (var srcTable in srcSchema.Tables)
+            foreach (var srcSchema in source.Schemas)
             {
-                var tgtTable = tgtSchema.Tables.FirstOrDefault(t => t.Name == srcTable.Name);
-                if (tgtTable == null)
+                var tgtSchema = target.Schemas.FirstOrDefault(s => s.Name == srcSchema.Name);
+                if (tgtSchema == null)
                 {
-                    diff.TableDiffs.Add(new ObjectDiff(srcTable.Name, DiffType.Missing, srcTable.Definition));
+                    diffs.Add(new ObjectDiff
+                    {
+                        ObjectType = "Schema",
+                        ObjectName = srcSchema.Name,
+                        Action = "Create",
+                        //TODO: Script = srcSchema.Definition // from AST
+                    });
                     continue;
                 }
 
-                // Parse both definitions into AST
-                var srcAst = new Parser().Parse(srcTable.Definition).OfType<CreateStmt>().First();
-                var tgtAst = new Parser().Parse(tgtTable.Definition).OfType<CreateStmt>().First();
+                // Compare schema owner
+                if (srcSchema.Owner != tgtSchema.Owner)
+                {
+                    diffs.Add(new ObjectDiff
+                    {
+                        ObjectType = "Schema",
+                        ObjectName = srcSchema.Name,
+                        Action = "Alter",
+                        Script = $"ALTER SCHEMA {srcSchema.Name} OWNER TO {srcSchema.Owner};"
+                    });
+                }
 
-                CompareColumns(srcAst, tgtAst, srcSchema.Name, diff);
-                CompareConstraints(srcAst, tgtAst, srcSchema.Name, diff);
+                // Compare tables
+                foreach (var srcTable in srcSchema.Tables)
+                {
+                    var tgtTable = tgtSchema.Tables.FirstOrDefault(t => t.Name == srcTable.Name);
+                    if (tgtTable == null)
+                    {
+                        diffs.Add(new ObjectDiff
+                        {
+                            ObjectType = "Table",
+                            ObjectName = $"{srcSchema.Name}.{srcTable.Name}",
+                            Action = "Create",
+                            Script = srcTable.Definition
+                        });
+                        continue;
+                    }
+
+                    // Column diffs
+                    CompareColumns(srcSchema.Name, srcTable, tgtTable, diffs);
+
+                    // Constraint diffs
+                    CompareConstraints(srcSchema.Name, srcTable, tgtTable, diffs);
+
+                    // Index diffs
+                    CompareIndexes(srcSchema.Name, srcTable, tgtTable, diffs);
+                }
             }
 
-            foreach (var tgtTable in tgtSchema.Tables.Where(t => !srcSchema.Tables.Any(st => st.Name == t.Name)))
-            {
-                diff.TableDiffs.Add(new ObjectDiff(tgtTable.Name, DiffType.Extra, $"DROP TABLE {tgtSchema.Name}.{tgtTable.Name};"));
-            }
+            return diffs;
         }
-
-        private void CompareColumns(CreateStmt srcAst, CreateStmt tgtAst, string schemaName, SchemaDiff diff)
+        private void CompareColumns(string schemaName, PgTable srcTable, PgTable tgtTable, List<ObjectDiff> diffs)
         {
-            foreach (var srcCol in srcAst.TableElts.OfType<ColumnDef>())
+            // Missing columns in target
+            foreach (var srcCol in srcTable.Columns)
             {
-                var tgtCol = tgtAst.TableElts.OfType<ColumnDef>().FirstOrDefault(c => c.Colname == srcCol.Colname);
+                var tgtCol = tgtTable.Columns.FirstOrDefault(c => c.Name == srcCol.Name);
                 if (tgtCol == null)
                 {
-                    diff.ColumnDiffs.Add(new ObjectDiff($"{schemaName}.{srcAst.Relation.Relname}.{srcCol.Colname}",
-                        DiffType.Missing,
-                        $"ALTER TABLE {schemaName}.{srcAst.Relation.Relname} ADD COLUMN {srcCol.Colname} {srcCol.TypeName};"));
+                    diffs.Add(new ObjectDiff
+                    {
+                        ObjectType = "Column",
+                        ObjectName = $"{schemaName}.{srcTable.Name}.{srcCol.Name}",
+                        Action = "Add",
+                        Script = $"ALTER TABLE {schemaName}.{srcTable.Name} ADD COLUMN {srcCol.Name} {srcCol.DataType}" +
+                                 (srcCol.IsNotNull ? " NOT NULL" : "") +
+                                 (srcCol.DefaultExpression != null ? $" DEFAULT {srcCol.DefaultExpression}" : "") + ";"
+                    });
                 }
-                else if (!ColumnEquals(srcCol, tgtCol))
+                else
                 {
-                    diff.ColumnDiffs.Add(new ObjectDiff($"{schemaName}.{srcAst.Relation.Relname}.{srcCol.Colname}",
-                        DiffType.Changed,
-                        $"ALTER TABLE {schemaName}.{srcAst.Relation.Relname} ALTER COLUMN {srcCol.Colname} TYPE {srcCol.TypeName};"));
+                    // Compare datatype, nullability, default
+                    if (srcCol.DataType != tgtCol.DataType)
+                    {
+                        diffs.Add(new ObjectDiff
+                        {
+                            ObjectType = "Column",
+                            ObjectName = $"{schemaName}.{srcTable.Name}.{srcCol.Name}",
+                            Action = "Alter",
+                            Script = $"ALTER TABLE {schemaName}.{srcTable.Name} ALTER COLUMN {srcCol.Name} TYPE {srcCol.DataType};"
+                        });
+                    }
+                    if (srcCol.IsNotNull != tgtCol.IsNotNull)
+                    {
+                        diffs.Add(new ObjectDiff
+                        {
+                            ObjectType = "Column",
+                            ObjectName = $"{schemaName}.{srcTable.Name}.{srcCol.Name}",
+                            Action = "Alter",
+                            Script = $"ALTER TABLE {schemaName}.{srcTable.Name} ALTER COLUMN {srcCol.Name} {(srcCol.IsNotNull ? "SET NOT NULL" : "DROP NOT NULL")};"
+                        });
+                    }
+                    if (srcCol.DefaultExpression != tgtCol.DefaultExpression)
+                    {
+                        diffs.Add(new ObjectDiff
+                        {
+                            ObjectType = "Column",
+                            ObjectName = $"{schemaName}.{srcTable.Name}.{srcCol.Name}",
+                            Action = "Alter",
+                            Script = srcCol.DefaultExpression != null
+                                ? $"ALTER TABLE {schemaName}.{srcTable.Name} ALTER COLUMN {srcCol.Name} SET DEFAULT {srcCol.DefaultExpression};"
+                                : $"ALTER TABLE {schemaName}.{srcTable.Name} ALTER COLUMN {srcCol.Name} DROP DEFAULT;"
+                        });
+                    }
                 }
             }
 
-            foreach (var tgtCol in tgtAst.TableElts.OfType<ColumnDef>().Where(c => !srcAst.TableElts.OfType<ColumnDef>().Any(sc => sc.Colname == c.Colname)))
+            // Extra columns in target
+            foreach (var tgtCol in tgtTable.Columns.Where(c => !srcTable.Columns.Any(sc => sc.Name == c.Name)))
             {
-                diff.ColumnDiffs.Add(new ObjectDiff($"{schemaName}.{srcAst.Relation.Relname}.{tgtCol.Colname}",
-                    DiffType.Extra,
-                    $"ALTER TABLE {schemaName}.{srcAst.Relation.Relname} DROP COLUMN {tgtCol.Colname};"));
+                diffs.Add(new ObjectDiff
+                {
+                    ObjectType = "Column",
+                    ObjectName = $"{schemaName}.{srcTable.Name}.{tgtCol.Name}",
+                    Action = "Drop",
+                    Script = $"ALTER TABLE {schemaName}.{srcTable.Name} DROP COLUMN {tgtCol.Name};"
+                });
             }
         }
 
-        private bool ColumnEquals(ColumnDef srcCol, ColumnDef tgtCol)
+        private void CompareConstraints(string schemaName, PgTable srcTable, PgTable tgtTable, List<ObjectDiff> diffs)
         {
-            return srcCol.TypeName.ToString() == tgtCol.TypeName.ToString()
-                && srcCol.IsNotNull == tgtCol.IsNotNull
-                && (srcCol.RawDefault?.ToString() ?? "") == (tgtCol.RawDefault?.ToString() ?? "");
-        }
-
-        private void CompareConstraints(CreateStmt srcAst, CreateStmt tgtAst, string schemaName, SchemaDiff diff)
-        {
-            var srcConstraints = srcAst.TableElts.OfType<Constraint>().ToList();
-            var tgtConstraints = tgtAst.TableElts.OfType<Constraint>().ToList();
-
-            foreach (var srcCon in srcConstraints)
+            foreach (var srcCon in srcTable.Constraints)
             {
-                var tgtCon = tgtConstraints.FirstOrDefault(c => c.Conname == srcCon.Conname);
+                var tgtCon = tgtTable.Constraints.FirstOrDefault(c => c.Name == srcCon.Name);
                 if (tgtCon == null)
                 {
-                    diff.ConstraintDiffs.Add(new ObjectDiff(srcCon.Conname, DiffType.Missing,
-                        $"ALTER TABLE {schemaName}.{srcAst.Relation.Relname} ADD CONSTRAINT {srcCon.Conname} {srcCon.Contype};"));
+                    diffs.Add(new ObjectDiff
+                    {
+                        ObjectType = "Constraint",
+                        ObjectName = $"{schemaName}.{srcTable.Name}.{srcCon.Name}",
+                        Action = "Add",
+                        Script = $"ALTER TABLE {schemaName}.{srcTable.Name} ADD CONSTRAINT {srcCon.Name} {srcCon.Type} {srcCon.CheckExpression ?? ""};"
+                    });
                 }
-                else if (!ConstraintEquals(srcCon, tgtCon))
+                else
                 {
-                    diff.ConstraintDiffs.Add(new ObjectDiff(srcCon.Conname, DiffType.Changed,
-                        $"ALTER TABLE {schemaName}.{srcAst.Relation.Relname} DROP CONSTRAINT {srcCon.Conname};\n" +
-                        $"ALTER TABLE {schemaName}.{srcAst.Relation.Relname} ADD CONSTRAINT {srcCon.Conname} {srcCon.Contype};"));
+                    // Compare definition text (simplified)
+                    if (srcCon.CheckExpression != tgtCon.CheckExpression ||
+                        srcCon.ReferencedTable != tgtCon.ReferencedTable ||
+                        !Enumerable.SequenceEqual(srcCon.ReferencedColumns ?? new(), tgtCon.ReferencedColumns ?? new()))
+                    {
+                        diffs.Add(new ObjectDiff
+                        {
+                            ObjectType = "Constraint",
+                            ObjectName = $"{schemaName}.{srcTable.Name}.{srcCon.Name}",
+                            Action = "Alter",
+                            Script = $"ALTER TABLE {schemaName}.{srcTable.Name} DROP CONSTRAINT {srcCon.Name};\n" +
+                                     $"ALTER TABLE {schemaName}.{srcTable.Name} ADD CONSTRAINT {srcCon.Name} {srcCon.Type} {srcCon.CheckExpression ?? ""};"
+                        });
+                    }
                 }
             }
 
-            foreach (var tgtCon in tgtConstraints.Where(c => !srcConstraints.Any(sc => sc.Conname == c.Conname)))
+            // Extra constraints in target
+            foreach (var tgtCon in tgtTable.Constraints.Where(c => !srcTable.Constraints.Any(sc => sc.Name == c.Name)))
             {
-                diff.ConstraintDiffs.Add(new ObjectDiff(tgtCon.Conname, DiffType.Extra,
-                    $"ALTER TABLE {schemaName}.{srcAst.Relation.Relname} DROP CONSTRAINT {tgtCon.Conname};"));
+                diffs.Add(new ObjectDiff
+                {
+                    ObjectType = "Constraint",
+                    ObjectName = $"{schemaName}.{srcTable.Name}.{tgtCon.Name}",
+                    Action = "Drop",
+                    Script = $"ALTER TABLE {schemaName}.{srcTable.Name} DROP CONSTRAINT {tgtCon.Name};"
+                });
             }
         }
 
-        private bool ConstraintEquals(Constraint srcCon, Constraint tgtCon)
+        private void CompareIndexes(string schemaName, PgTable srcTable, PgTable tgtTable, List<ObjectDiff> diffs)
         {
-            if (srcCon.Contype != tgtCon.Contype) return false;
-
-            switch (srcCon.Contype)
+            foreach (var srcIdx in srcTable.Indexes)
             {
-                case ConstrType.ConstrPrimary:
-                case ConstrType.ConstrUnique:
-                    return (srcCon.Keys?.ToString() ?? "") == (tgtCon.Keys?.ToString() ?? "");
-
-                case ConstrType.ConstrForeign:
-                    return (srcCon.Keys?.ToString() ?? "") == (tgtCon.Keys?.ToString() ?? "")
-                        && (srcCon.Pktable?.Relname ?? "") == (tgtCon.Pktable?.Relname ?? "")
-                        && (srcCon.PkAttrs?.ToString() ?? "") == (tgtCon.PkAttrs?.ToString() ?? "");
-
-                case ConstrType.ConstrCheck:
-                    return (srcCon.RawExpr?.ToString() ?? "") == (tgtCon.RawExpr?.ToString() ?? "");
-
-                default:
-                    return true;
+                var tgtIdx = tgtTable.Indexes.FirstOrDefault(i => i.Name == srcIdx.Name);
+                if (tgtIdx == null)
+                {
+                    diffs.Add(new ObjectDiff
+                    {
+                        ObjectType = "Index",
+                        ObjectName = $"{schemaName}.{srcTable.Name}.{srcIdx.Name}",
+                        Action = "Add",
+                        Script = srcIdx.Definition
+                    });
+                }
+                else
+                {
+                    if (srcIdx.Definition != tgtIdx.Definition)
+                    {
+                        diffs.Add(new ObjectDiff
+                        {
+                            ObjectType = "Index",
+                            ObjectName = $"{schemaName}.{srcTable.Name}.{srcIdx.Name}",
+                            Action = "Alter",
+                            Script = $"DROP INDEX {schemaName}.{srcIdx.Name};\n{srcIdx.Definition}"
+                        });
+                    }
+                }
             }
 
+            // Extra indexes in target
+            foreach (var tgtIdx in tgtTable.Indexes.Where(i => !srcTable.Indexes.Any(si => si.Name == i.Name)))
+            {
+                diffs.Add(new ObjectDiff
+                {
+                    ObjectType = "Index",
+                    ObjectName = $"{schemaName}.{srcTable.Name}.{tgtIdx.Name}",
+                    Action = "Drop",
+                    Script = $"DROP INDEX {schemaName}.{tgtIdx.Name};"
+                });
+            }
         }
-
     }
 }

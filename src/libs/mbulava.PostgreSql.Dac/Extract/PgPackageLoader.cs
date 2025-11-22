@@ -4,7 +4,7 @@ using Npgquery.Native;
 using PgQuery;
 using System.IO.Compression;
 using System.Text.Json;
-;
+
 
 namespace mbulava.PostgreSql.Dac.Extract
 {
@@ -30,47 +30,48 @@ namespace mbulava.PostgreSql.Dac.Extract
                 var parser = new Parser();
                 var stmts = parser.Parse(sql);
 
-                foreach (var stmt in stmts)
-                {
-                    switch (stmt)
-                    {
-                        case CreateStmt createTable:
-                            AddToSchema(project, createTable.Relation.Schemaname)
-                                .Tables.Add(new PgTable(createTable.Relation.Relname, sql));
-                            break;
+                throw new NotImplementedException();
+            //    foreach (var stmt in stmts)
+            //    {
+            //        switch (stmt)
+            //        {
+            //            case CreateStmt createTable:
+            //                AddToSchema(project, createTable.Relation.Schemaname)
+            //                    .Tables.Add(new PgTable(createTable.Relation.Relname, sql));
+            //                break;
 
-                        case ViewStmt view:
-                            AddToSchema(project, view.View.Schemaname)
-                                .Views.Add(new PgView(view.View.Relname, sql));
-                            break;
+            //            case ViewStmt view:
+            //                AddToSchema(project, view.View.Schemaname)
+            //                    .Views.Add(new PgView(view.View.Relname, sql));
+            //                break;
 
-                        case IndexStmt idx:
-                            AddToSchema(project, idx.Relation.Schemaname)
-                                .Tables.First(t => t.Name == idx.Relation.Relname)
-                                .Indexes.Add(new PgIndex(idx.Idxname, sql));
-                            break;
+            //            case IndexStmt idx:
+            //                AddToSchema(project, idx.Relation.Schemaname)
+            //                    .Tables.First(t => t.Name == idx.Relation.Relname)
+            //                    .Indexes.Add(new PgIndex(idx.Idxname, sql));
+            //                break;
 
-                        case CreateFunctionStmt fn:
-                            AddToSchema(project, "public")
-                                .Functions.Add(new PgFunction(fn.Funcname.First().ToString(), sql));
-                            break;
+            //            case CreateFunctionStmt fn:
+            //                AddToSchema(project, "public")
+            //                    .Functions.Add(new PgFunction(fn.Funcname.First().ToString(), sql));
+            //                break;
 
-                        case CreateTypeStmt ty:
-                            AddToSchema(project, "public")
-                                .Types.Add(new PgType(ty.TypeName.First().ToString(), "public", "user", sql));
-                            break;
+            //            case CreateTypeStmt ty:
+            //                AddToSchema(project, "public")
+            //                    .Types.Add(new PgType(ty.TypeName.First().ToString(), "public", "user", sql));
+            //                break;
 
-                        case CreateSeqStmt seq:
-                            AddToSchema(project, "public")
-                                .Sequences.Add(new PgSequence(seq.Sequence.Relname, "public", sql));
-                            break;
+            //            case CreateSeqStmt seq:
+            //                AddToSchema(project, "public")
+            //                    .Sequences.Add(new PgSequence(seq.Sequence.Relname, "public", sql));
+            //                break;
 
-                        case CreateTrigStmt trig:
-                            AddToSchema(project, "public")
-                                .Triggers.Add(new PgTrigger(trig.Trigname, sql));
-                            break;
-                    }
-                }
+            //            case CreateTrigStmt trig:
+            //                AddToSchema(project, "public")
+            //                    .Triggers.Add(new PgTrigger(trig.Trigname, sql));
+            //                break;
+            //        }
+            //    }
             }
 
             Directory.Delete(tempDir, true);

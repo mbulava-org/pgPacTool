@@ -9,10 +9,11 @@ namespace mbulava.PostgreSql.Dac.Extract
     using mbulava.PostgreSql.Dac.Models;
     using System.IO.Compression;
     using System.Text.Json;
+    using System.Text.Json.Serialization;
 
     public static class PgPackageWriter
     {
-        public static void WriteAsPackage(PgProject project, string outputPath)
+        private static void WriteAsPackage(PgProject project, string outputPath)
         {
             var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
             Directory.CreateDirectory(tempDir);
@@ -54,5 +55,18 @@ namespace mbulava.PostgreSql.Dac.Extract
 
             Directory.Delete(tempDir, true);
         }
+
+
+        public static async Task WriteAsync(PgProject project, Stream output)
+        {
+            var options = new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+            };
+
+            await JsonSerializer.SerializeAsync(output, project, options);
+        }
+
     }
 }

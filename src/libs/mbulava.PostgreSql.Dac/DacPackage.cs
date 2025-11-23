@@ -42,7 +42,7 @@ namespace mbulava.PostgreSql.Dac
 
         public string Description { get; set; }
         public string Name { get; set; }
-        public string Version { get; set; }
+        public Version Version { get; set; }
         public string VersionPrefix { get; set; }
         public Stream PostDeploymentScript { get; set; }
         public Stream PreDeploymentScript { get; set; }

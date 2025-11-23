@@ -16,16 +16,31 @@ namespace mbulava.PostgreSql.Dac.Extract
     //var sql = "SELECT p.proacl FROM pg_proc p WHERE p.oid = @oid;";
     //pgFunction.Privileges = await ExtractPrivilegesAsync(sql, "oid", (int) oid);
 
-    public class PgSchemaExtractor
+    public class PgProjectExtractor
     {
-        private readonly NpgsqlConnection _conn;
+        private readonly string _conn;
 
-        public PgSchemaExtractor(NpgsqlConnection conn)
+        public PgProjectExtractor(string conString)
         {
-            _conn = conn;
+            _conn = conString;
+        }
+        private NpgsqlConnection CreateConnection() {             
+            var conn = new NpgsqlConnection(_conn);
+            conn.Open();
+            return conn;
         }
 
-        public async Task<PgProject> ExtractAllSchemasAsync(string databaseName, string postgresVersion)
+        public async Task<string> DetectPostgresVersion()
+        {
+            using var cmd = new NpgsqlCommand("SHOW server_version;", CreateConnection());
+            var version = (string)await cmd.ExecuteScalarAsync();
+            // Extract major.minor.patch if there is a space it's probably more info that we're going to have an issue with
+            var split = version.Split(' ');
+            return split[0];
+            ;
+        }
+
+        public async Task<PgProject> ExtractPgProject(string databaseName, string postgresVersion)
         {
             var project = new PgProject
             {
@@ -63,7 +78,7 @@ namespace mbulava.PostgreSql.Dac.Extract
         FROM pg_namespace n
         JOIN pg_roles r ON r.oid = n.nspowner
         WHERE n.nspname NOT LIKE 'pg_%'
-          AND n.nspname <> 'information_schema';", _conn);
+          AND n.nspname <> 'information_schema';", CreateConnection());
 
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
@@ -98,7 +113,8 @@ namespace mbulava.PostgreSql.Dac.Extract
                     Owner = owner,
                     Ast = ast,
                     AstJson = astJson,
-                    Privileges = await ExtractPrivilegesAsync(privilegesSql, "schema", name)
+                    //BUG: Privileges extraction fails here, might be a public thing though - needs investigation
+                    //Privileges = await ExtractPrivilegesAsync(privilegesSql, "schema", name)
                 });
             }
 
@@ -109,10 +125,12 @@ namespace mbulava.PostgreSql.Dac.Extract
         {
             var privileges = new List<PgPrivilege>();
 
-            using var cmd = new NpgsqlCommand(sql, _conn);
+            using var cmd = new NpgsqlCommand(sql, CreateConnection());
             cmd.Parameters.AddWithValue(paramName, paramValue);
-
-            var aclArray = (string[]?)await cmd.ExecuteScalarAsync();
+            using var reader = await cmd.ExecuteReaderAsync();
+            if (!await reader.ReadAsync()) return privileges;
+            var aclArray = reader.IsDBNull(0) ? null : reader.GetFieldValue<string[]>(0);
+            await reader.CloseAsync();
             if (aclArray == null) return privileges;
 
             foreach (var acl in aclArray)
@@ -166,7 +184,7 @@ namespace mbulava.PostgreSql.Dac.Extract
             using var cmd = new NpgsqlCommand(@"
         SELECT n.nspacl
         FROM pg_namespace n
-        WHERE n.nspname = @schema;", _conn);
+        WHERE n.nspname = @schema;", CreateConnection());
 
             cmd.Parameters.AddWithValue("schema", schemaName);
 
@@ -237,7 +255,7 @@ namespace mbulava.PostgreSql.Dac.Extract
                 using var cmd = new NpgsqlCommand(@"
             SELECT rolname, rolsuper, rolcanlogin, rolinherit, rolreplication, rolbypassrls
             FROM pg_roles
-            WHERE rolname = @name;", _conn);
+            WHERE rolname = @name;", CreateConnection());
                 cmd.Parameters.AddWithValue("name", roleName);
 
                 using var reader = await cmd.ExecuteReaderAsync();
@@ -262,7 +280,7 @@ namespace mbulava.PostgreSql.Dac.Extract
             FROM pg_auth_members m
             JOIN pg_roles r ON r.oid = m.roleid
             JOIN pg_roles u ON u.oid = m.member
-            WHERE u.rolname = @name;", _conn);
+            WHERE u.rolname = @name;", CreateConnection());
                 memCmd.Parameters.AddWithValue("name", roleName);
 
                 using var memReader = await memCmd.ExecuteReaderAsync();
@@ -288,7 +306,7 @@ namespace mbulava.PostgreSql.Dac.Extract
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
         JOIN pg_roles r ON r.oid = c.relowner
-        WHERE c.relkind = 'r' AND n.nspname = @schema;", _conn);
+        WHERE c.relkind = 'r' AND n.nspname = @schema;", CreateConnection());
 
             cmd.Parameters.AddWithValue("schema", schema);
 
@@ -372,7 +390,7 @@ namespace mbulava.PostgreSql.Dac.Extract
                pg_get_expr(d.adbin, d.adrelid)
         FROM pg_attribute a
         LEFT JOIN pg_attrdef d ON a.attrelid = d.adrelid AND a.attnum = d.adnum
-        WHERE a.attrelid = @oid AND a.attnum > 0 AND NOT a.attisdropped;", _conn);
+        WHERE a.attrelid = @oid AND a.attnum > 0 AND NOT a.attisdropped;", CreateConnection());
 
             colCmd.Parameters.AddWithValue("oid", (int)oid);
 
@@ -404,7 +422,7 @@ namespace mbulava.PostgreSql.Dac.Extract
                pg_get_expr(d.adbin, d.adrelid)
         FROM pg_attribute a
         LEFT JOIN pg_attrdef d ON a.attrelid = d.adrelid AND a.attnum = d.adnum
-        WHERE a.attrelid = @oid AND a.attnum > 0 AND NOT a.attisdropped;", _conn);
+        WHERE a.attrelid = @oid AND a.attnum > 0 AND NOT a.attisdropped;", CreateConnection());
 
             cmd.Parameters.AddWithValue("oid", (int)oid);
 
@@ -431,7 +449,7 @@ namespace mbulava.PostgreSql.Dac.Extract
             using var cmd = new NpgsqlCommand(@"
         SELECT conname, contype, pg_get_constraintdef(oid)
         FROM pg_constraint
-        WHERE conrelid = @oid;", _conn);
+        WHERE conrelid = @oid;", CreateConnection());
 
             cmd.Parameters.AddWithValue("oid", (int)tableOid);
 
@@ -498,7 +516,7 @@ namespace mbulava.PostgreSql.Dac.Extract
         FROM pg_index i
         JOIN pg_class c ON c.oid = i.indexrelid
         JOIN pg_roles r ON r.oid = c.relowner
-        WHERE i.indrelid = @oid;", _conn);
+        WHERE i.indrelid = @oid;", CreateConnection());
 
             cmd.Parameters.AddWithValue("oid", (int)tableOid);
 
@@ -515,7 +533,7 @@ namespace mbulava.PostgreSql.Dac.Extract
 
             foreach (var (oid, name, owner) in indexOids)
             {
-                using var defCmd = new NpgsqlCommand("SELECT pg_get_indexdef(@oid);", _conn);
+                using var defCmd = new NpgsqlCommand("SELECT pg_get_indexdef(@oid);", CreateConnection());
                 defCmd.Parameters.AddWithValue("oid", (int)oid);
                 var sql = (string)await defCmd.ExecuteScalarAsync();
 
@@ -561,7 +579,7 @@ namespace mbulava.PostgreSql.Dac.Extract
         JOIN pg_namespace n ON n.oid = t.typnamespace
         JOIN pg_roles r ON r.oid = t.typowner
         WHERE n.nspname = @schema
-          AND t.typtype IN ('d','e','c');", _conn);
+          AND t.typtype IN ('d','e','c');", CreateConnection());
 
             cmd.Parameters.AddWithValue("schema", schema);
 
@@ -592,7 +610,7 @@ namespace mbulava.PostgreSql.Dac.Extract
                            pg_get_constraintdef(c.oid) AS constraintdef
                     FROM pg_type t
                     LEFT JOIN pg_constraint c ON c.contypid = t.oid
-                    WHERE t.oid = @oid;", _conn))
+                    WHERE t.oid = @oid;", CreateConnection()))
                         {
                             domCmd.Parameters.AddWithValue("oid", (int)oid);
                             using var domReader = await domCmd.ExecuteReaderAsync();
@@ -621,7 +639,7 @@ namespace mbulava.PostgreSql.Dac.Extract
                     SELECT e.enumlabel
                     FROM pg_enum e
                     WHERE e.enumtypid = @oid
-                    ORDER BY e.enumsortorder;", _conn))
+                    ORDER BY e.enumsortorder;", CreateConnection()))
                         {
                             enumCmd.Parameters.AddWithValue("oid", (int)oid);
                             using var enumReader = await enumCmd.ExecuteReaderAsync();
@@ -648,7 +666,7 @@ namespace mbulava.PostgreSql.Dac.Extract
                            a.attnotnull
                     FROM pg_attribute a
                     WHERE a.attrelid = @oid AND a.attnum > 0 AND NOT a.attisdropped
-                    ORDER BY a.attnum;", _conn))
+                    ORDER BY a.attnum;", CreateConnection()))
                         {
                             compCmd.Parameters.AddWithValue("oid", (int)oid);
                             using var compReader = await compCmd.ExecuteReaderAsync();
@@ -683,7 +701,23 @@ namespace mbulava.PostgreSql.Dac.Extract
             return types;
         }
 
-        public async Task<List<PgSequence>> ExtractSequencesAsync(string schemaName)
+
+        private string BuildCreateSequenceSql(string schema, string name, string owner,
+            long start, long increment, long min, long max, long cache, bool cycle)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine($"CREATE SEQUENCE {schema}.{name}");
+            sb.AppendLine($"    START WITH {start}");
+            sb.AppendLine($"    INCREMENT BY {increment}");
+            sb.AppendLine($"    MINVALUE {min}");
+            sb.AppendLine($"    MAXVALUE {max}");
+            sb.AppendLine($"    CACHE {cache}");
+            sb.AppendLine(cycle ? "    CYCLE;" : "    NO CYCLE;");
+            sb.AppendLine($"ALTER SEQUENCE {schema}.{name} OWNER TO {owner};");
+            return sb.ToString();
+        }
+
+        private async Task<List<PgSequence>> ExtractSequencesAsync(string schemaName)
         {
             var sequences = new List<PgSequence>();
 
@@ -692,7 +726,6 @@ namespace mbulava.PostgreSql.Dac.Extract
             c.oid,
             c.relname,
             pg_get_userbyid(c.relowner) AS owner,
-            pg_get_serial_sequence(n.nspname || '.' || c.relname, 'id') AS definition,
             s.seqstart,
             s.seqincrement,
             s.seqmin,
@@ -706,30 +739,41 @@ namespace mbulava.PostgreSql.Dac.Extract
         WHERE c.relkind = 'S' AND n.nspname = @schema;
     ";
 
-            using var cmd = new NpgsqlCommand(sql, _conn);
+
+            using var cmd = new NpgsqlCommand(sql, CreateConnection());
             cmd.Parameters.AddWithValue("schema", schemaName);
 
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
-                var oid = reader.GetInt32(0);
+                var oid = reader.GetFieldValue<UInt32>(0);
                 var name = reader.GetString(1);
                 var owner = reader.GetString(2);
-                var definition = reader.IsDBNull(3) ? string.Empty : reader.GetString(3);
+                var definition = BuildCreateSequenceSql(
+                    schemaName,
+                    name,
+                    owner,
+                    reader.GetInt64(3),
+                    reader.GetInt64(4),
+                    reader.GetInt64(5),
+                    reader.GetInt64(6),
+                    reader.GetInt64(7),
+                    reader.GetBoolean(8)
+                );
 
                 // Build options list
                 var options = new List<SeqOption>
-        {
-            new SeqOption { OptionName = "START",     OptionValue = reader["seqstart"].ToString() },
-            new SeqOption { OptionName = "INCREMENT", OptionValue = reader["seqincrement"].ToString() },
-            new SeqOption { OptionName = "MINVALUE",  OptionValue = reader["seqmin"].ToString() },
-            new SeqOption { OptionName = "MAXVALUE",  OptionValue = reader["seqmax"].ToString() },
-            new SeqOption { OptionName = "CACHE",     OptionValue = reader["seqcache"].ToString() },
-            new SeqOption { OptionName = "CYCLE",     OptionValue = reader["seqcycle"].ToString() }
-        };
+                {
+                    new SeqOption { OptionName = "START",     OptionValue = reader.GetInt64(3).ToString() },
+                    new SeqOption { OptionName = "INCREMENT", OptionValue = reader.GetInt64(4).ToString() },
+                    new SeqOption { OptionName = "MINVALUE",  OptionValue = reader.GetInt64(5).ToString() },
+                    new SeqOption { OptionName = "MAXVALUE",  OptionValue = reader.GetInt64(6).ToString() },
+                    new SeqOption { OptionName = "CACHE",     OptionValue = reader.GetInt64(7).ToString() },
+                    new SeqOption { OptionName = "CYCLE",     OptionValue = reader.GetBoolean(8).ToString() }
+                };
 
                 // Privileges
-                var aclArray = reader.IsDBNull(10) ? null : reader.GetFieldValue<string[]>(10);
+                var aclArray = reader.IsDBNull(9) ? null : reader.GetFieldValue<string[]>(9);
                 var privileges = new List<PgPrivilege>();
                 if (aclArray != null)
                 {

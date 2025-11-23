@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 
@@ -15,8 +17,27 @@ namespace mbulava.PostgreSql.Dac.Models
         public string PostgresVersion { get; set; } = string.Empty;
 
         public List<PgSchema> Schemas { get; set; } = new();
-        public List<PgRole> Roles { get; set; } = new();   // ✅ new
+        public List<PgRole> Roles { get; set; } = new();   
 
+        public static async Task Save(PgProject project, Stream output)
+        {
+            var options = new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            };
+            await JsonSerializer.SerializeAsync(output, project, options);
+        }
+
+        public static async Task<PgProject> Load(Stream input)
+        {
+            var options = new JsonSerializerOptions
+            {
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            };
+            return await JsonSerializer.DeserializeAsync<PgProject>(input, options) 
+                ?? throw new InvalidOperationException("Failed to deserialize PgProject");
+        }
     }
 
     public class PgSchema

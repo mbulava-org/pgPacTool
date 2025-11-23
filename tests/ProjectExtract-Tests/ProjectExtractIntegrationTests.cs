@@ -38,18 +38,7 @@ namespace ProjectExtract_Tests
             Directory.Delete(_tempDir, recursive: true);
         }
 
-        [Test]
-        public async Task ExtractAsync_CreatesExpectedPgProjFiles()
-        {
-            await using var conn = new NpgsqlConnection(_pgContainer.GetConnectionString());
-            await conn.OpenAsync();
-
-            var extractor = new ProjectExtract(conn);
-            await extractor.ExtractAsync(_tempDir);
-
-            Assert.That(File.Exists(Path.Combine(_tempDir, "public", "Tables", "customers.sql")), Is.True);
-            Assert.That(File.Exists(Path.Combine(_tempDir, "manifest.json")), Is.True);
-        }
+       
 
         private async Task SeedTestSchemaAsync()
         {

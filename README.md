@@ -19,6 +19,7 @@ The pgPacTool Library is intended to function almost Identically to the https://
   * Requires testing
 ## Supported Objects
 * Roles (ownership, membership, & privileges)
+* Schemas
 * Tables
   * columns
   * constraints

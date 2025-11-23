@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/postgresPacTools/postgresPacTools.csproj" />
+  </Folder>
+  <Folder Name="/src/libs/">
+    <Project Path="src/libs/mbulava.PostgreSql.Dac/mbulava.PostgreSql.Dac.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ProjectExtract-Tests/ProjectExtract-Tests.csproj" />
+  </Folder>
+</Solution>

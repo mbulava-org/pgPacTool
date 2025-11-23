@@ -26,6 +26,8 @@ namespace mbulava.PostgreSql.Dac.Models
 
         public CreateSchemaStmt Ast { get; set; }   // Parsed AST
         public string? AstJson { get; set; }    // Optional JSON representation of AST
+        public List<PgPrivilege> Privileges { get; set; } = new();  // ✅ new
+
         public List<PgTable> Tables { get; set; } = new();
         public List<PgView> Views { get; set; } = new();
         public List<PgFunction> Functions { get; set; } = new();
@@ -45,6 +47,8 @@ namespace mbulava.PostgreSql.Dac.Models
         public List<PgColumn> Columns { get; set; } = new();
         public List<PgConstraint> Constraints { get; set; } = new();
         public List<PgIndex> Indexes { get; set; } = new();
+
+        public List<PgPrivilege> Privileges { get; set; } = new();
     }
 
     public class PgColumn
@@ -58,6 +62,7 @@ namespace mbulava.PostgreSql.Dac.Models
     public class PgConstraint
     {
         public string Name { get; set; }
+        public string Definition { get; set; } = string.Empty;
         public ConstrType Type { get; set; }
         public List<string> Keys { get; set; } = new();
         public string? CheckExpression { get; set; }
@@ -79,6 +84,7 @@ namespace mbulava.PostgreSql.Dac.Models
         public string? Ast { get; set; }
         public string? AstJson { get; set; }    // Optional JSON representation of AST
         public string Owner { get; set; } = string.Empty;
+        public List<PgPrivilege> Privileges { get; set; } = new();
     }
 
     public class PgFunction
@@ -88,24 +94,62 @@ namespace mbulava.PostgreSql.Dac.Models
         public string? Ast { get; set; }
         public string? AstJson { get; set; }    // Optional JSON representation of AST
         public string Owner { get; set; } = string.Empty;
+        public List<PgPrivilege> Privileges { get; set; } = new();
+    }
+
+    public enum PgTypeKind
+    {
+        Domain,
+        Enum,
+        Composite
     }
 
     public class PgType
     {
         public string Name { get; set; }
+        public PgTypeKind Kind { get; set; }
+
         public string Definition { get; set; }
-        public CreateStmt? Ast { get; set; }
-        public string? AstJson { get; set; }    // Optional JSON representation of AST
         public string Owner { get; set; } = string.Empty;
+        // AST nodes for each type kind
+        public CreateDomainStmt? AstDomain { get; set; }
+        public CreateEnumStmt? AstEnum { get; set; }
+        public CompositeTypeStmt? AstComposite { get; set; }
+
+        // Raw JSON AST for debugging/future-proofing
+        public string? AstJson { get; set; }
+
+        // Extra metadata
+        public List<string>? EnumLabels { get; set; }          // for enums
+        public List<PgAttribute>? CompositeAttributes { get; set; } // for composites
+
+        public List<PgPrivilege> Privileges { get; set; } = new();
     }
+
+    public class PgAttribute
+    {
+        public string Name { get; set; } = string.Empty;
+        public string DataType { get; set; } = string.Empty;
+    }
+
+    public class SeqOption
+    {
+        public string OptionName { get; set; } = string.Empty;   // e.g. "START", "INCREMENT", "CACHE", "CYCLE"
+        public string OptionValue { get; set; } = string.Empty;  // e.g. "1", "5", "10", "true"
+    }
+
 
     public class PgSequence
     {
         public string Name { get; set; }
         public string Definition { get; set; }
+        public string Owner { get; set; } = string.Empty;
+
         public CreateSeqStmt? Ast { get; set; }
         public string? AstJson { get; set; }    // Optional JSON representation of AST
-        public string Owner { get; set; } = string.Empty;
+        
+        public List<SeqOption> Options { get; set; } = new();
+        public List<PgPrivilege> Privileges { get; set; } = new();
     }
 
     public class PgTrigger
@@ -128,6 +172,14 @@ namespace mbulava.PostgreSql.Dac.Models
         public List<string> MemberOf { get; set; } = new(); // role memberships
 
         public string Definition { get; set; } = string.Empty; // CREATE ROLE SQL
+    }
+
+    public class PgPrivilege
+    {
+        public string Grantee { get; set; } = string.Empty;     // Role or PUBLIC
+        public string PrivilegeType { get; set; } = string.Empty; // SELECT, INSERT, USAGE, CREATE, etc.
+        public bool IsGrantable { get; set; }                   // WITH GRANT OPTION
+        public string Grantor { get; set; } = string.Empty;     // Who granted it
     }
 
 }

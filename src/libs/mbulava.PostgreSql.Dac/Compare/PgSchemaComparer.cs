@@ -13,223 +13,415 @@ namespace mbulava.PostgreSql.Dac.Compare
 {
     public class PgSchemaComparer
     {
-        public List<ObjectDiff> CompareProjects(PgProject source, PgProject target)
+        public PgSchemaDiff Compare(PgSchema source, PgSchema target, CompareOptions options)
         {
-            var diffs = new List<ObjectDiff>();
-
-            foreach (var srcSchema in source.Schemas)
+            var diff = new PgSchemaDiff
             {
-                var tgtSchema = target.Schemas.FirstOrDefault(s => s.Name == srcSchema.Name);
-                if (tgtSchema == null)
+                SchemaName = source.Name
+            };
+
+            // Compare ownership
+            if (source.Owner != target.Owner)
+            {
+                diff.OwnerChanged = (source.Owner, target.Owner);
+            }
+
+            // Compare privileges
+            diff.PrivilegeChanges = ComparePrivileges(source.Privileges, target.Privileges);
+
+            // Compare tables
+            diff.TableDiffs = CompareTables(source.Tables, target.Tables);
+
+            // Compare types
+            diff.TypeDiffs = CompareTypes(source.Types, target.Types);
+
+            // Compare sequences
+            diff.SequenceDiffs = CompareSequences(source.Sequences, target.Sequences, options);
+
+            // Views, Functions, Triggers can be added later
+            return diff;
+        }
+
+        private List<PgPrivilegeDiff> ComparePrivileges(List<PgPrivilege> sourcePrivs, List<PgPrivilege> targetPrivs)
+        {
+            var diffs = new List<PgPrivilegeDiff>();
+
+            // Find missing grants
+            foreach (var src in sourcePrivs)
+            {
+                if (!targetPrivs.Any(t => t.Grantee == src.Grantee &&
+                                          t.PrivilegeType == src.PrivilegeType &&
+                                          t.IsGrantable == src.IsGrantable))
                 {
-                    diffs.Add(new ObjectDiff
+                    diffs.Add(new PgPrivilegeDiff
                     {
-                        ObjectType = "Schema",
-                        ObjectName = srcSchema.Name,
-                        Action = "Create",
-                        //TODO: Script = srcSchema.Definition // from AST
+                        Grantee = src.Grantee,
+                        PrivilegeType = src.PrivilegeType,
+                        ChangeType = PrivilegeChangeType.MissingInTarget
                     });
-                    continue;
                 }
+            }
 
-                // Compare schema owner
-                if (srcSchema.Owner != tgtSchema.Owner)
+            // Find extra grants
+            foreach (var tgt in targetPrivs)
+            {
+                if (!sourcePrivs.Any(s => s.Grantee == tgt.Grantee &&
+                                          s.PrivilegeType == tgt.PrivilegeType &&
+                                          s.IsGrantable == tgt.IsGrantable))
                 {
-                    diffs.Add(new ObjectDiff
+                    diffs.Add(new PgPrivilegeDiff
                     {
-                        ObjectType = "Schema",
-                        ObjectName = srcSchema.Name,
-                        Action = "Alter",
-                        Script = $"ALTER SCHEMA {srcSchema.Name} OWNER TO {srcSchema.Owner};"
+                        Grantee = tgt.Grantee,
+                        PrivilegeType = tgt.PrivilegeType,
+                        ChangeType = PrivilegeChangeType.ExtraInTarget
                     });
-                }
-
-                // Compare tables
-                foreach (var srcTable in srcSchema.Tables)
-                {
-                    var tgtTable = tgtSchema.Tables.FirstOrDefault(t => t.Name == srcTable.Name);
-                    if (tgtTable == null)
-                    {
-                        diffs.Add(new ObjectDiff
-                        {
-                            ObjectType = "Table",
-                            ObjectName = $"{srcSchema.Name}.{srcTable.Name}",
-                            Action = "Create",
-                            Script = srcTable.Definition
-                        });
-                        continue;
-                    }
-
-                    // Column diffs
-                    CompareColumns(srcSchema.Name, srcTable, tgtTable, diffs);
-
-                    // Constraint diffs
-                    CompareConstraints(srcSchema.Name, srcTable, tgtTable, diffs);
-
-                    // Index diffs
-                    CompareIndexes(srcSchema.Name, srcTable, tgtTable, diffs);
                 }
             }
 
             return diffs;
         }
-        private void CompareColumns(string schemaName, PgTable srcTable, PgTable tgtTable, List<ObjectDiff> diffs)
+
+        private List<PgTableDiff> CompareTables(List<PgTable> sourceTables, List<PgTable> targetTables)
         {
-            // Missing columns in target
-            foreach (var srcCol in srcTable.Columns)
+            var diffs = new List<PgTableDiff>();
+
+            foreach (var src in sourceTables)
             {
-                var tgtCol = tgtTable.Columns.FirstOrDefault(c => c.Name == srcCol.Name);
-                if (tgtCol == null)
+                var tgt = targetTables.FirstOrDefault(t => t.Name == src.Name);
+                if (tgt == null)
                 {
-                    diffs.Add(new ObjectDiff
+                    diffs.Add(new PgTableDiff
                     {
-                        ObjectType = "Column",
-                        ObjectName = $"{schemaName}.{srcTable.Name}.{srcCol.Name}",
-                        Action = "Add",
-                        Script = $"ALTER TABLE {schemaName}.{srcTable.Name} ADD COLUMN {srcCol.Name} {srcCol.DataType}" +
-                                 (srcCol.IsNotNull ? " NOT NULL" : "") +
-                                 (srcCol.DefaultExpression != null ? $" DEFAULT {srcCol.DefaultExpression}" : "") + ";"
+                        TableName = src.Name,
+                        DefinitionChanged = true, // missing in target
                     });
+                    continue;
                 }
-                else
+
+                var tableDiff = new PgTableDiff { TableName = src.Name };
+
+                // Owner change
+                if (src.Owner != tgt.Owner)
+                    tableDiff.OwnerChanged = (src.Owner, tgt.Owner);
+
+                // Definition change (SQL text or AST JSON)
+                if (src.Definition != tgt.Definition || src.AstJson != tgt.AstJson)
+                    tableDiff.DefinitionChanged = true;
+
+                // Column diffs
+                tableDiff.ColumnDiffs = CompareColumns(src.Columns, tgt.Columns);
+
+                // Constraint diffs
+                tableDiff.ConstraintDiffs = CompareConstraints(src.Constraints, tgt.Constraints);
+
+                // Index diffs
+                tableDiff.IndexDiffs = CompareIndexes(src.Indexes, tgt.Indexes);
+
+                // Privilege diffs
+                tableDiff.PrivilegeChanges = ComparePrivileges(src.Privileges, tgt.Privileges);
+
+                if (tableDiff.DefinitionChanged ||
+                    tableDiff.OwnerChanged != null ||
+                    tableDiff.ColumnDiffs.Any() ||
+                    tableDiff.ConstraintDiffs.Any() ||
+                    tableDiff.IndexDiffs.Any() ||
+                    tableDiff.PrivilegeChanges.Any())
                 {
-                    // Compare datatype, nullability, default
-                    if (srcCol.DataType != tgtCol.DataType)
+                    diffs.Add(tableDiff);
+                }
+            }
+
+            return diffs;
+        }
+
+        private List<PgTypeDiff> CompareTypes(List<PgType> sourceTypes, List<PgType> targetTypes)
+        {
+            var diffs = new List<PgTypeDiff>();
+
+            foreach (var src in sourceTypes)
+            {
+                var tgt = targetTypes.FirstOrDefault(t => t.Name == src.Name);
+                if (tgt == null)
+                {
+                    diffs.Add(new PgTypeDiff
                     {
-                        diffs.Add(new ObjectDiff
-                        {
-                            ObjectType = "Column",
-                            ObjectName = $"{schemaName}.{srcTable.Name}.{srcCol.Name}",
-                            Action = "Alter",
-                            Script = $"ALTER TABLE {schemaName}.{srcTable.Name} ALTER COLUMN {srcCol.Name} TYPE {srcCol.DataType};"
-                        });
-                    }
-                    if (srcCol.IsNotNull != tgtCol.IsNotNull)
+                        TypeName = src.Name,
+                        DefinitionChanged = true // missing in target
+                    });
+                    continue;
+                }
+
+                var typeDiff = new PgTypeDiff { TypeName = src.Name };
+
+                // Kind change
+                if (src.Kind != tgt.Kind)
+                {
+                    typeDiff.SourceKind = src.Kind;
+                    typeDiff.TargetKind = tgt.Kind;
+                    typeDiff.DefinitionChanged = true;
+                }
+
+                // Owner change
+                if (src.Owner != tgt.Owner)
+                    typeDiff.OwnerChanged = (src.Owner, tgt.Owner);
+
+                // Definition change
+                if (src.Definition != tgt.Definition || src.AstJson != tgt.AstJson)
+                    typeDiff.DefinitionChanged = true;
+
+                // Enum labels
+                if (src.Kind == PgTypeKind.Enum)
+                {
+                    if (!Enumerable.SequenceEqual(src.EnumLabels ?? new(), tgt.EnumLabels ?? new()))
                     {
-                        diffs.Add(new ObjectDiff
-                        {
-                            ObjectType = "Column",
-                            ObjectName = $"{schemaName}.{srcTable.Name}.{srcCol.Name}",
-                            Action = "Alter",
-                            Script = $"ALTER TABLE {schemaName}.{srcTable.Name} ALTER COLUMN {srcCol.Name} {(srcCol.IsNotNull ? "SET NOT NULL" : "DROP NOT NULL")};"
-                        });
+                        typeDiff.SourceEnumLabels = src.EnumLabels;
+                        typeDiff.TargetEnumLabels = tgt.EnumLabels;
+                        typeDiff.DefinitionChanged = true;
                     }
-                    if (srcCol.DefaultExpression != tgtCol.DefaultExpression)
+                }
+
+                // Composite attributes
+                if (src.Kind == PgTypeKind.Composite)
+                {
+                    if (!Enumerable.SequenceEqual(src.CompositeAttributes ?? new(), tgt.CompositeAttributes ?? new(),
+                        new PgAttributeComparer()))
                     {
-                        diffs.Add(new ObjectDiff
-                        {
-                            ObjectType = "Column",
-                            ObjectName = $"{schemaName}.{srcTable.Name}.{srcCol.Name}",
-                            Action = "Alter",
-                            Script = srcCol.DefaultExpression != null
-                                ? $"ALTER TABLE {schemaName}.{srcTable.Name} ALTER COLUMN {srcCol.Name} SET DEFAULT {srcCol.DefaultExpression};"
-                                : $"ALTER TABLE {schemaName}.{srcTable.Name} ALTER COLUMN {srcCol.Name} DROP DEFAULT;"
-                        });
+                        typeDiff.SourceCompositeAttributes = src.CompositeAttributes;
+                        typeDiff.TargetCompositeAttributes = tgt.CompositeAttributes;
+                        typeDiff.DefinitionChanged = true;
                     }
+                }
+
+                // Privileges
+                typeDiff.PrivilegeChanges = ComparePrivileges(src.Privileges, tgt.Privileges);
+
+                if (typeDiff.DefinitionChanged || typeDiff.OwnerChanged != null || typeDiff.PrivilegeChanges.Any())
+                    diffs.Add(typeDiff);
+            }
+
+            return diffs;
+        }
+
+        private List<PgSequenceDiff> CompareSequences(
+    List<PgSequence> sourceSeqs,
+    List<PgSequence> targetSeqs,
+    CompareOptions options)
+        {
+            var diffs = new List<PgSequenceDiff>();
+
+            foreach (var src in sourceSeqs)
+            {
+                var tgt = targetSeqs.FirstOrDefault(s => s.Name == src.Name);
+                if (tgt == null)
+                {
+                    diffs.Add(new PgSequenceDiff
+                    {
+                        SequenceName = src.Name,
+                        DefinitionChanged = true
+                    });
+                    continue;
+                }
+
+                var seqDiff = new PgSequenceDiff { SequenceName = src.Name };
+
+                // Owner
+                if (options.CompareOwners && src.Owner != tgt.Owner)
+                    seqDiff.OwnerChanged = (src.Owner, tgt.Owner);
+
+                // Options
+                foreach (var srcOpt in src.Options)
+                {
+                    var tgtOpt = tgt.Options.FirstOrDefault(o => o.OptionName == srcOpt.OptionName);
+                    if (tgtOpt == null) continue;
+
+                    bool shouldCompare = srcOpt.OptionName switch
+                    {
+                        "START" => options.CompareSequenceStart,
+                        "INCREMENT" => options.CompareSequenceIncrement,
+                        "MINVALUE" => options.CompareSequenceMinValue,
+                        "MAXVALUE" => options.CompareSequenceMaxValue,
+                        "CACHE" => options.CompareSequenceCache,
+                        "CYCLE" => options.CompareSequenceCycle,
+                        _ => true
+                    };
+
+                    if (shouldCompare && srcOpt.OptionValue != tgtOpt.OptionValue)
+                    {
+                        seqDiff.DefinitionChanged = true;
+                        seqDiff.SourceOptions ??= new();
+                        seqDiff.TargetOptions ??= new();
+                        seqDiff.SourceOptions.Add(srcOpt);
+                        seqDiff.TargetOptions.Add(tgtOpt);
+                    }
+                }
+
+                // Privileges
+                if (options.ComparePrivileges)
+                    seqDiff.PrivilegeChanges = ComparePrivileges(src.Privileges, tgt.Privileges);
+
+                if (seqDiff.DefinitionChanged || seqDiff.OwnerChanged != null || seqDiff.PrivilegeChanges.Any())
+                    diffs.Add(seqDiff);
+            }
+
+            return diffs;
+        }
+
+        private List<PgColumnDiff> CompareColumns(List<PgColumn> sourceCols, List<PgColumn> targetCols)
+        {
+            var diffs = new List<PgColumnDiff>();
+
+            foreach (var src in sourceCols)
+            {
+                var tgt = targetCols.FirstOrDefault(c => c.Name == src.Name);
+                if (tgt == null)
+                {
+                    diffs.Add(new PgColumnDiff
+                    {
+                        ColumnName = src.Name,
+                        SourceDataType = src.DataType,
+                        TargetDataType = null,
+                        SourceIsNotNull = src.IsNotNull,
+                        TargetIsNotNull = null,
+                        SourceDefault = src.DefaultExpression,
+                        TargetDefault = null
+                    });
+                    continue;
+                }
+
+                if (src.DataType != tgt.DataType ||
+                    src.IsNotNull != tgt.IsNotNull ||
+                    src.DefaultExpression != tgt.DefaultExpression)
+                {
+                    diffs.Add(new PgColumnDiff
+                    {
+                        ColumnName = src.Name,
+                        SourceDataType = src.DataType,
+                        TargetDataType = tgt.DataType,
+                        SourceIsNotNull = src.IsNotNull,
+                        TargetIsNotNull = tgt.IsNotNull,
+                        SourceDefault = src.DefaultExpression,
+                        TargetDefault = tgt.DefaultExpression
+                    });
                 }
             }
 
             // Extra columns in target
-            foreach (var tgtCol in tgtTable.Columns.Where(c => !srcTable.Columns.Any(sc => sc.Name == c.Name)))
+            foreach (var tgt in targetCols)
             {
-                diffs.Add(new ObjectDiff
+                if (!sourceCols.Any(c => c.Name == tgt.Name))
                 {
-                    ObjectType = "Column",
-                    ObjectName = $"{schemaName}.{srcTable.Name}.{tgtCol.Name}",
-                    Action = "Drop",
-                    Script = $"ALTER TABLE {schemaName}.{srcTable.Name} DROP COLUMN {tgtCol.Name};"
-                });
-            }
-        }
-
-        private void CompareConstraints(string schemaName, PgTable srcTable, PgTable tgtTable, List<ObjectDiff> diffs)
-        {
-            foreach (var srcCon in srcTable.Constraints)
-            {
-                var tgtCon = tgtTable.Constraints.FirstOrDefault(c => c.Name == srcCon.Name);
-                if (tgtCon == null)
-                {
-                    diffs.Add(new ObjectDiff
+                    diffs.Add(new PgColumnDiff
                     {
-                        ObjectType = "Constraint",
-                        ObjectName = $"{schemaName}.{srcTable.Name}.{srcCon.Name}",
-                        Action = "Add",
-                        Script = $"ALTER TABLE {schemaName}.{srcTable.Name} ADD CONSTRAINT {srcCon.Name} {srcCon.Type} {srcCon.CheckExpression ?? ""};"
+                        ColumnName = tgt.Name,
+                        SourceDataType = null,
+                        TargetDataType = tgt.DataType,
+                        SourceIsNotNull = null,
+                        TargetIsNotNull = tgt.IsNotNull,
+                        SourceDefault = null,
+                        TargetDefault = tgt.DefaultExpression
                     });
                 }
-                else
+            }
+
+            return diffs;
+        }
+
+        private List<PgConstraintDiff> CompareConstraints(List<PgConstraint> sourceConstraints, List<PgConstraint> targetConstraints)
+        {
+            var diffs = new List<PgConstraintDiff>();
+
+            foreach (var src in sourceConstraints)
+            {
+                var tgt = targetConstraints.FirstOrDefault(c => c.Name == src.Name);
+                if (tgt == null)
                 {
-                    // Compare definition text (simplified)
-                    if (srcCon.CheckExpression != tgtCon.CheckExpression ||
-                        srcCon.ReferencedTable != tgtCon.ReferencedTable ||
-                        !Enumerable.SequenceEqual(srcCon.ReferencedColumns ?? new(), tgtCon.ReferencedColumns ?? new()))
+                    diffs.Add(new PgConstraintDiff
                     {
-                        diffs.Add(new ObjectDiff
-                        {
-                            ObjectType = "Constraint",
-                            ObjectName = $"{schemaName}.{srcTable.Name}.{srcCon.Name}",
-                            Action = "Alter",
-                            Script = $"ALTER TABLE {schemaName}.{srcTable.Name} DROP CONSTRAINT {srcCon.Name};\n" +
-                                     $"ALTER TABLE {schemaName}.{srcTable.Name} ADD CONSTRAINT {srcCon.Name} {srcCon.Type} {srcCon.CheckExpression ?? ""};"
-                        });
-                    }
+                        ConstraintName = src.Name,
+                        SourceType = src.Type,
+                        TargetType = ConstrType.Undefined,
+                        SourceDefinition = src.Definition,
+                        TargetDefinition = null
+                    });
+                    continue;
+                }
+
+                if (src.Type != tgt.Type || src.Definition != tgt.Definition)
+                {
+                    diffs.Add(new PgConstraintDiff
+                    {
+                        ConstraintName = src.Name,
+                        SourceType = src.Type,
+                        TargetType = tgt.Type,
+                        SourceDefinition = src.Definition,
+                        TargetDefinition = tgt.Definition
+                    });
                 }
             }
 
             // Extra constraints in target
-            foreach (var tgtCon in tgtTable.Constraints.Where(c => !srcTable.Constraints.Any(sc => sc.Name == c.Name)))
+            foreach (var tgt in targetConstraints)
             {
-                diffs.Add(new ObjectDiff
+                if (!sourceConstraints.Any(c => c.Name == tgt.Name))
                 {
-                    ObjectType = "Constraint",
-                    ObjectName = $"{schemaName}.{srcTable.Name}.{tgtCon.Name}",
-                    Action = "Drop",
-                    Script = $"ALTER TABLE {schemaName}.{srcTable.Name} DROP CONSTRAINT {tgtCon.Name};"
-                });
-            }
-        }
-
-        private void CompareIndexes(string schemaName, PgTable srcTable, PgTable tgtTable, List<ObjectDiff> diffs)
-        {
-            foreach (var srcIdx in srcTable.Indexes)
-            {
-                var tgtIdx = tgtTable.Indexes.FirstOrDefault(i => i.Name == srcIdx.Name);
-                if (tgtIdx == null)
-                {
-                    diffs.Add(new ObjectDiff
+                    diffs.Add(new PgConstraintDiff
                     {
-                        ObjectType = "Index",
-                        ObjectName = $"{schemaName}.{srcTable.Name}.{srcIdx.Name}",
-                        Action = "Add",
-                        Script = srcIdx.Definition
+                        ConstraintName = tgt.Name,
+                        SourceType = ConstrType.Undefined,
+                        TargetType = tgt.Type,
+                        SourceDefinition = null,
+                        TargetDefinition = tgt.Definition
                     });
                 }
-                else
+            }
+
+            return diffs;
+        }
+
+        private List<PgIndexDiff> CompareIndexes(List<PgIndex> sourceIndexes, List<PgIndex> targetIndexes)
+        {
+            var diffs = new List<PgIndexDiff>();
+
+            foreach (var src in sourceIndexes)
+            {
+                var tgt = targetIndexes.FirstOrDefault(i => i.Name == src.Name);
+                if (tgt == null)
                 {
-                    if (srcIdx.Definition != tgtIdx.Definition)
+                    diffs.Add(new PgIndexDiff
                     {
-                        diffs.Add(new ObjectDiff
-                        {
-                            ObjectType = "Index",
-                            ObjectName = $"{schemaName}.{srcTable.Name}.{srcIdx.Name}",
-                            Action = "Alter",
-                            Script = $"DROP INDEX {schemaName}.{srcIdx.Name};\n{srcIdx.Definition}"
-                        });
-                    }
+                        IndexName = src.Name,
+                        SourceDefinition = src.Definition,
+                        TargetDefinition = null
+                    });
+                    continue;
+                }
+
+                if (src.Definition != tgt.Definition)
+                {
+                    diffs.Add(new PgIndexDiff
+                    {
+                        IndexName = src.Name,
+                        SourceDefinition = src.Definition,
+                        TargetDefinition = tgt.Definition
+                    });
                 }
             }
 
             // Extra indexes in target
-            foreach (var tgtIdx in tgtTable.Indexes.Where(i => !srcTable.Indexes.Any(si => si.Name == i.Name)))
+            foreach (var tgt in targetIndexes)
             {
-                diffs.Add(new ObjectDiff
+                if (!sourceIndexes.Any(i => i.Name == tgt.Name))
                 {
-                    ObjectType = "Index",
-                    ObjectName = $"{schemaName}.{srcTable.Name}.{tgtIdx.Name}",
-                    Action = "Drop",
-                    Script = $"DROP INDEX {schemaName}.{tgtIdx.Name};"
-                });
+                    diffs.Add(new PgIndexDiff
+                    {
+                        IndexName = tgt.Name,
+                        SourceDefinition = null,
+                        TargetDefinition = tgt.Definition
+                    });
+                }
             }
+
+            return diffs;
         }
     }
 }

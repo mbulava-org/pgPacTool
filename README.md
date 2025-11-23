@@ -27,14 +27,17 @@ The pgPacTool Library is intended to function almost Identically to the https://
   * Domain
   * Composite
 * Sequences
-## Current Work
+## Currently Working on
 * Generate Table Migration scripts
- * Must be sure Dependant objects are updated in the correct order
- * Must Create & properly apply Publish Options, simlar to SqlPrij PublishOptions
-* Custom Target to compile from Project
- * Dependancy Validations
- * Create ONLY scripts to build
-  * I think a few ALTERs may need to be allowed for a complete comparision to function
+  * Must be sure Dependant objects are updated in the correct order
+  * Must Create & properly apply Publish Options, simlar to SqlPrij PublishOptions
+* Custom MSBuild target to compile validate an entire Project
+  * Dependancy Validations
+  * Create ONLY scripts to build
+    * I think a few ALTERs may need to be allowed for a complete comparision to function
+  * Any other Checks?
+  * Injection for Code Analyzers?
+    
 ## Testing
 * Setup a Postgres 16+ instance using Docker.
 * Look for some sample projects https://github.com/neondatabase-labs/postgres-sample-dbs

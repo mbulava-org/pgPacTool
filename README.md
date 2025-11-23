@@ -13,7 +13,8 @@ The pgPacTool Library is intended to function almost Identically to the https://
 
 ## Current State
 * pgpac file can be generated, with orginal source code and Ast (for comparisions) included, from an existing Database
- * pgdac file is a Simple Json Document and "should" have everything needed to compare/script for the **Supported** object types
+  * pgdac file is a Simple Json Document and "should" have everything needed to compare/script for the **Supported** object types
+  * this should get more and better testing too
 * SchemaDiff can be generated, from a "Source" to "Target"
   * Requires testing
 ## Supported Objects

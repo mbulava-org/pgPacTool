@@ -6,9 +6,17 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+	
   <ItemGroup>
     <PackageReference Include="mbulava-org.Npgquery" Version="1.0.0.28-beta" />
     <PackageReference Include="Npgsql" Version="9.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+	  <!--This is a hack to include the native pg_query.dll in the output directory, so that it works on windows need to figure out a better more consistent way to get this and the artifacts for other platforms-->
+	  <None Update="pg_query.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

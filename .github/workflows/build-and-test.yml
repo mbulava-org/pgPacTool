@@ -1,0 +1,227 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  POSTGRES_VERSION: '16'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for version tagging
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Display .NET info
+      run: dotnet --info
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build solution
+      run: dotnet build --no-restore --configuration Release
+
+    - name: Run unit tests
+      run: |
+        dotnet test --no-build --configuration Release \
+          --filter "Category=Unit" \
+          --verbosity normal \
+          --logger "trx;LogFileName=unit-test-results.trx" \
+          --collect:"XPlat Code Coverage" \
+          -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
+
+    - name: Run integration tests (with PostgreSQL 16)
+      run: |
+        dotnet test --no-build --configuration Release \
+          --filter "Category=Integration|FullyQualifiedName~IntegrationTests" \
+          --verbosity normal \
+          --logger "trx;LogFileName=integration-test-results.trx" \
+          --collect:"XPlat Code Coverage" \
+          -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
+
+    - name: Merge code coverage reports
+      run: |
+        dotnet tool install -g dotnet-reportgenerator-globaltool
+        reportgenerator \
+          -reports:**/coverage.opencover.xml \
+          -targetdir:./coverage \
+          -reporttypes:"Cobertura;HtmlInline_AzurePipelines"
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        files: ./coverage/Cobertura.xml
+        fail_ci_if_error: true
+        flags: unittests
+        name: codecov-umbrella
+        token: ${{ secrets.CODECOV_TOKEN }}
+
+    - name: Check code coverage threshold
+      run: |
+        # Extract overall line coverage from Cobertura report
+        coverage=$(grep -oP 'line-rate="\K[0-9.]+' ./coverage/Cobertura.xml | head -1)
+        coverage_percent=$(echo "$coverage * 100" | bc)
+        echo "Code coverage: $coverage_percent%"
+        
+        # Fail if coverage < 90%
+        if (( $(echo "$coverage < 0.90" | bc -l) )); then
+          echo "? Code coverage ($coverage_percent%) is below the 90% threshold"
+          exit 1
+        else
+          echo "? Code coverage ($coverage_percent%) meets the 90% threshold"
+        fi
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results
+        path: |
+          **/TestResults/*.trx
+          ./coverage
+
+    - name: Publish test summary
+      uses: dorny/test-reporter@v1
+      if: always()
+      with:
+        name: Test Results
+        path: '**/TestResults/*.trx'
+        reporter: dotnet-trx
+
+  version-check:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres15:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build solution
+      run: dotnet build --no-restore --configuration Release
+
+    - name: Test version enforcement with PostgreSQL 15 (should fail)
+      run: |
+        # This test should fail because PostgreSQL 15 is not supported
+        dotnet test --no-build --configuration Release \
+          --filter "FullyQualifiedName~PostgreSQL15_ThrowsNotSupported" \
+          --verbosity normal
+      continue-on-error: false
+
+    - name: Verify error message quality
+      run: |
+        # Run a test that checks error messages are user-friendly
+        dotnet test --no-build --configuration Release \
+          --filter "FullyQualifiedName~VersionChecker" \
+          --verbosity normal
+
+  build-matrix:
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build solution
+      run: dotnet build --no-restore --configuration Release
+
+    - name: Run unit tests (no Docker required)
+      run: |
+        dotnet test --no-build --configuration Release \
+          --filter "Category=Unit" \
+          --verbosity normal
+
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run security scan
+      run: |
+        dotnet list package --vulnerable --include-transitive
+        if [ $? -ne 0 ]; then
+          echo "? Vulnerable packages detected"
+          exit 1
+        fi
+
+    - name: Run .NET dependency check
+      uses: dependency-check/Dependency-Check_Action@main
+      with:
+        project: 'pgPacTool'
+        path: '.'
+        format: 'HTML'
+
+  package:
+    runs-on: ubuntu-latest
+    needs: [build-and-test, version-check, build-matrix]
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Pack NuGet packages
+      run: |
+        dotnet pack --configuration Release \
+          --output ./artifacts \
+          -p:PackageVersion=0.0.${{ github.run_number }}
+
+    - name: Upload package artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: nuget-packages
+        path: ./artifacts/*.nupkg

@@ -1,0 +1,539 @@
+{
+  "settings": {
+    "components": {
+      "code": false,
+      "binaries": false
+    },
+    "targetId": "net10.0",
+    "targetDisplayName": ".NETCoreApp,Version=v10.0"
+  },
+  "analysisStartTime": "2026-01-31T14:28:18.4049186Z",
+  "analysisEndTime": "2026-01-31T14:28:19.8505679Z",
+  "privacyModeHelpUrl": "https://go.microsoft.com/fwlink/?linkid=2270980",
+  "stats": {
+    "summary": {
+      "projects": 3,
+      "issues": 2,
+      "incidents": 15,
+      "effort": 15
+    },
+    "charts": {
+      "severity": {
+        "Mandatory": 3,
+        "Optional": 0,
+        "Potential": 12,
+        "Information": 0
+      },
+      "category": {
+        "Project": 3,
+        "Api": 12
+      }
+    }
+  },
+  "projects": [
+    {
+      "path": "src\\libs\\mbulava.PostgreSql.Dac\\mbulava.PostgreSql.Dac.csproj",
+      "startingProject": true,
+      "issues": 2,
+      "storyPoints": 13,
+      "properties": {
+        "appName": "mbulava.PostgreSql.Dac",
+        "projectKind": "ClassLibrary",
+        "frameworks": [
+          "net8.0"
+        ],
+        "languages": [
+          "C#"
+        ],
+        "tools": [
+          "MSBuild"
+        ],
+        "isSdkStyle": true,
+        "numberOfFiles": 12,
+        "numberOfCodeFiles": 12,
+        "linesTotal": 1887,
+        "linesOfCode": 1887,
+        "totalApiScanned": 2242,
+        "minLinesOfCodeToChange": 12,
+        "maxLinesOfCodeToChange": 12
+      },
+      "ruleInstances": [
+        {
+          "incidentId": "ca8ec36a-7d82-45f5-b345-9b06ab030f1b",
+          "ruleId": "Project.0002",
+          "projectPath": "src\\libs\\mbulava.PostgreSql.Dac\\mbulava.PostgreSql.Dac.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "Current target framework: net8.0\nRecommended target framework: net10.0",
+              "protected": "Current target framework: net8.0\nRecommended target framework: net10.0"
+            },
+            "kind": "File",
+            "path": "src\\libs\\mbulava.PostgreSql.Dac\\mbulava.PostgreSql.Dac.csproj",
+            "snippet": "Current target framework: net8.0\nRecommended target framework: net10.0",
+            "protectedSnippet": "Current target framework: net8.0\nRecommended target framework: net10.0",
+            "properties": {
+              "CurrentTargetFramework": "net8.0",
+              "RecommendedTargetFramework": "net10.0"
+            }
+          }
+        },
+        {
+          "incidentId": "0e318fe2-1ef8-46ba-8921-7109586df086",
+          "ruleId": "Api.0003",
+          "description": "Nullable JsonDocument properties deserialize to JsonValueKind.Null ",
+          "projectPath": "src\\libs\\mbulava.PostgreSql.Dac\\mbulava.PostgreSql.Dac.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "astJson = parseResult.ParseTree?.RootElement.GetRawText();",
+              "protected": "T:System.Text.Json.JsonDocument"
+            },
+            "kind": "File",
+            "path": "src\\libs\\mbulava.PostgreSql.Dac\\Extract\\PgProjectExtractor.cs",
+            "snippet": "astJson = parseResult.ParseTree?.RootElement.GetRawText();",
+            "protectedSnippet": "T:System.Text.Json.JsonDocument",
+            "label": "T:System.Text.Json.JsonDocument",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/serialization/9.0/jsondocument-props.md",
+                "isCustom": false
+              }
+            ],
+            "line": 792,
+            "column": 20
+          }
+        },
+        {
+          "incidentId": "ec408ea5-965a-43b3-acae-5fe172ab465d",
+          "ruleId": "Api.0003",
+          "description": "Nullable JsonDocument properties deserialize to JsonValueKind.Null ",
+          "projectPath": "src\\libs\\mbulava.PostgreSql.Dac\\mbulava.PostgreSql.Dac.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "ast = JsonSerializer.Deserialize\u003CCreateSeqStmt\u003E(parseResult.ParseTree!.RootElement.GetRawText());",
+              "protected": "T:System.Text.Json.JsonDocument"
+            },
+            "kind": "File",
+            "path": "src\\libs\\mbulava.PostgreSql.Dac\\Extract\\PgProjectExtractor.cs",
+            "snippet": "ast = JsonSerializer.Deserialize\u003CCreateSeqStmt\u003E(parseResult.ParseTree!.RootElement.GetRawText());",
+            "protectedSnippet": "T:System.Text.Json.JsonDocument",
+            "label": "T:System.Text.Json.JsonDocument",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/serialization/9.0/jsondocument-props.md",
+                "isCustom": false
+              }
+            ],
+            "line": 791,
+            "column": 20
+          }
+        },
+        {
+          "incidentId": "873b2091-d631-4b86-ad7e-57d9decaa515",
+          "ruleId": "Api.0003",
+          "description": "Nullable JsonDocument properties deserialize to JsonValueKind.Null ",
+          "projectPath": "src\\libs\\mbulava.PostgreSql.Dac\\mbulava.PostgreSql.Dac.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "astJson = compResult.ParseTree?.RootElement.GetRawText();",
+              "protected": "T:System.Text.Json.JsonDocument"
+            },
+            "kind": "File",
+            "path": "src\\libs\\mbulava.PostgreSql.Dac\\Extract\\PgProjectExtractor.cs",
+            "snippet": "astJson = compResult.ParseTree?.RootElement.GetRawText();",
+            "protectedSnippet": "T:System.Text.Json.JsonDocument",
+            "label": "T:System.Text.Json.JsonDocument",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/serialization/9.0/jsondocument-props.md",
+                "isCustom": false
+              }
+            ],
+            "line": 688,
+            "column": 24
+          }
+        },
+        {
+          "incidentId": "9f6ede30-333c-40b1-a123-81b24d97fca8",
+          "ruleId": "Api.0003",
+          "description": "Nullable JsonDocument properties deserialize to JsonValueKind.Null ",
+          "projectPath": "src\\libs\\mbulava.PostgreSql.Dac\\mbulava.PostgreSql.Dac.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "astJson = enumResult.ParseTree?.RootElement.GetRawText();",
+              "protected": "T:System.Text.Json.JsonDocument"
+            },
+            "kind": "File",
+            "path": "src\\libs\\mbulava.PostgreSql.Dac\\Extract\\PgProjectExtractor.cs",
+            "snippet": "astJson = enumResult.ParseTree?.RootElement.GetRawText();",
+            "protectedSnippet": "T:System.Text.Json.JsonDocument",
+            "label": "T:System.Text.Json.JsonDocument",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/serialization/9.0/jsondocument-props.md",
+                "isCustom": false
+              }
+            ],
+            "line": 652,
+            "column": 24
+          }
+        },
+        {
+          "incidentId": "1f18e66c-5480-4fe6-9da2-881a54c409c6",
+          "ruleId": "Api.0003",
+          "description": "Nullable JsonDocument properties deserialize to JsonValueKind.Null ",
+          "projectPath": "src\\libs\\mbulava.PostgreSql.Dac\\mbulava.PostgreSql.Dac.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "astJson = domResult.ParseTree?.RootElement.GetRawText();",
+              "protected": "T:System.Text.Json.JsonDocument"
+            },
+            "kind": "File",
+            "path": "src\\libs\\mbulava.PostgreSql.Dac\\Extract\\PgProjectExtractor.cs",
+            "snippet": "astJson = domResult.ParseTree?.RootElement.GetRawText();",
+            "protectedSnippet": "T:System.Text.Json.JsonDocument",
+            "label": "T:System.Text.Json.JsonDocument",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/serialization/9.0/jsondocument-props.md",
+                "isCustom": false
+              }
+            ],
+            "line": 628,
+            "column": 24
+          }
+        },
+        {
+          "incidentId": "2b69d586-228b-4164-b464-28ce679bed76",
+          "ruleId": "Api.0003",
+          "description": "Nullable JsonDocument properties deserialize to JsonValueKind.Null ",
+          "projectPath": "src\\libs\\mbulava.PostgreSql.Dac\\mbulava.PostgreSql.Dac.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "var json = result.ParseTree.RootElement.GetRawText();",
+              "protected": "T:System.Text.Json.JsonDocument"
+            },
+            "kind": "File",
+            "path": "src\\libs\\mbulava.PostgreSql.Dac\\Extract\\PgProjectExtractor.cs",
+            "snippet": "var json = result.ParseTree.RootElement.GetRawText();",
+            "protectedSnippet": "T:System.Text.Json.JsonDocument",
+            "label": "T:System.Text.Json.JsonDocument",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/serialization/9.0/jsondocument-props.md",
+                "isCustom": false
+              }
+            ],
+            "line": 547,
+            "column": 24
+          }
+        },
+        {
+          "incidentId": "e8631ad0-64f5-43c0-a3db-ff62995c0499",
+          "ruleId": "Api.0003",
+          "description": "Nullable JsonDocument properties deserialize to JsonValueKind.Null ",
+          "projectPath": "src\\libs\\mbulava.PostgreSql.Dac\\mbulava.PostgreSql.Dac.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "if (result.IsSuccess \u0026\u0026 result.ParseTree != null)\r\n                {\r\n                    try\r\n                    {\r\n                        var json = result.ParseTree.RootElement.GetRawText();\r\n                        ast = System.Text.Json.JsonSerializer.Deserialize\u003CIndexStmt\u003E(json);\r\n                    }\r\n                    catch\r\n                    {\r\n                        throw new InvalidOperationException($\u0022Failed to deserialize AST for index {name}\u0022);\r\n                    }\r\n                }\r\n                else\r\n                {\r\n                    throw new InvalidOperationException($\u0022Invalid SQL for index {name}: {result.Error}\u0022);\r\n                }",
+              "protected": "T:System.Text.Json.JsonDocument"
+            },
+            "kind": "File",
+            "path": "src\\libs\\mbulava.PostgreSql.Dac\\Extract\\PgProjectExtractor.cs",
+            "snippet": "if (result.IsSuccess \u0026\u0026 result.ParseTree != null)\r\n                {\r\n                    try\r\n                    {\r\n                        var json = result.ParseTree.RootElement.GetRawText();\r\n                        ast = System.Text.Json.JsonSerializer.Deserialize\u003CIndexStmt\u003E(json);\r\n                    }\r\n                    catch\r\n                    {\r\n                        throw new InvalidOperationException($\u0022Failed to deserialize AST for index {name}\u0022);\r\n                    }\r\n                }\r\n                else\r\n                {\r\n                    throw new InvalidOperationException($\u0022Invalid SQL for index {name}: {result.Error}\u0022);\r\n                }",
+            "protectedSnippet": "T:System.Text.Json.JsonDocument",
+            "label": "T:System.Text.Json.JsonDocument",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/serialization/9.0/jsondocument-props.md",
+                "isCustom": false
+              }
+            ],
+            "line": 543,
+            "column": 16
+          }
+        },
+        {
+          "incidentId": "42b41163-1474-4b5c-bc37-96aed686d198",
+          "ruleId": "Api.0003",
+          "description": "Nullable JsonDocument properties deserialize to JsonValueKind.Null ",
+          "projectPath": "src\\libs\\mbulava.PostgreSql.Dac\\mbulava.PostgreSql.Dac.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "var json = result.ParseTree.RootElement.GetRawText();",
+              "protected": "T:System.Text.Json.JsonDocument"
+            },
+            "kind": "File",
+            "path": "src\\libs\\mbulava.PostgreSql.Dac\\Extract\\PgProjectExtractor.cs",
+            "snippet": "var json = result.ParseTree.RootElement.GetRawText();",
+            "protectedSnippet": "T:System.Text.Json.JsonDocument",
+            "label": "T:System.Text.Json.JsonDocument",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/serialization/9.0/jsondocument-props.md",
+                "isCustom": false
+              }
+            ],
+            "line": 344,
+            "column": 24
+          }
+        },
+        {
+          "incidentId": "741fcefa-47e3-40cb-bfa5-a45b6e92df0d",
+          "ruleId": "Api.0003",
+          "description": "Nullable JsonDocument properties deserialize to JsonValueKind.Null ",
+          "projectPath": "src\\libs\\mbulava.PostgreSql.Dac\\mbulava.PostgreSql.Dac.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "if (result.IsSuccess \u0026\u0026 result.ParseTree != null)\r\n                {\r\n                    // Assuming the ParseTree is a JsonDocument representing the parse tree,\r\n                    // and you want to deserialize it to a CreateStmt.\r\n                    // You may need to adjust this if your parser provides a different way to get the AST.\r\n                    try\r\n                    {\r\n                        var json = result.ParseTree.RootElement.GetRawText();\r\n                        ast = System.Text.Json.JsonSerializer.Deserialize\u003CCreateStmt\u003E(json);\r\n                    }\r\n                    catch\r\n                    {\r\n                        throw new InvalidOperationException($\u0022Failed to deserialize AST for table {schema}.{name}\u0022);\r\n                    }\r\n                }",
+              "protected": "T:System.Text.Json.JsonDocument"
+            },
+            "kind": "File",
+            "path": "src\\libs\\mbulava.PostgreSql.Dac\\Extract\\PgProjectExtractor.cs",
+            "snippet": "if (result.IsSuccess \u0026\u0026 result.ParseTree != null)\r\n                {\r\n                    // Assuming the ParseTree is a JsonDocument representing the parse tree,\r\n                    // and you want to deserialize it to a CreateStmt.\r\n                    // You may need to adjust this if your parser provides a different way to get the AST.\r\n                    try\r\n                    {\r\n                        var json = result.ParseTree.RootElement.GetRawText();\r\n                        ast = System.Text.Json.JsonSerializer.Deserialize\u003CCreateStmt\u003E(json);\r\n                    }\r\n                    catch\r\n                    {\r\n                        throw new InvalidOperationException($\u0022Failed to deserialize AST for table {schema}.{name}\u0022);\r\n                    }\r\n                }",
+            "protectedSnippet": "T:System.Text.Json.JsonDocument",
+            "label": "T:System.Text.Json.JsonDocument",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/serialization/9.0/jsondocument-props.md",
+                "isCustom": false
+              }
+            ],
+            "line": 337,
+            "column": 16
+          }
+        },
+        {
+          "incidentId": "eba0d453-d962-4eee-8cdd-0c113c8dee33",
+          "ruleId": "Api.0003",
+          "description": "Nullable JsonDocument properties deserialize to JsonValueKind.Null ",
+          "projectPath": "src\\libs\\mbulava.PostgreSql.Dac\\mbulava.PostgreSql.Dac.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "astJson = result.ParseTree.RootElement.GetRawText();",
+              "protected": "T:System.Text.Json.JsonDocument"
+            },
+            "kind": "File",
+            "path": "src\\libs\\mbulava.PostgreSql.Dac\\Extract\\PgProjectExtractor.cs",
+            "snippet": "astJson = result.ParseTree.RootElement.GetRawText();",
+            "protectedSnippet": "T:System.Text.Json.JsonDocument",
+            "label": "T:System.Text.Json.JsonDocument",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/serialization/9.0/jsondocument-props.md",
+                "isCustom": false
+              }
+            ],
+            "line": 102,
+            "column": 20
+          }
+        },
+        {
+          "incidentId": "4638af34-b527-43e4-8478-f4c4cfd97119",
+          "ruleId": "Api.0003",
+          "description": "Nullable JsonDocument properties deserialize to JsonValueKind.Null ",
+          "projectPath": "src\\libs\\mbulava.PostgreSql.Dac\\mbulava.PostgreSql.Dac.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "if (result.ParseTree != null)\r\n                {\r\n                    astJson = result.ParseTree.RootElement.GetRawText();\r\n                    ast = JsonSerializer.Deserialize\u003CCreateSchemaStmt\u003E(astJson);\r\n                }",
+              "protected": "T:System.Text.Json.JsonDocument"
+            },
+            "kind": "File",
+            "path": "src\\libs\\mbulava.PostgreSql.Dac\\Extract\\PgProjectExtractor.cs",
+            "snippet": "if (result.ParseTree != null)\r\n                {\r\n                    astJson = result.ParseTree.RootElement.GetRawText();\r\n                    ast = JsonSerializer.Deserialize\u003CCreateSchemaStmt\u003E(astJson);\r\n                }",
+            "protectedSnippet": "T:System.Text.Json.JsonDocument",
+            "label": "T:System.Text.Json.JsonDocument",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/serialization/9.0/jsondocument-props.md",
+                "isCustom": false
+              }
+            ],
+            "line": 100,
+            "column": 16
+          }
+        },
+        {
+          "incidentId": "e90cca5f-0548-4e58-ac37-be7b35e75e23",
+          "ruleId": "Api.0003",
+          "description": "Nullable JsonDocument properties deserialize to JsonValueKind.Null ",
+          "projectPath": "src\\libs\\mbulava.PostgreSql.Dac\\mbulava.PostgreSql.Dac.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "var stmts = parseResult.ParseTree.RootElement.GetProperty(\u0022stmts\u0022);",
+              "protected": "T:System.Text.Json.JsonDocument"
+            },
+            "kind": "File",
+            "path": "src\\libs\\mbulava.PostgreSql.Dac\\Compile\\ProjectCompiler.cs",
+            "snippet": "var stmts = parseResult.ParseTree.RootElement.GetProperty(\u0022stmts\u0022);",
+            "protectedSnippet": "T:System.Text.Json.JsonDocument",
+            "label": "T:System.Text.Json.JsonDocument",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/serialization/9.0/jsondocument-props.md",
+                "isCustom": false
+              }
+            ],
+            "line": 45,
+            "column": 16
+          }
+        }
+      ],
+      "features": []
+    },
+    {
+      "path": "src\\postgresPacTools\\postgresPacTools.csproj",
+      "startingProject": true,
+      "issues": 1,
+      "storyPoints": 1,
+      "properties": {
+        "appName": "postgresPacTools",
+        "projectKind": "DotNetCoreApp",
+        "frameworks": [
+          "net8.0"
+        ],
+        "languages": [
+          "C#"
+        ],
+        "tools": [
+          "MSBuild"
+        ],
+        "isSdkStyle": true,
+        "numberOfFiles": 1,
+        "numberOfCodeFiles": 1,
+        "linesTotal": 15,
+        "linesOfCode": 15,
+        "totalApiScanned": 4,
+        "minLinesOfCodeToChange": 0,
+        "maxLinesOfCodeToChange": 0
+      },
+      "ruleInstances": [
+        {
+          "incidentId": "713a828a-bf5f-4736-83f4-ee0c37a3d61c",
+          "ruleId": "Project.0002",
+          "projectPath": "src\\postgresPacTools\\postgresPacTools.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "Current target framework: net8.0\nRecommended target framework: net10.0",
+              "protected": "Current target framework: net8.0\nRecommended target framework: net10.0"
+            },
+            "kind": "File",
+            "path": "src\\postgresPacTools\\postgresPacTools.csproj",
+            "snippet": "Current target framework: net8.0\nRecommended target framework: net10.0",
+            "protectedSnippet": "Current target framework: net8.0\nRecommended target framework: net10.0",
+            "properties": {
+              "CurrentTargetFramework": "net8.0",
+              "RecommendedTargetFramework": "net10.0"
+            }
+          }
+        }
+      ],
+      "features": []
+    },
+    {
+      "path": "tests\\ProjectExtract-Tests\\ProjectExtract-Tests.csproj",
+      "startingProject": true,
+      "issues": 1,
+      "storyPoints": 1,
+      "properties": {
+        "appName": "ProjectExtract-Tests",
+        "projectKind": "DotNetCoreApp",
+        "frameworks": [
+          "net8.0"
+        ],
+        "languages": [
+          "C#"
+        ],
+        "tools": [
+          "MSBuild"
+        ],
+        "isSdkStyle": true,
+        "numberOfFiles": 4,
+        "numberOfCodeFiles": 2,
+        "linesTotal": 1892,
+        "linesOfCode": 117,
+        "totalApiScanned": 92,
+        "minLinesOfCodeToChange": 0,
+        "maxLinesOfCodeToChange": 0
+      },
+      "ruleInstances": [
+        {
+          "incidentId": "cc64e66b-f2d2-491f-a80e-b0ba051e6ef4",
+          "ruleId": "Project.0002",
+          "projectPath": "tests\\ProjectExtract-Tests\\ProjectExtract-Tests.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "Current target framework: net8.0\nRecommended target framework: net10.0",
+              "protected": "Current target framework: net8.0\nRecommended target framework: net10.0"
+            },
+            "kind": "File",
+            "path": "tests\\ProjectExtract-Tests\\ProjectExtract-Tests.csproj",
+            "snippet": "Current target framework: net8.0\nRecommended target framework: net10.0",
+            "protectedSnippet": "Current target framework: net8.0\nRecommended target framework: net10.0",
+            "properties": {
+              "CurrentTargetFramework": "net8.0",
+              "RecommendedTargetFramework": "net10.0"
+            }
+          }
+        }
+      ],
+      "features": []
+    }
+  ],
+  "rules": {
+    "Project.0002": {
+      "id": "Project.0002",
+      "isFeature": false,
+      "description": "Project\u0027s target framework(s) needs to be changed to the new target framework that you selected for this upgrade.\n\nDuring upgrade target framework will be adjusted to corresponding platform when applicable. In some cases project would result in multiple target frameworks after the upgrade if it was using features that now have their own platforms in modern .NET frameworks (windows, iOS, Android etc).",
+      "label": "Project\u0027s target framework(s) needs to be changed",
+      "severity": "Mandatory",
+      "effort": 1,
+      "links": [
+        {
+          "title": "Overview of porting from .NET Framework to .NET",
+          "url": "https://go.microsoft.com/fwlink/?linkid=2265227",
+          "isCustom": false
+        },
+        {
+          "title": ".NET project SDKs",
+          "url": "https://go.microsoft.com/fwlink/?linkid=2265226",
+          "isCustom": false
+        }
+      ]
+    },
+    "Api.0003": {
+      "id": "Api.0003",
+      "isFeature": false,
+      "description": "API has a behavioral change in selected .NET version: code and binaries may behave differently at runtime without needing recompilation, but the new behavior might be undesirable and require updates.",
+      "label": "Behavioral change in selected .NET version",
+      "severity": "Potential",
+      "effort": 1
+    }
+  }
+}

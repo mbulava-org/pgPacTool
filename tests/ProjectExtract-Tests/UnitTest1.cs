@@ -30,8 +30,8 @@ namespace ProjectExtract_Tests
         public async Task Test1()
         {
             PgProjectExtractor extractor = new PgProjectExtractor(connString);
-            var ver = await extractor.DetectPostgresVersion();
-            var project = await extractor.ExtractPgProject("Lego.DB", ver);
+            // Version is now validated automatically inside ExtractPgProject
+            var project = await extractor.ExtractPgProject("Lego.DB");
 
             var fs = new FileStream("./Lego.DB.pgpac", FileMode.Create, FileAccess.Write);
             

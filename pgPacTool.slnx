@@ -1,4 +1,15 @@
 <Solution>
+  <Folder Name="/docs/">
+    <File Path=".github/DEPENDENCIES.md" />
+    <File Path=".github/INDEX.md" />
+    <File Path=".github/ISSUES.md" />
+    <File Path=".github/PROJECT_BOARD.md" />
+    <File Path=".github/README.md" />
+    <File Path=".github/ROADMAP.md" />
+    <File Path=".github/SUMMARY.md" />
+    <File Path=".github/TESTING_QUICK_REF.md" />
+    <File Path=".github/TESTING_STRATEGY.md" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/postgresPacTools/postgresPacTools.csproj" />
   </Folder>

@@ -24,29 +24,44 @@ namespace mbulava.PostgreSql.Dac.Extract
         {
             _conn = conString;
         }
-        private NpgsqlConnection CreateConnection() {             
+        
+        private NpgsqlConnection CreateConnection() 
+        {             
             var conn = new NpgsqlConnection(_conn);
             conn.Open();
             return conn;
         }
 
+        /// <summary>
+        /// Detects PostgreSQL version and validates it meets minimum requirements (PostgreSQL 16+)
+        /// </summary>
+        /// <returns>PostgreSQL version string (e.g., "16.1")</returns>
+        /// <exception cref="NotSupportedException">Thrown when PostgreSQL version is below 16</exception>
         public async Task<string> DetectPostgresVersion()
         {
-            using var cmd = new NpgsqlCommand("SHOW server_version;", CreateConnection());
-            var version = (string)await cmd.ExecuteScalarAsync();
-            // Extract major.minor.patch if there is a space it's probably more info that we're going to have an issue with
-            var split = version.Split(' ');
-            return split[0];
-            ;
+            // Use the version checker to validate and get version
+            var version = await PostgreSqlVersionChecker.ValidateAndGetVersionAsync(_conn);
+            return version;
         }
 
-        public async Task<PgProject> ExtractPgProject(string databaseName, string postgresVersion)
+        /// <summary>
+        /// Extracts PostgreSQL database project with version validation
+        /// </summary>
+        /// <param name="databaseName">Name of the database to extract</param>
+        /// <returns>Complete PgProject with all database objects</returns>
+        /// <exception cref="NotSupportedException">Thrown when PostgreSQL version is below 16</exception>
+        public async Task<PgProject> ExtractPgProject(string databaseName)
         {
+            // Validate version first - will throw NotSupportedException if < 16
+            var postgresVersion = await DetectPostgresVersion();
+            
             var project = new PgProject
             {
                 DatabaseName = databaseName,
-                PostgresVersion = postgresVersion,
+                PostgresVersion = postgresVersion
             };
+
+
 
             var schemas = await ExtractSchemasAsync();
             foreach (var schema in schemas)

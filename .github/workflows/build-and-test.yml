@@ -10,6 +10,11 @@ env:
   DOTNET_VERSION: '10.0.x'
   POSTGRES_VERSION: '16'
 
+permissions:
+  contents: read
+  packages: write
+  actions: read
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest

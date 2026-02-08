@@ -1,15 +1,10 @@
-# pgPacTool
-The pgPacTool Library is intended to function almost Identically to the https://github.com/rr-wfm/MSBuild.Sdk.SqlProj repository, except rather than targeting Microsoft SQL Server the Source and Target Database system will be Postgres 16 and above. This is being done with some help of a few existing .Net projects I've found primarily the https://github.com/mbulava-org/Npgquery (my fork) repository which is a wrapper Library of the pg_query which is a Native C library.
+# pgPacTool - PostgreSQL Data-Tier Application Compiler
 
+A modern .NET 10 tool providing SQL Server Data Tools (.sqlproj) functionality for PostgreSQL databases.
 
-## Key Functionality
-* Import existing Postgres database into a pgPac file
-* Compare Source & Target Database layout and Generate a SchemaDiff
-  * Source can be pgPac file, or a Live Database
-  * Target can be a pgPac file or a Live Database
-  * Options to include/exclude options as needed
-* Generate, and optionally execute, a Publish Script, to make the "Source" match the "Target"
-  * Options to include/exclude options as needed
+[![.NET](https://img.shields.io/badge/.NET-10.0-512BD4)](https://dotnet.microsoft.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%2B-336791)](https://www.postgresql.org/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ## Current State
 * pgpac file can be generated, with orginal source code and Ast (for comparisions) included, from an existing Database
@@ -47,8 +42,15 @@ The pgPacTool Library is intended to function almost Identically to the https://
 * UnitTest1.Test1 - Update the Connection string so that it points to your Postgres instance, and database.
 * I need to expand the Unit Tests, but this is a start, and other projects are easier to build out than something new...
 
+- **Database Version Control** - Store your database schema as code
+- **Schema Comparison** - Compare databases and generate migration scripts
+- **Deployment Automation** - Deploy schema changes safely and reliably
+- **Package Distribution** - Share databases as NuGet packages
+- **MSBuild Integration** - Build databases like any other .NET project
 
+**Inspired by:** [MSBuild.Sdk.SqlProj](https://github.com/rr-wfm/MSBuild.Sdk.SqlProj) but designed specifically for PostgreSQL.
 
+---
 
 ## Notes
 * pg_query.dll in the mbulava.PostgreSql.Dac project is a Native library that is licensed under the PostgreSQL License, which is a permissive free software license, similar to the MIT License. You can find more details about the PostgreSQL License here: https://www.postgresql.org/about/licence/

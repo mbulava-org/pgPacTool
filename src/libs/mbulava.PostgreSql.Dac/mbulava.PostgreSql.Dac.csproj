@@ -6,14 +6,12 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
-  <ItemGroup>
-    <Content Remove="C:\Users\mbula\.nuget\packages\mbulava-org.npgquery\1.0.0.28-beta\contentFiles\any\net8.0\pg_query.dll" />
-  </ItemGroup>
+  
 
 	
   <ItemGroup>
-    <PackageReference Include="mbulava-org.Npgquery" Version="1.0.0.40-beta" />
-    <PackageReference Include="Npgsql" Version="9.0.4" />
+    <PackageReference Include="mbulava-org.Npgquery" Version="1.0.0.41-beta" />
+    <PackageReference Include="Npgsql" Version="10.0.1" />
   </ItemGroup>
 
 </Project>

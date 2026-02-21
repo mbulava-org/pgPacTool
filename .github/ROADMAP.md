@@ -85,7 +85,7 @@ v1.0 Release
 - ? All object types captured with metadata
 - ? Privileges extracted correctly
 - ? Test coverage > 70%
-- ? Tests pass on PostgreSQL 12-16
+- ? Tests pass on PostgreSQL 16
 
 ---
 

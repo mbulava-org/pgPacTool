@@ -66,7 +66,14 @@ namespace mbulava.PostgreSql.Dac.Extract
             var schemas = await ExtractSchemasAsync();
             foreach (var schema in schemas)
             {
-                var pgSchema = new PgSchema { Name = schema.Name, Owner = schema.Owner, Ast = schema.Ast };
+                var pgSchema = new PgSchema 
+                { 
+                    Name = schema.Name, 
+                    Owner = schema.Owner, 
+                    Ast = schema.Ast,
+                    AstJson = schema.AstJson,
+                    Privileges = schema.Privileges  // ✅ Don't forget to copy privileges!
+                };
 
                 pgSchema.Tables.AddRange(await ExtractTablesAsync(schema.Name));
                 //pgSchema.Views.AddRange(await ExtractViewsAsync(schema.Name));
@@ -120,7 +127,7 @@ namespace mbulava.PostgreSql.Dac.Extract
                 }
 
 
-                var privilegesSql = "SELECT n.nspacl FROM pg_namespace n WHERE n.nspname = @schema;";
+                var privilegesSql = "SELECT n.nspacl::text[] FROM pg_namespace n WHERE n.nspname = @schema;";
 
                 schemas.Add(new PgSchema
                 {
@@ -128,8 +135,7 @@ namespace mbulava.PostgreSql.Dac.Extract
                     Owner = owner,
                     Ast = ast,
                     AstJson = astJson,
-                    //BUG: Privileges extraction fails here, might be a public thing though - needs investigation
-                    //Privileges = await ExtractPrivilegesAsync(privilegesSql, "schema", name)
+                    Privileges = await ExtractPrivilegesAsync(privilegesSql, "schema", name)
                 });
             }
 
@@ -140,35 +146,48 @@ namespace mbulava.PostgreSql.Dac.Extract
         {
             var privileges = new List<PgPrivilege>();
 
-            using var cmd = new NpgsqlCommand(sql, CreateConnection());
-            cmd.Parameters.AddWithValue(paramName, paramValue);
-            using var reader = await cmd.ExecuteReaderAsync();
-            if (!await reader.ReadAsync()) return privileges;
-            var aclArray = reader.IsDBNull(0) ? null : reader.GetFieldValue<string[]>(0);
-            await reader.CloseAsync();
-            if (aclArray == null) return privileges;
-
-            foreach (var acl in aclArray)
+            try
             {
-                // Example entry: "grantee=arwdDxt/grantor"
-                var parts = acl.Split('=');
-                if (parts.Length < 2) continue;
+                using var conn = CreateConnection();
+                using var cmd = new NpgsqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue(paramName, paramValue);
+                using var reader = await cmd.ExecuteReaderAsync();
+                if (!await reader.ReadAsync()) return privileges;
+                var aclArray = reader.IsDBNull(0) ? null : reader.GetFieldValue<string[]>(0);
+                if (aclArray == null) return privileges;
 
-                var grantee = string.IsNullOrEmpty(parts[0]) ? "PUBLIC" : parts[0];
-                var rightsAndGrantor = parts[1].Split('/');
-                var rights = rightsAndGrantor[0];
-                var grantor = rightsAndGrantor.Length > 1 ? rightsAndGrantor[1] : string.Empty;
-
-                foreach (var ch in rights)
+                foreach (var acl in aclArray)
                 {
-                    privileges.Add(new PgPrivilege
+                    // Example entry: "grantee=arwdDxt/grantor"
+                    var parts = acl.Split('=');
+                    if (parts.Length < 2) continue;
+
+                    var grantee = string.IsNullOrEmpty(parts[0]) ? "PUBLIC" : parts[0];
+                    var rightsAndGrantor = parts[1].Split('/');
+                    var rights = rightsAndGrantor[0];
+                    var grantor = rightsAndGrantor.Length > 1 ? rightsAndGrantor[1] : string.Empty;
+
+                    foreach (var ch in rights)
                     {
-                        Grantee = grantee,
-                        PrivilegeType = MapPrivilege(ch),
-                        IsGrantable = char.IsUpper(ch), // convention: uppercase = WITH GRANT OPTION
-                        Grantor = grantor
-                    });
+                        // Normalize to lowercase for privilege mapping
+                        var privilegeCode = char.ToLower(ch);
+
+                        privileges.Add(new PgPrivilege
+                        {
+                            Grantee = grantee,
+                            PrivilegeType = MapPrivilege(privilegeCode),
+                            IsGrantable = char.IsUpper(ch), // uppercase = WITH GRANT OPTION
+                            Grantor = grantor
+                        });
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in ExtractPrivilegesAsync: {ex.Message}");
+                Console.WriteLine($"SQL: {sql}");
+                Console.WriteLine($"ParamName: {paramName}, ParamValue: {paramValue}");
+                throw;
             }
 
             return privileges;
@@ -181,15 +200,13 @@ namespace mbulava.PostgreSql.Dac.Extract
                 'w' => "UPDATE",
                 'a' => "INSERT",
                 'd' => "DELETE",
-                'D' => "TRUNCATE",
                 'x' => "REFERENCES",
                 't' => "TRIGGER",
-                'U' => "USAGE",
-                'C' => "CREATE",
-                'c' => "CONNECT",
-                'T' => "TEMPORARY",
+                'u' => "USAGE",
+                'c' => "CONNECT",  // Note: lowercase 'c' is CONNECT, uppercase 'C' is CREATE
                 _ => $"Unknown({ch})"
             };
+
 
        
         private async Task<List<PgPrivilege>> ExtractSchemaPrivilegesAsync(string schemaName)
@@ -374,8 +391,8 @@ namespace mbulava.PostgreSql.Dac.Extract
                     Owner = owner
                 };
 
-                var priveilegesSql = "SELECT c.relacl FROM pg_class c WHERE c.oid = @oid;";
-                table.Privileges = await ExtractPrivilegesAsync(priveilegesSql, "oid", (int)oid);
+                var privilegesSql = "SELECT c.relacl::text[] FROM pg_class c WHERE c.oid = @oid;";
+                table.Privileges = await ExtractPrivilegesAsync(privilegesSql, "oid", (int)oid);
 
 
                 // Populate columns
@@ -747,7 +764,7 @@ namespace mbulava.PostgreSql.Dac.Extract
             s.seqmax,
             s.seqcache,
             s.seqcycle,
-            c.relacl
+            c.relacl::text[]
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
         JOIN pg_sequence s ON s.seqrelid = c.oid

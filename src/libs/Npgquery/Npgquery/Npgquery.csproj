@@ -57,17 +57,32 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<!-- Include pre-compiled native libraries -->
-		<Content Include="runtimes\**\*">
+		<!-- Include pre-compiled native libraries for build and runtime -->
+		<None Include="runtimes\**\*">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<Link>runtimes\%(RecursiveDir)%(FileName)%(Extension)</Link>
-		</Content>
+			<Pack>true</Pack>
+			<PackagePath>runtimes\%(RecursiveDir)</PackagePath>
+			<Visible>false</Visible>
+		</None>
+
+		<!-- Include build targets for consuming projects -->
+		<None Include="build\Npgquery.targets" Pack="true" PackagePath="build\" />
 	</ItemGroup>
+
+	<!-- Copy native DLLs to output root for runtime discovery -->
+	<Target Name="CopyNativeDllsToRoot" AfterTargets="Build">
+		<ItemGroup>
+			<NativeDlls Include="runtimes\win-x64\native\*.dll" Condition="'$(OS)' == 'Windows_NT'" />
+			<NativeDlls Include="runtimes\linux-x64\native\*.so" Condition="'$(OS)' != 'Windows_NT'" />
+		</ItemGroup>
+		<Copy SourceFiles="@(NativeDlls)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" Condition="'@(NativeDlls)' != ''" />
+		<Message Text="Copied native libraries: @(NativeDlls) to $(OutDir)" Importance="high" Condition="'@(NativeDlls)' != ''" />
+	</Target>
 
 	<ItemGroup>
 		<None Include="..\LICENSE" Pack="true" PackagePath="\" />
 		<None Include="..\PACKAGE_README.md" Pack="true" PackagePath="\" />
-		<None Include="runtimes\**\*" Pack="true" PackagePath="runtimes\" />
 	</ItemGroup>
 
 	<ItemGroup>

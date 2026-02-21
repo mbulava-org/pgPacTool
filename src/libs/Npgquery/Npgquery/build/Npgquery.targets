@@ -1,0 +1,24 @@
+<Project>
+	<!-- This file is automatically included by projects that reference Npgquery -->
+	<!-- It ensures native libraries are copied to the output directory -->
+	
+	<ItemGroup>
+		<!-- Define native library locations based on runtime -->
+		<NativeLibraryWin Include="$(MSBuildThisFileDirectory)..\runtimes\win-x64\native\pg_query.dll" Condition="'$(OS)' == 'Windows_NT'" />
+		<NativeLibraryLinux Include="$(MSBuildThisFileDirectory)..\runtimes\linux-x64\native\pg_query.so" Condition="'$(OS)' != 'Windows_NT'" />
+	</ItemGroup>
+
+	<!-- Copy native DLL to output directory after build -->
+	<Target Name="CopyNpgqueryNativeLibraries" AfterTargets="Build">
+		<Copy 
+			SourceFiles="@(NativeLibraryWin)" 
+			DestinationFolder="$(OutputPath)" 
+			SkipUnchangedFiles="true" 
+			Condition="'$(OS)' == 'Windows_NT' AND '@(NativeLibraryWin)' != ''" />
+		<Copy 
+			SourceFiles="@(NativeLibraryLinux)" 
+			DestinationFolder="$(OutputPath)" 
+			SkipUnchangedFiles="true" 
+			Condition="'$(OS)' != 'Windows_NT' AND '@(NativeLibraryLinux)' != ''" />
+	</Target>
+</Project>

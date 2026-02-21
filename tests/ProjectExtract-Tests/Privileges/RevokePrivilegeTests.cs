@@ -31,12 +31,23 @@ namespace ProjectExtract_Tests.Privileges
                 .Build();
 
             await _pgContainer.StartAsync();
-            _connectionString = _pgContainer.GetConnectionString();
+
+            // Configure connection string with connection pool limits
+            var builder = new NpgsqlConnectionStringBuilder(_pgContainer.GetConnectionString())
+            {
+                MaxPoolSize = 10,           // Limit pool size for test isolation
+                MinPoolSize = 0,            // Start with no connections
+                ConnectionIdleLifetime = 15, // Close idle connections after 15s
+                Pooling = true              // Enable pooling
+            };
+            _connectionString = builder.ToString();
         }
 
         [TearDown]
         public async Task Teardown()
         {
+            // Clear connection pools before disposing container
+            NpgsqlConnection.ClearAllPools();
             await _pgContainer.DisposeAsync();
         }
 

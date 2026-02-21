@@ -203,21 +203,10 @@ namespace mbulava.PostgreSql.Dac.Extract
                 'x' => "REFERENCES",
                 't' => "TRIGGER",
                 'u' => "USAGE",
-                'c' => "CREATE",  // Note: lowercase 'c' is CONNECT, uppercase 'C' is CREATE
+                'c' => "CONNECT",  // Note: lowercase 'c' is CONNECT, uppercase 'C' is CREATE
                 _ => $"Unknown({ch})"
             };
 
-        // Helper to map uppercase privilege codes (some differ from lowercase)
-        private string MapPrivilegeUppercase(char ch) =>
-            ch switch
-            {
-                'D' => "TRUNCATE",
-                'X' => "EXECUTE",
-                'U' => "USAGE",     // Same as lowercase but with grant option
-                'C' => "CREATE",    // Uppercase C is CREATE (lowercase c is CONNECT)
-                'T' => "TEMPORARY",
-                _ => MapPrivilege(char.ToLower(ch))  // Fall back to lowercase mapping
-            };
 
        
         private async Task<List<PgPrivilege>> ExtractSchemaPrivilegesAsync(string schemaName)
@@ -402,8 +391,8 @@ namespace mbulava.PostgreSql.Dac.Extract
                     Owner = owner
                 };
 
-                var priveilegesSql = "SELECT c.relacl::text[] FROM pg_class c WHERE c.oid = @oid;";
-                table.Privileges = await ExtractPrivilegesAsync(priveilegesSql, "oid", (int)oid);
+                var privilegesSql = "SELECT c.relacl::text[] FROM pg_class c WHERE c.oid = @oid;";
+                table.Privileges = await ExtractPrivilegesAsync(privilegesSql, "oid", (int)oid);
 
 
                 // Populate columns

@@ -186,7 +186,7 @@ namespace ProjectExtract_Tests
             Assert.That(testSchema, Is.Not.Null);
             
             // test_user2 has CREATE with GRANT OPTION
-            // In PostgreSQL ACL format, grant option is indicated by uppercase letter
+            // The ACL entry for test_user2 includes the grant option, which should be reflected in IsGrantable
             var user2Privileges = testSchema.Privileges
                 .Where(p => p.Grantee == "test_user2")
                 .ToList();

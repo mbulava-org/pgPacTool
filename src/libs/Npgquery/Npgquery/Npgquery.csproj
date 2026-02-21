@@ -1,0 +1,77 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<Authors>JaredMSFT, mbulava-org</Authors>
+		<ClientVersion>1.0.0</ClientVersion>
+		<IsPreview>false</IsPreview>
+		<VersionSuffix Condition=" '$(IsPreview)' == 'true' ">preview</VersionSuffix>
+		<Version Condition=" '$(VersionSuffix)' == '' ">$(ClientVersion)</Version>
+		<Version Condition=" '$(VersionSuffix)' != '' ">$(ClientVersion)-$(VersionSuffix)</Version>
+		<AssemblyVersion>$(Version)</AssemblyVersion>
+		<FileVersion>$(Version)</FileVersion>
+		<InformationalVersion>$(ClientVersion)</InformationalVersion>
+		<FileVersion>$(ClientVersion)</FileVersion>
+		<TargetFramework>net10.0</TargetFramework>
+		<LangVersion>13.0</LangVersion>
+		<CurrentDate>$([System.DateTime]::Now.ToString(yyyyMMdd))</CurrentDate>
+		<Nullable>enable</Nullable>
+		<NeutralLanguage>en-US</NeutralLanguage>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<AssemblyName>Npgquery</AssemblyName>
+		<RootNamespace>Npgquery</RootNamespace>
+		<PackageId>Npgquery</PackageId>
+		<PackageTags>postgres;libpg_query;postgresql;sql;parser;ast;query;normalization;fingerprinting;plpgsql;tokenization;</PackageTags>
+		<IsPackable>false</IsPackable>
+		<IsShipping>true</IsShipping>
+		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<PlatformTarget>AnyCPU</PlatformTarget>
+		<ShippingScope>External</ShippingScope>
+		<SigningType>Product</SigningType>
+		<RepositoryUrl>https://github.com/mbulava-org/pgPacTool</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageProjectUrl>https://github.com/mbulava-org/pgPacTool</PackageProjectUrl>
+		<PackageLicenseFile>LICENSE</PackageLicenseFile>
+		<PackageReadmeFile>PACKAGE_README.md</PackageReadmeFile>
+		<PackageReleaseNotes>Integrated into pgPacTool solution</PackageReleaseNotes>
+		<TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+		<EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<DocumentationFile>bin\$(Configuration)\$(TargetFramework)\$(AssemblyName).xml</DocumentationFile>
+		<PublishRepositoryUrl>true</PublishRepositoryUrl>
+		<EmbedUntrackedSources>true</EmbedUntrackedSources>
+		<IncludeSymbols>true</IncludeSymbols>
+		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
+		<Description>A high-performance .NET library for parsing PostgreSQL queries using the official PostgreSQL parser via libpg_query. Integrated into pgPacTool solution.</Description>
+		<Summary>PostgreSQL query parser for .NET with AST generation, normalization, and fingerprinting capabilities</Summary>
+		<Copyright>© Npgquery All rights reserved.</Copyright>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<ImplicitUsings>enable</ImplicitUsings>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Google.Protobuf" Version="3.33.0" />
+		<PackageReference Include="Grpc.Tools" Version="2.72.0" PrivateAssets="All" />
+		<PackageReference Include="System.Memory" Version="4.6.3" />
+		<PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- Include pre-compiled native libraries -->
+		<Content Include="runtimes\**\*">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<Link>runtimes\%(RecursiveDir)%(FileName)%(Extension)</Link>
+		</Content>
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Include="..\LICENSE" Pack="true" PackagePath="\" />
+		<None Include="..\PACKAGE_README.md" Pack="true" PackagePath="\" />
+		<None Include="runtimes\**\*" Pack="true" PackagePath="runtimes\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Protobuf Include="Protos\pg_query.proto" GrpcServices="Client" />
+	</ItemGroup>
+
+</Project>

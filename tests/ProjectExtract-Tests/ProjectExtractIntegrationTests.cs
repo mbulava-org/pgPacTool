@@ -17,7 +17,7 @@ namespace ProjectExtract_Tests
         [OneTimeSetUp]
         public async Task Setup()
         {
-            _pgContainer = new PostgreSqlBuilder()
+            _pgContainer = new PostgreSqlBuilder("postgres:16")
                 .WithDatabase("testdb")
                 .WithUsername("testuser")
                 .WithPassword("testpass")

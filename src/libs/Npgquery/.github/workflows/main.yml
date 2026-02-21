@@ -1,0 +1,52 @@
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'The version to release (e.g., 1.0.0)'
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  BuildConfiguration: Release
+  PROJECT_PATH: 'src/Npgquery/Npgquery.csproj'
+  PACKAGE_OUTPUT_DIRECTORY: '/github/workspace/packages'
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/dotnet/sdk:9.0
+    steps:
+    - name: Install Azure CLI
+      run: |
+        apt-get update
+
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Create output directory
+      run: mkdir -p ${{ env.PACKAGE_OUTPUT_DIRECTORY }}
+
+    - name: Build
+      run: dotnet build ${{ env.PROJECT_PATH }} --configuration ${{ env.BuildConfiguration }} -p:Optimize=true
+
+    - name: Create NuGet Package
+      run: dotnet pack ${{ env.PROJECT_PATH }} -c ${{ env.BuildConfiguration }} --no-build --no-restore -o ${{ env.PACKAGE_OUTPUT_DIRECTORY }}
+
+    # - name: Create NuGet Symbols Package
+    #   run: dotnet pack ${{ env.PROJECT_PATH }} -c ${{ env.BuildConfiguration }} --no-build --include-symbols /p:SymbolPackageFormat=snupkg --no-restore -o ${{ env.PACKAGE_OUTPUT_DIRECTORY }}
+      
+    # # Get a short-lived NuGet API key
+    # - name: NuGet login (OIDC → temp API key)
+    #   uses: NuGet/login@v1
+    #   id: login
+    #   with:
+    #     user: ${{ secrets.NUGET_USER }}
+    
+    # # Push the package
+    # - name: NuGet push
+    #   run: dotnet nuget push "${{env.PACKAGE_OUTPUT_DIRECTORY}}/${{env.PROJECT_NAME}}.${{github.event.inputs.version.nupkg}}" --api-key ${{steps.login.outputs.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json

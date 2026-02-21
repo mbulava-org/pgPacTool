@@ -6,12 +6,12 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
-  
-
-	
   <ItemGroup>
-    <PackageReference Include="mbulava-org.Npgquery" Version="1.0.0.41-beta" />
     <PackageReference Include="Npgsql" Version="10.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Npgquery\Npgquery\Npgquery.csproj" />
   </ItemGroup>
 
 </Project>

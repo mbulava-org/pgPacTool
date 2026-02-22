@@ -107,11 +107,11 @@ namespace mbulava.PostgreSql.Dac.Extract
                 };
 
                 pgSchema.Tables.AddRange(await ExtractTablesAsync(schema.Name));
-                //pgSchema.Views.AddRange(await ExtractViewsAsync(schema.Name));
-                //pgSchema.Functions.AddRange(await ExtractFunctionsAsync(schema.Name));
+                pgSchema.Views.AddRange(await ExtractViewsAsync(schema.Name));
+                pgSchema.Functions.AddRange(await ExtractFunctionsAsync(schema.Name));
                 pgSchema.Types.AddRange(await ExtractTypesAsync(schema.Name));
                 pgSchema.Sequences.AddRange(await ExtractSequencesAsync(schema.Name));
-                //pgSchema.Triggers.AddRange(await ExtractTriggersAsync(schema.Name));
+                pgSchema.Triggers.AddRange(await ExtractTriggersAsync(schema.Name));
 
                 project.Schemas.Add(pgSchema);
             }
@@ -922,6 +922,178 @@ namespace mbulava.PostgreSql.Dac.Extract
             }
 
             return sequences;
+        }
+
+        private async Task<List<PgView>> ExtractViewsAsync(string schemaName)
+        {
+            var views = new List<PgView>();
+
+            var sql = @"
+        SELECT 
+            c.oid,
+            c.relname AS view_name,
+            r.rolname AS owner,
+            pg_get_viewdef(c.oid, true) AS definition,
+            c.relkind = 'm' AS is_materialized,
+            c.relacl::text[]
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_roles r ON r.oid = c.relowner
+        WHERE n.nspname = @schema
+          AND c.relkind IN ('v', 'm')  -- 'v' = view, 'm' = materialized view
+        ORDER BY c.relname;
+    ";
+
+            await using var conn = await CreateConnectionAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+            cmd.Parameters.AddWithValue("schema", schemaName);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var oid = reader.GetFieldValue<UInt32>(0);
+                var name = reader.GetString(1);
+                var owner = reader.GetString(2);
+                var definition = reader.GetString(3);
+                var isMaterialized = reader.GetBoolean(4);
+                var aclArray = reader.IsDBNull(5) ? null : reader.GetFieldValue<string[]>(5);
+
+                // Build CREATE VIEW SQL for parsing
+                var viewType = isMaterialized ? "MATERIALIZED VIEW" : "VIEW";
+                var createViewSql = $"CREATE {viewType} {schemaName}.{name} AS\n{definition}";
+
+                // Parse into AST
+                var parser = new Parser();
+                var result = parser.Parse(createViewSql);
+
+                ViewStmt? ast = null;
+                string? astJson = null;
+                if (result.IsSuccess && result.ParseTree != null)
+                {
+                    try
+                    {
+                        astJson = result.ParseTree.RootElement.GetRawText();
+                        ast = System.Text.Json.JsonSerializer.Deserialize<ViewStmt>(astJson);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Warning: Failed to deserialize AST for view {name}: {ex.Message}");
+                        // Continue without AST - definition is still available
+                    }
+                }
+
+                // Extract privileges
+                var privileges = new List<PgPrivilege>();
+                if (aclArray != null)
+                {
+                    var privilegesSql = "SELECT c.relacl::text[] FROM pg_class c WHERE c.oid = @oid;";
+                    privileges = await ExtractPrivilegesAsync(privilegesSql, "oid", (int)oid);
+                }
+
+                views.Add(new PgView
+                {
+                    Name = name,
+                    Owner = owner,
+                    Definition = definition,
+                    Ast = ast,
+                    AstJson = astJson,
+                    IsMaterialized = isMaterialized,
+                    Privileges = privileges,
+                    Dependencies = new List<string>() // TODO: Extract dependencies from pg_depend
+                });
+            }
+
+            return views;
+        }
+
+        private async Task<List<PgFunction>> ExtractFunctionsAsync(string schemaName)
+        {
+            var functions = new List<PgFunction>();
+
+            var sql = @"
+        SELECT 
+            p.oid,
+            p.proname AS function_name,
+            r.rolname AS owner,
+            pg_get_functiondef(p.oid) AS definition,
+            p.prokind AS kind  -- 'f' = function, 'p' = procedure, 'a' = aggregate, 'w' = window
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        JOIN pg_roles r ON r.oid = p.proowner
+        WHERE n.nspname = @schema
+        ORDER BY p.proname;
+    ";
+
+            await using var conn = await CreateConnectionAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+            cmd.Parameters.AddWithValue("schema", schemaName);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var oid = reader.GetFieldValue<UInt32>(0);
+                var name = reader.GetString(1);
+                var owner = reader.GetString(2);
+                var definition = reader.GetString(3);
+                var kind = reader.GetChar(4);
+
+                functions.Add(new PgFunction
+                {
+                    Name = name,
+                    Owner = owner,
+                    Definition = definition,
+                    Ast = null,  // TODO: Parse function AST
+                    AstJson = null,
+                    Privileges = new List<PgPrivilege>()  // TODO: Extract function privileges
+                });
+            }
+
+            return functions;
+        }
+
+        private async Task<List<PgTrigger>> ExtractTriggersAsync(string schemaName)
+        {
+            var triggers = new List<PgTrigger>();
+
+            var sql = @"
+        SELECT 
+            t.oid,
+            t.tgname AS trigger_name,
+            c.relname AS table_name,
+            pg_get_triggerdef(t.oid) AS definition
+        FROM pg_trigger t
+        JOIN pg_class c ON c.oid = t.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = @schema
+          AND NOT t.tgisinternal
+        ORDER BY c.relname, t.tgname;
+    ";
+
+            await using var conn = await CreateConnectionAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+            cmd.Parameters.AddWithValue("schema", schemaName);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var oid = reader.GetFieldValue<UInt32>(0);
+                var name = reader.GetString(1);
+                var tableName = reader.GetString(2);
+                var definition = reader.GetString(3);
+
+                triggers.Add(new PgTrigger
+                {
+                    Name = name,
+                    TableName = tableName,
+                    Definition = definition,
+                    Owner = "postgres"  // Triggers inherit table owner
+                });
+            }
+
+            return triggers;
         }
 
         private string QuoteIdent(string ident)

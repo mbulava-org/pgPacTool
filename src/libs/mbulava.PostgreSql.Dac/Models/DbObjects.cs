@@ -100,18 +100,20 @@ namespace mbulava.PostgreSql.Dac.Models
 
     public class PgView
     {
-        public string Name { get; set; }
-        public string Definition { get; set; }
-        public string? Ast { get; set; }
-        public string? AstJson { get; set; }    // Optional JSON representation of AST
+        public string Name { get; set; } = string.Empty;
+        public string Definition { get; set; } = string.Empty;
+        public ViewStmt? Ast { get; set; }  // Parsed AST
+        public string? AstJson { get; set; }  // Optional JSON representation of AST
         public string Owner { get; set; } = string.Empty;
+        public bool IsMaterialized { get; set; }  // true = materialized view, false = regular view
         public List<PgPrivilege> Privileges { get; set; } = new();
+        public List<string> Dependencies { get; set; } = new();  // Referenced tables/views
     }
 
     public class PgFunction
     {
-        public string Name { get; set; }
-        public string Definition { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Definition { get; set; } = string.Empty;
         public string? Ast { get; set; }
         public string? AstJson { get; set; }    // Optional JSON representation of AST
         public string Owner { get; set; } = string.Empty;
@@ -175,9 +177,10 @@ namespace mbulava.PostgreSql.Dac.Models
 
     public class PgTrigger
     {
-        public string Name { get; set; }
-        public string Definition { get; set; }
-        public string Ast { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string TableName { get; set; } = string.Empty;
+        public string Definition { get; set; } = string.Empty;
+        public string? Ast { get; set; }
         public string Owner { get; set; } = string.Empty;
     }
 

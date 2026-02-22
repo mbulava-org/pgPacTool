@@ -191,7 +191,9 @@ namespace mbulava.PostgreSql.Dac.Extract
 
                 foreach (var acl in aclArray)
                 {
-                    // Example entry: "grantee=arwdDxt/grantor"
+                    // Example entries:
+                    // Table: "grantee=arwdDxt/grantor" (lowercase = normal, uppercase = with grant option)
+                    // Schema: "grantee=UC/grantor" or "grantee=U*C*/grantor" (* = with grant option)
                     var parts = acl.Split('=');
                     if (parts.Length < 2) continue;
 
@@ -200,16 +202,31 @@ namespace mbulava.PostgreSql.Dac.Extract
                     var rights = rightsAndGrantor[0];
                     var grantor = rightsAndGrantor.Length > 1 ? rightsAndGrantor[1] : string.Empty;
 
-                    foreach (var ch in rights)
+                    // Parse privileges - handle both formats:
+                    // 1. Table format: lowercase=normal, uppercase=with grant option (e.g., "arwdDxt" or "ARWDXT")
+                    // 2. Schema format: uppercase=normal, asterisk=with grant option (e.g., "UC" or "U*C*")
+                    for (int i = 0; i < rights.Length; i++)
                     {
+                        var ch = rights[i];
+
+                        // Skip asterisks - they modify the previous character
+                        if (ch == '*') continue;
+
+                        // Check if next character is asterisk (GRANT OPTION for schemas)
+                        var hasAsterisk = (i + 1 < rights.Length) && rights[i + 1] == '*';
+
+                        // For tables: uppercase = GRANT OPTION
+                        // For schemas: asterisk after privilege = GRANT OPTION
+                        var isGrantable = hasAsterisk || (char.IsUpper(ch) && ch != 'U' && ch != 'C' && ch != 'D');
+
                         // Normalize to lowercase for privilege mapping
                         var privilegeCode = char.ToLower(ch);
 
                         privileges.Add(new PgPrivilege
                         {
                             Grantee = grantee,
-                            PrivilegeType = MapPrivilege(privilegeCode),
-                            IsGrantable = char.IsUpper(ch), // uppercase = WITH GRANT OPTION
+                            PrivilegeType = MapPrivilege(ch), // Pass original char to handle U/C for schemas
+                            IsGrantable = isGrantable,
                             Grantor = grantor
                         });
                     }
@@ -229,14 +246,19 @@ namespace mbulava.PostgreSql.Dac.Extract
         private string MapPrivilege(char ch) =>
             ch switch
             {
-                'r' => "SELECT",
-                'w' => "UPDATE",
-                'a' => "INSERT",
-                'd' => "DELETE",
-                'x' => "REFERENCES",
-                't' => "TRIGGER",
-                'u' => "USAGE",
-                'c' => "CONNECT",  // Note: lowercase 'c' is CONNECT, uppercase 'C' is CREATE
+                // Table privileges (lowercase = normal)
+                'r' or 'R' => "SELECT",
+                'w' or 'W' => "UPDATE",
+                'a' or 'A' => "INSERT",
+                'd' => "DELETE",             // lowercase d = DELETE
+                'D' => "TRUNCATE",           // uppercase D = TRUNCATE
+                'x' or 'X' => "REFERENCES",
+                't' or 'T' => "TRIGGER",
+
+                // Schema privileges (uppercase = normal)
+                'U' or 'u' => "USAGE",       // U/u = USAGE
+                'C' or 'c' => ch == 'C' ? "CREATE" : "CONNECT", // C = CREATE, c = CONNECT
+
                 _ => $"Unknown({ch})"
             };
 

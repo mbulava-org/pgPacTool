@@ -142,11 +142,12 @@ namespace ProjectExtract_Tests.Privileges
 
             var extractor = new PgProjectExtractor(_connectionString);
             var projectBefore = await extractor.ExtractPgProject("testdb");
-            
+
             var tableBefore = projectBefore.Schemas
                 .FirstOrDefault(s => s.Name == "test_schema")?.Tables
                 .FirstOrDefault(t => t.Name == "test_table");
-            Assert.That(tableBefore?.Privileges.Count, Is.EqualTo(4), "Should have 4 privileges initially");
+            var userPrivsBefore = tableBefore?.Privileges.Where(p => p.Grantee == "test_user").ToList();
+            Assert.That(userPrivsBefore?.Count, Is.EqualTo(4), "Should have 4 privileges initially for test_user");
 
             // Act - Revoke only INSERT and UPDATE
             await ExecuteSqlAsync("REVOKE INSERT, UPDATE ON test_schema.test_table FROM test_user;");
@@ -322,7 +323,10 @@ namespace ProjectExtract_Tests.Privileges
                 CREATE ROLE user2 LOGIN;
                 CREATE SCHEMA test_schema;
                 CREATE TABLE test_schema.test_table (id INT);
-                
+
+                -- Grant schema usage to user1 so they can grant on the table
+                GRANT USAGE ON SCHEMA test_schema TO user1;
+
                 -- Grant to user1 with grant option
                 GRANT SELECT ON test_schema.test_table TO user1 WITH GRANT OPTION;
             ");
@@ -377,7 +381,10 @@ namespace ProjectExtract_Tests.Privileges
                 CREATE ROLE user2 LOGIN;
                 CREATE SCHEMA test_schema;
                 CREATE TABLE test_schema.test_table (id INT);
-                
+
+                -- Grant schema usage to user1
+                GRANT USAGE ON SCHEMA test_schema TO user1;
+
                 GRANT SELECT ON test_schema.test_table TO user1 WITH GRANT OPTION;
             ");
 

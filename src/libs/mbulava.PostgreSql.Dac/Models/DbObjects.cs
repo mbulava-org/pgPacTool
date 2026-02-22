@@ -59,25 +59,44 @@ namespace mbulava.PostgreSql.Dac.Models
 
     public class PgTable
     {
-        public string Name { get; set; }
-        public string Definition { get; set; }   // Original SQL
+        public string Name { get; set; } = string.Empty;
+        public string Definition { get; set; } = string.Empty;   // Original SQL
         public CreateStmt? Ast  { get; set; }      // Parsed AST
         public string? AstJson { get; set; }    // Optional JSON representation of AST
         public string Owner { get; set; } = string.Empty;
+        public string? Tablespace { get; set; }  // Tablespace name
+        public bool RowLevelSecurity { get; set; }  // RLS enabled
+        public bool ForceRowLevelSecurity { get; set; }  // RLS forced for table owner
+        public int? FillFactor { get; set; }  // Storage fill factor
+        public List<string> InheritedFrom { get; set; } = new();  // Parent tables
+        public string? PartitionStrategy { get; set; }  // RANGE, LIST, HASH, or null
+        public string? PartitionExpression { get; set; }  // Partition key expression
 
         public List<PgColumn> Columns { get; set; } = new();
         public List<PgConstraint> Constraints { get; set; } = new();
         public List<PgIndex> Indexes { get; set; } = new();
-
         public List<PgPrivilege> Privileges { get; set; } = new();
+
+        // Relationship helpers
+        public List<PgConstraint> ForeignKeys => Constraints.Where(c => c.Type == ConstrType.ConstrForeign).ToList();
+        public List<PgConstraint> CheckConstraints => Constraints.Where(c => c.Type == ConstrType.ConstrCheck).ToList();
+        public List<PgConstraint> UniqueConstraints => Constraints.Where(c => c.Type == ConstrType.ConstrUnique).ToList();
+        public PgConstraint? PrimaryKey => Constraints.FirstOrDefault(c => c.Type == ConstrType.ConstrPrimary);
     }
 
     public class PgColumn
     {
-        public string Name { get; set; }
-        public string DataType { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string DataType { get; set; } = string.Empty;
         public bool IsNotNull { get; set; }
         public string? DefaultExpression { get; set; }
+        public int Position { get; set; }  // Ordinal position
+        public bool IsIdentity { get; set; }  // IDENTITY column
+        public string? IdentityGeneration { get; set; }  // ALWAYS or BY DEFAULT
+        public bool IsGenerated { get; set; }  // Generated/computed column
+        public string? GenerationExpression { get; set; }  // Expression for generated columns
+        public string? Collation { get; set; }  // Column collation
+        public string? Comment { get; set; }  // Column comment
     }
 
     public class PgConstraint
@@ -206,4 +225,146 @@ namespace mbulava.PostgreSql.Dac.Models
         public string Grantor { get; set; } = string.Empty;     // Who granted it
     }
 
+    /// <summary>
+    /// Represents a dependency between database objects
+    /// </summary>
+    public class PgDependency
+    {
+        public string ObjectType { get; set; } = string.Empty;  // TABLE, VIEW, FUNCTION, etc.
+        public string ObjectSchema { get; set; } = string.Empty;
+        public string ObjectName { get; set; } = string.Empty;
+        public string DependsOnType { get; set; } = string.Empty;
+        public string DependsOnSchema { get; set; } = string.Empty;
+        public string DependsOnName { get; set; } = string.Empty;
+        public string DependencyType { get; set; } = string.Empty;  // NORMAL, AUTO, INTERNAL, etc.
+
+        public string QualifiedObjectName => $"{ObjectSchema}.{ObjectName}";
+        public string QualifiedDependsOnName => $"{DependsOnSchema}.{DependsOnName}";
+    }
+
+    /// <summary>
+    /// Dependency graph for topological sorting and cycle detection
+    /// </summary>
+    public class DependencyGraph
+    {
+        private readonly Dictionary<string, HashSet<string>> _dependencies = new();
+        private readonly Dictionary<string, string> _objectTypes = new();
+
+        public void AddObject(string qualifiedName, string objectType)
+        {
+            if (!_dependencies.ContainsKey(qualifiedName))
+            {
+                _dependencies[qualifiedName] = new HashSet<string>();
+            }
+            _objectTypes[qualifiedName] = objectType;
+        }
+
+        public void AddDependency(string from, string to)
+        {
+            if (!_dependencies.ContainsKey(from))
+            {
+                _dependencies[from] = new HashSet<string>();
+            }
+            _dependencies[from].Add(to);
+        }
+
+        public List<string> TopologicalSort()
+        {
+            var sorted = new List<string>();
+            var visited = new HashSet<string>();
+            var visiting = new HashSet<string>();
+
+            foreach (var node in _dependencies.Keys)
+            {
+                if (!visited.Contains(node))
+                {
+                    Visit(node, visited, visiting, sorted);
+                }
+            }
+
+            // Don't reverse - we want dependencies first, then dependents
+            return sorted;
+        }
+
+        private void Visit(string node, HashSet<string> visited, HashSet<string> visiting, List<string> sorted)
+        {
+            if (visiting.Contains(node))
+            {
+                throw new InvalidOperationException($"Circular dependency detected involving: {node}");
+            }
+
+            if (!visited.Contains(node))
+            {
+                visiting.Add(node);
+
+                if (_dependencies.ContainsKey(node))
+                {
+                    foreach (var dependency in _dependencies[node])
+                    {
+                        Visit(dependency, visited, visiting, sorted);
+                    }
+                }
+
+                visiting.Remove(node);
+                visited.Add(node);
+                sorted.Add(node);
+            }
+        }
+
+        public List<List<string>> DetectCycles()
+        {
+            var cycles = new List<List<string>>();
+            var visited = new HashSet<string>();
+            var recursionStack = new Stack<string>();
+
+            foreach (var node in _dependencies.Keys)
+            {
+                if (!visited.Contains(node))
+                {
+                    DetectCyclesUtil(node, visited, recursionStack, cycles);
+                }
+            }
+
+            return cycles;
+        }
+
+        private bool DetectCyclesUtil(string node, HashSet<string> visited, Stack<string> recursionStack, List<List<string>> cycles)
+        {
+            visited.Add(node);
+            recursionStack.Push(node);
+
+            if (_dependencies.ContainsKey(node))
+            {
+                foreach (var neighbor in _dependencies[node])
+                {
+                    if (!visited.Contains(neighbor))
+                    {
+                        if (DetectCyclesUtil(neighbor, visited, recursionStack, cycles))
+                        {
+                            return true;
+                        }
+                    }
+                    else if (recursionStack.Contains(neighbor))
+                    {
+                        // Found a cycle
+                        var cycle = new List<string>();
+                        var cycleStart = false;
+                        foreach (var item in recursionStack.Reverse())
+                        {
+                            if (item == neighbor) cycleStart = true;
+                            if (cycleStart) cycle.Add(item);
+                        }
+                        cycle.Add(neighbor); // Complete the cycle
+                        cycles.Add(cycle);
+                        return true;
+                    }
+                }
+            }
+
+            recursionStack.Pop();
+            return false;
+        }
+
+        public Dictionary<string, HashSet<string>> GetDependencies() => _dependencies;
+    }
 }

@@ -24,12 +24,43 @@ namespace mbulava.PostgreSql.Dac.Extract
         {
             _conn = conString;
         }
-        
+
+        /// <summary>
+        /// Creates and opens a new database connection. MUST be disposed by caller using 'using' statement.
+        /// </summary>
+        private async Task<NpgsqlConnection> CreateConnectionAsync() 
+        {             
+            var conn = new NpgsqlConnection(_conn);
+            await conn.OpenAsync();
+            return conn;
+        }
+
+        /// <summary>
+        /// Creates and opens a new database connection synchronously. MUST be disposed by caller using 'using' statement.
+        /// </summary>
         private NpgsqlConnection CreateConnection() 
         {             
             var conn = new NpgsqlConnection(_conn);
             conn.Open();
             return conn;
+        }
+
+        /// <summary>
+        /// Executes a query and returns a reader. Connection and command are automatically disposed.
+        /// </summary>
+        private async Task<T> ExecuteQueryAsync<T>(string sql, Func<NpgsqlDataReader, Task<T>> processReader, params (string name, object value)[] parameters)
+        {
+            await using var conn = await CreateConnectionAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+
+            foreach (var (name, value) in parameters)
+            {
+                cmd.Parameters.AddWithValue(name, value);
+            }
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            return await processReader(reader);
         }
 
         /// <summary>
@@ -95,14 +126,16 @@ namespace mbulava.PostgreSql.Dac.Extract
         {
             var schemas = new List<PgSchema>();
 
-            using var cmd = new NpgsqlCommand(@"
+            await using var conn = await CreateConnectionAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
         SELECT n.nspname, r.rolname
         FROM pg_namespace n
         JOIN pg_roles r ON r.oid = n.nspowner
         WHERE n.nspname NOT LIKE 'pg_%'
-          AND n.nspname <> 'information_schema';", CreateConnection());
+          AND n.nspname <> 'information_schema';";
 
-            using var reader = await cmd.ExecuteReaderAsync();
+            await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
                 var name = reader.GetString(0);

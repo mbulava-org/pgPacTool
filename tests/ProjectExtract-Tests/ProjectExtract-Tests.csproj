@@ -33,4 +33,7 @@
     <Using Include="NUnit.Framework" />
   </ItemGroup>
 
+  <!-- Import Npgquery targets to copy native libraries -->
+  <Import Project="..\..\src\libs\Npgquery\Npgquery\build\Npgquery.targets" Condition="Exists('..\..\src\libs\Npgquery\Npgquery\build\Npgquery.targets')" />
+
 </Project>

@@ -24,12 +24,43 @@ namespace mbulava.PostgreSql.Dac.Extract
         {
             _conn = conString;
         }
-        
+
+        /// <summary>
+        /// Creates and opens a new database connection. MUST be disposed by caller using 'using' statement.
+        /// </summary>
+        private async Task<NpgsqlConnection> CreateConnectionAsync() 
+        {             
+            var conn = new NpgsqlConnection(_conn);
+            await conn.OpenAsync();
+            return conn;
+        }
+
+        /// <summary>
+        /// Creates and opens a new database connection synchronously. MUST be disposed by caller using 'using' statement.
+        /// </summary>
         private NpgsqlConnection CreateConnection() 
         {             
             var conn = new NpgsqlConnection(_conn);
             conn.Open();
             return conn;
+        }
+
+        /// <summary>
+        /// Executes a query and returns a reader. Connection and command are automatically disposed.
+        /// </summary>
+        private async Task<T> ExecuteQueryAsync<T>(string sql, Func<NpgsqlDataReader, Task<T>> processReader, params (string name, object value)[] parameters)
+        {
+            await using var conn = await CreateConnectionAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+
+            foreach (var (name, value) in parameters)
+            {
+                cmd.Parameters.AddWithValue(name, value);
+            }
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            return await processReader(reader);
         }
 
         /// <summary>
@@ -95,14 +126,16 @@ namespace mbulava.PostgreSql.Dac.Extract
         {
             var schemas = new List<PgSchema>();
 
-            using var cmd = new NpgsqlCommand(@"
+            await using var conn = await CreateConnectionAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
         SELECT n.nspname, r.rolname
         FROM pg_namespace n
         JOIN pg_roles r ON r.oid = n.nspowner
         WHERE n.nspname NOT LIKE 'pg_%'
-          AND n.nspname <> 'information_schema';", CreateConnection());
+          AND n.nspname <> 'information_schema';";
 
-            using var reader = await cmd.ExecuteReaderAsync();
+            await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
                 var name = reader.GetString(0);
@@ -158,7 +191,9 @@ namespace mbulava.PostgreSql.Dac.Extract
 
                 foreach (var acl in aclArray)
                 {
-                    // Example entry: "grantee=arwdDxt/grantor"
+                    // Example entries:
+                    // Table: "grantee=arwdDxt/grantor" (lowercase = normal, uppercase = with grant option)
+                    // Schema: "grantee=UC/grantor" or "grantee=U*C*/grantor" (* = with grant option)
                     var parts = acl.Split('=');
                     if (parts.Length < 2) continue;
 
@@ -167,16 +202,31 @@ namespace mbulava.PostgreSql.Dac.Extract
                     var rights = rightsAndGrantor[0];
                     var grantor = rightsAndGrantor.Length > 1 ? rightsAndGrantor[1] : string.Empty;
 
-                    foreach (var ch in rights)
+                    // Parse privileges - handle both formats:
+                    // 1. Table format: lowercase=normal, uppercase=with grant option (e.g., "arwdDxt" or "ARWDXT")
+                    // 2. Schema format: uppercase=normal, asterisk=with grant option (e.g., "UC" or "U*C*")
+                    for (int i = 0; i < rights.Length; i++)
                     {
+                        var ch = rights[i];
+
+                        // Skip asterisks - they modify the previous character
+                        if (ch == '*') continue;
+
+                        // Check if next character is asterisk (GRANT OPTION for schemas)
+                        var hasAsterisk = (i + 1 < rights.Length) && rights[i + 1] == '*';
+
+                        // For tables: uppercase = GRANT OPTION
+                        // For schemas: asterisk after privilege = GRANT OPTION
+                        var isGrantable = hasAsterisk || (char.IsUpper(ch) && ch != 'U' && ch != 'C' && ch != 'D');
+
                         // Normalize to lowercase for privilege mapping
                         var privilegeCode = char.ToLower(ch);
 
                         privileges.Add(new PgPrivilege
                         {
                             Grantee = grantee,
-                            PrivilegeType = MapPrivilege(privilegeCode),
-                            IsGrantable = char.IsUpper(ch), // uppercase = WITH GRANT OPTION
+                            PrivilegeType = MapPrivilege(ch), // Pass original char to handle U/C for schemas
+                            IsGrantable = isGrantable,
                             Grantor = grantor
                         });
                     }
@@ -196,14 +246,19 @@ namespace mbulava.PostgreSql.Dac.Extract
         private string MapPrivilege(char ch) =>
             ch switch
             {
-                'r' => "SELECT",
-                'w' => "UPDATE",
-                'a' => "INSERT",
-                'd' => "DELETE",
-                'x' => "REFERENCES",
-                't' => "TRIGGER",
-                'u' => "USAGE",
-                'c' => "CONNECT",  // Note: lowercase 'c' is CONNECT, uppercase 'C' is CREATE
+                // Table privileges (lowercase = normal)
+                'r' or 'R' => "SELECT",
+                'w' or 'W' => "UPDATE",
+                'a' or 'A' => "INSERT",
+                'd' => "DELETE",             // lowercase d = DELETE
+                'D' => "TRUNCATE",           // uppercase D = TRUNCATE
+                'x' or 'X' => "REFERENCES",
+                't' or 'T' => "TRIGGER",
+
+                // Schema privileges (uppercase = normal)
+                'U' or 'u' => "USAGE",       // U/u = USAGE
+                'C' or 'c' => ch == 'C' ? "CREATE" : "CONNECT", // C = CREATE, c = CONNECT
+
                 _ => $"Unknown({ch})"
             };
 
@@ -213,10 +268,12 @@ namespace mbulava.PostgreSql.Dac.Extract
         {
             var privileges = new List<PgPrivilege>();
 
-            using var cmd = new NpgsqlCommand(@"
+            await using var conn = await CreateConnectionAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
         SELECT n.nspacl
         FROM pg_namespace n
-        WHERE n.nspname = @schema;", CreateConnection());
+        WHERE n.nspname = @schema;";
 
             cmd.Parameters.AddWithValue("schema", schemaName);
 
@@ -284,13 +341,15 @@ namespace mbulava.PostgreSql.Dac.Extract
                 if (roles.ContainsKey(roleName)) continue;
 
                 // Step 3: lookup role attributes
-                using var cmd = new NpgsqlCommand(@"
+                await using var conn = await CreateConnectionAsync();
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
             SELECT rolname, rolsuper, rolcanlogin, rolinherit, rolreplication, rolbypassrls
             FROM pg_roles
-            WHERE rolname = @name;", CreateConnection());
+            WHERE rolname = @name;";
                 cmd.Parameters.AddWithValue("name", roleName);
 
-                using var reader = await cmd.ExecuteReaderAsync();
+                await using var reader = await cmd.ExecuteReaderAsync();
                 if (!await reader.ReadAsync()) continue;
 
                 var role = new PgRole
@@ -307,15 +366,17 @@ namespace mbulava.PostgreSql.Dac.Extract
                 reader.Close();
 
                 // Step 4: resolve memberships
-                using var memCmd = new NpgsqlCommand(@"
+                await using var conn2 = await CreateConnectionAsync();
+                await using var memCmd = conn2.CreateCommand();
+                memCmd.CommandText = @"
             SELECT r.rolname
             FROM pg_auth_members m
             JOIN pg_roles r ON r.oid = m.roleid
             JOIN pg_roles u ON u.oid = m.member
-            WHERE u.rolname = @name;", CreateConnection());
+            WHERE u.rolname = @name;";
                 memCmd.Parameters.AddWithValue("name", roleName);
 
-                using var memReader = await memCmd.ExecuteReaderAsync();
+                await using var memReader = await memCmd.ExecuteReaderAsync();
                 while (await memReader.ReadAsync())
                 {
                     var parentRole = memReader.GetString(0);
@@ -333,16 +394,18 @@ namespace mbulava.PostgreSql.Dac.Extract
         {
             var tables = new List<PgTable>();
 
-            using var cmd = new NpgsqlCommand(@"
+            await using var conn = await CreateConnectionAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
         SELECT c.oid, c.relname, r.rolname
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
         JOIN pg_roles r ON r.oid = c.relowner
-        WHERE c.relkind = 'r' AND n.nspname = @schema;", CreateConnection());
+        WHERE c.relkind = 'r' AND n.nspname = @schema;";
 
             cmd.Parameters.AddWithValue("schema", schema);
 
-            using var reader = await cmd.ExecuteReaderAsync();
+            await using var reader = await cmd.ExecuteReaderAsync();
             var tableOids = new List<(UInt32 oid, string name, string owner)>();
             while (reader.Read())
             {
@@ -415,18 +478,20 @@ namespace mbulava.PostgreSql.Dac.Extract
             var sb = new StringBuilder();
             sb.AppendLine($"CREATE TABLE {schema}.{name} (");
 
-            using var colCmd = new NpgsqlCommand(@"
+            await using var conn = await CreateConnectionAsync();
+            await using var colCmd = conn.CreateCommand();
+            colCmd.CommandText = @"
         SELECT a.attname,
                pg_catalog.format_type(a.atttypid, a.atttypmod),
                a.attnotnull,
                pg_get_expr(d.adbin, d.adrelid)
         FROM pg_attribute a
         LEFT JOIN pg_attrdef d ON a.attrelid = d.adrelid AND a.attnum = d.adnum
-        WHERE a.attrelid = @oid AND a.attnum > 0 AND NOT a.attisdropped;", CreateConnection());
+        WHERE a.attrelid = @oid AND a.attnum > 0 AND NOT a.attisdropped;";
 
             colCmd.Parameters.AddWithValue("oid", (int)oid);
 
-            using var colReader = await colCmd.ExecuteReaderAsync();
+            await using var colReader = await colCmd.ExecuteReaderAsync();
             var cols = new List<string>();
             while (colReader.Read())
             {
@@ -447,14 +512,16 @@ namespace mbulava.PostgreSql.Dac.Extract
         {
             var columns = new List<PgColumn>();
 
-            using var cmd = new NpgsqlCommand(@"
+            await using var conn = await CreateConnectionAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
         SELECT a.attname,
                pg_catalog.format_type(a.atttypid, a.atttypmod),
                a.attnotnull,
                pg_get_expr(d.adbin, d.adrelid)
         FROM pg_attribute a
         LEFT JOIN pg_attrdef d ON a.attrelid = d.adrelid AND a.attnum = d.adnum
-        WHERE a.attrelid = @oid AND a.attnum > 0 AND NOT a.attisdropped;", CreateConnection());
+        WHERE a.attrelid = @oid AND a.attnum > 0 AND NOT a.attisdropped;";
 
             cmd.Parameters.AddWithValue("oid", (int)oid);
 
@@ -478,14 +545,16 @@ namespace mbulava.PostgreSql.Dac.Extract
         {
             var constraints = new List<PgConstraint>();
 
-            using var cmd = new NpgsqlCommand(@"
+            await using var conn = await CreateConnectionAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
         SELECT conname, contype, pg_get_constraintdef(oid)
         FROM pg_constraint
-        WHERE conrelid = @oid;", CreateConnection());
+        WHERE conrelid = @oid;";
 
             cmd.Parameters.AddWithValue("oid", (int)tableOid);
 
-            using var reader = await cmd.ExecuteReaderAsync();
+            await using var reader = await cmd.ExecuteReaderAsync();
             while (reader.Read())
             {
                 var name = reader.GetString(0);
@@ -543,16 +612,18 @@ namespace mbulava.PostgreSql.Dac.Extract
         {
             var indexes = new List<PgIndex>();
 
-            using var cmd = new NpgsqlCommand(@"
+            await using var conn = await CreateConnectionAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
         SELECT i.indexrelid, c.relname, r.rolname
         FROM pg_index i
         JOIN pg_class c ON c.oid = i.indexrelid
         JOIN pg_roles r ON r.oid = c.relowner
-        WHERE i.indrelid = @oid;", CreateConnection());
+        WHERE i.indrelid = @oid;";
 
             cmd.Parameters.AddWithValue("oid", (int)tableOid);
 
-            using var reader = await cmd.ExecuteReaderAsync();
+            await using var reader = await cmd.ExecuteReaderAsync();
             var indexOids = new List<(UInt32 oid, string name, string owner)>();
             while (reader.Read())
             {
@@ -565,9 +636,11 @@ namespace mbulava.PostgreSql.Dac.Extract
 
             foreach (var (oid, name, owner) in indexOids)
             {
-                using var defCmd = new NpgsqlCommand("SELECT pg_get_indexdef(@oid);", CreateConnection());
+                await using var conn2 = await CreateConnectionAsync();
+                await using var defCmd = conn2.CreateCommand();
+                defCmd.CommandText = "SELECT pg_get_indexdef(@oid);";
                 defCmd.Parameters.AddWithValue("oid", (int)oid);
-                var sql = (string)await defCmd.ExecuteScalarAsync();
+                var sql = (string?)await defCmd.ExecuteScalarAsync();
 
                 var parser = new Parser();
                 var result = parser.Parse(sql);
@@ -605,17 +678,19 @@ namespace mbulava.PostgreSql.Dac.Extract
         {
             var types = new List<PgType>();
 
-            using var cmd = new NpgsqlCommand(@"
+            await using var conn = await CreateConnectionAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
         SELECT t.oid, t.typname, t.typtype, r.rolname
         FROM pg_type t
         JOIN pg_namespace n ON n.oid = t.typnamespace
         JOIN pg_roles r ON r.oid = t.typowner
         WHERE n.nspname = @schema
-          AND t.typtype IN ('d','e','c');", CreateConnection());
+          AND t.typtype IN ('d','e','c');";
 
             cmd.Parameters.AddWithValue("schema", schema);
 
-            using var reader = await cmd.ExecuteReaderAsync();
+            await using var reader = await cmd.ExecuteReaderAsync();
             var typeInfos = new List<(uint oid, string name, char typtype, string owner)>();
             while (await reader.ReadAsync())
             {
@@ -636,16 +711,18 @@ namespace mbulava.PostgreSql.Dac.Extract
                 switch (typtype)
                 {
                     case 'd': // Domain
-                        using (var domCmd = new NpgsqlCommand(@"
+                        await using (var conn2 = await CreateConnectionAsync())
+                        await using (var domCmd = conn2.CreateCommand())
+                        {
+                            domCmd.CommandText = @"
                     SELECT pg_catalog.format_type(t.typbasetype, t.typtypmod) AS basetype,
                            t.typnotnull,
                            pg_get_constraintdef(c.oid) AS constraintdef
                     FROM pg_type t
                     LEFT JOIN pg_constraint c ON c.contypid = t.oid
-                    WHERE t.oid = @oid;", CreateConnection()))
-                        {
+                    WHERE t.oid = @oid;";
                             domCmd.Parameters.AddWithValue("oid", (int)oid);
-                            using var domReader = await domCmd.ExecuteReaderAsync();
+                            await using var domReader = await domCmd.ExecuteReaderAsync();
                             await domReader.ReadAsync();
                             var basetype = domReader.GetString(0);
                             var notNull = domReader.GetBoolean(1);
@@ -667,14 +744,16 @@ namespace mbulava.PostgreSql.Dac.Extract
 
                     case 'e': // Enum
                         var labels = new List<string>();
-                        using (var enumCmd = new NpgsqlCommand(@"
+                        await using (var conn3 = await CreateConnectionAsync())
+                        await using (var enumCmd = conn3.CreateCommand())
+                        {
+                            enumCmd.CommandText = @"
                     SELECT e.enumlabel
                     FROM pg_enum e
                     WHERE e.enumtypid = @oid
-                    ORDER BY e.enumsortorder;", CreateConnection()))
-                        {
+                    ORDER BY e.enumsortorder;";
                             enumCmd.Parameters.AddWithValue("oid", (int)oid);
-                            using var enumReader = await enumCmd.ExecuteReaderAsync();
+                            await using var enumReader = await enumCmd.ExecuteReaderAsync();
                             while (await enumReader.ReadAsync())
                                 labels.Add(enumReader.GetString(0));
                         }
@@ -692,16 +771,18 @@ namespace mbulava.PostgreSql.Dac.Extract
 
                     case 'c': // Composite
                         var attrs = new List<PgAttribute>();
-                        using (var compCmd = new NpgsqlCommand(@"
+                        await using (var conn4 = await CreateConnectionAsync())
+                        await using (var compCmd = conn4.CreateCommand())
+                        {
+                            compCmd.CommandText = @"
                     SELECT a.attname,
                            pg_catalog.format_type(a.atttypid, a.atttypmod) AS datatype,
                            a.attnotnull
                     FROM pg_attribute a
                     WHERE a.attrelid = @oid AND a.attnum > 0 AND NOT a.attisdropped
-                    ORDER BY a.attnum;", CreateConnection()))
-                        {
+                    ORDER BY a.attnum;";
                             compCmd.Parameters.AddWithValue("oid", (int)oid);
-                            using var compReader = await compCmd.ExecuteReaderAsync();
+                            await using var compReader = await compCmd.ExecuteReaderAsync();
                             while (await compReader.ReadAsync())
                             {
                                 attrs.Add(new PgAttribute
@@ -772,10 +853,13 @@ namespace mbulava.PostgreSql.Dac.Extract
     ";
 
 
-            using var cmd = new NpgsqlCommand(sql, CreateConnection());
+            await using var conn = await CreateConnectionAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
             cmd.Parameters.AddWithValue("schema", schemaName);
 
-            using var reader = await cmd.ExecuteReaderAsync();
+            await using var reader = await cmd.ExecuteReaderAsync();
+
             while (await reader.ReadAsync())
             {
                 var oid = reader.GetFieldValue<UInt32>(0);

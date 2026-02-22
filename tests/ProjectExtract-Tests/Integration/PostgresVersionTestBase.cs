@@ -27,12 +27,22 @@ namespace ProjectExtract_Tests.Integration
                 .Build();
 
             await Container.StartAsync();
-            ConnectionString = Container.GetConnectionString();
+
+            // Configure connection string with connection pool settings
+            var builder = new NpgsqlConnectionStringBuilder(Container.GetConnectionString())
+            {
+                MaxPoolSize = 25,
+                MinPoolSize = 0,
+                ConnectionIdleLifetime = 30,
+                ConnectionPruningInterval = 10,
+                Timeout = 30
+            };
+            ConnectionString = builder.ToString();
 
             // Verify connection
             await using var conn = new NpgsqlConnection(ConnectionString);
             await conn.OpenAsync();
-            TestContext.WriteLine($"✓ Connected to {PostgreSqlVersion}");
+            TestContext.Out.WriteLine($"✓ Connected to {PostgreSqlVersion}");
 
             // Seed common test data
             await SeedCommonTestDataAsync();
@@ -41,8 +51,10 @@ namespace ProjectExtract_Tests.Integration
         [OneTimeTearDown]
         public async Task BaseTeardown()
         {
+            // Clear connection pools before disposing
+            NpgsqlConnection.ClearAllPools();
             await Container.DisposeAsync();
-            TestContext.WriteLine($"✓ Disposed {PostgreSqlVersion} container");
+            TestContext.Out.WriteLine($"✓ Disposed {PostgreSqlVersion} container");
         }
 
         /// <summary>

@@ -30,12 +30,11 @@ namespace ProjectExtract_Tests
             await _pgContainer.StartAsync();
 
             // Configure connection string with pool settings
-            // Note: Large MaxPoolSize needed due to connection leaks in PgProjectExtractor
             var builder = new NpgsqlConnectionStringBuilder(_pgContainer.GetConnectionString())
             {
-                MaxPoolSize = 50,
+                MaxPoolSize = 15,
                 MinPoolSize = 0,
-                ConnectionIdleLifetime = 60,
+                ConnectionIdleLifetime = 30,
                 Timeout = 30
             };
             _connectionString = builder.ToString();

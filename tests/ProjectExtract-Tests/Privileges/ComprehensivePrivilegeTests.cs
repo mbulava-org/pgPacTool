@@ -33,15 +33,13 @@ namespace ProjectExtract_Tests.Privileges
             await _pgContainer.StartAsync();
 
             // Configure connection string with connection pool limits
-            // Note: Large MaxPoolSize needed due to connection leaks in PgProjectExtractor
-            // TODO: Fix PgProjectExtractor to properly dispose all connections
             var builder = new NpgsqlConnectionStringBuilder(_pgContainer.GetConnectionString())
             {
-                MaxPoolSize = 100,          // Increased due to connection leaks in extractor
-                MinPoolSize = 0,            // Start with no connections
-                ConnectionIdleLifetime = 60, // Close idle connections after 60s
+                MaxPoolSize = 25,            // Reasonable size now that leaks are fixed
+                MinPoolSize = 0,             // Start with no connections
+                ConnectionIdleLifetime = 30, // Close idle connections after 30s
                 ConnectionPruningInterval = 10, // Check for idle connections every 10s
-                Timeout = 30                // Increase timeout to 30 seconds
+                Timeout = 30                 // Connection timeout
             };
             _connectionString = builder.ToString();
 

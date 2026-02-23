@@ -251,7 +251,7 @@ public class CircularDependencyDetector
         if (cycle.Cycle.Count == 1)
         {
             var type = cycle.ObjectTypes.FirstOrDefault();
-            
+
             if (type == "FUNCTION")
             {
                 // Recursive functions are allowed
@@ -260,16 +260,16 @@ public class CircularDependencyDetector
             }
             else if (type == "TABLE")
             {
-                // Self-referential FK is allowed
+                // Self-referential FK is allowed (parent-child in same table)
                 cycle.Severity = CycleSeverity.Info;
                 cycle.Suggestion = "Self-referential foreign key - this is allowed but ensure proper constraints.";
             }
             else
             {
-                cycle.Severity = CycleSeverity.Warning;
+                cycle.Severity = CycleSeverity.Info;
                 cycle.Suggestion = "Self-reference detected - verify this is intentional.";
             }
-            
+
             return;
         }
         
@@ -292,14 +292,16 @@ public class CircularDependencyDetector
         // Table cycles (foreign keys)
         if (cycle.ObjectTypes.All(t => t == "TABLE"))
         {
+            // All table cycles with FKs are errors - they need DEFERRABLE constraints
+            // or schema redesign to work properly
+            cycle.Severity = CycleSeverity.Error;
+
             if (cycle.Cycle.Count == 2)
             {
-                cycle.Severity = CycleSeverity.Warning;
-                cycle.Suggestion = "Two tables with circular foreign keys. Consider using DEFERRABLE constraints or breaking the cycle.";
+                cycle.Suggestion = "Two tables with circular foreign keys. Use DEFERRABLE constraints or break the cycle.";
             }
             else
             {
-                cycle.Severity = CycleSeverity.Error;
                 cycle.Suggestion = $"Complex circular foreign keys ({cycle.Cycle.Count} tables). Break the cycle by removing one foreign key or redesigning the schema.";
             }
             return;

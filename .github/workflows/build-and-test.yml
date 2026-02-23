@@ -59,7 +59,8 @@ jobs:
           --collect:"XPlat Code Coverage" \
           --results-directory ./coverage \
           --logger "trx;LogFileName=test-results.trx" \
-          -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
+          -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover \
+          DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Exclude="[Npgquery]*,[*]Npgquery.*,[*]PgQuery.*"
       env:
         ConnectionStrings__TestDatabase: "Host=localhost;Port=5432;Database=testdb;Username=postgres;Password=testpassword"
 
@@ -139,54 +140,55 @@ jobs:
           echo "⚠️ Coverage report not found, skipping threshold check"
         fi
 
-  multi-version-test:
-    name: Test against PostgreSQL ${{ matrix.postgres }}
-    runs-on: ubuntu-latest
+  # Uncomment the following job to enable multi-version testing against PostgreSQL 16 and 17, but it's already happening in the Tests ;/
+  # multi-version-test:
+  #   name: Test against PostgreSQL ${{ matrix.postgres }}
+  #   runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        postgres: ['16', '17']
+  #   strategy:
+  #     matrix:
+  #       postgres: ['16', '17']
 
-    services:
-      postgres:
-        image: postgres:${{ matrix.postgres }}
-        env:
-          POSTGRES_PASSWORD: testpassword
-          POSTGRES_USER: postgres
-          POSTGRES_DB: testdb
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
+  #   services:
+  #     postgres:
+  #       image: postgres:${{ matrix.postgres }}
+  #       env:
+  #         POSTGRES_PASSWORD: testpassword
+  #         POSTGRES_USER: postgres
+  #         POSTGRES_DB: testdb
+  #       options: >-
+  #         --health-cmd pg_isready
+  #         --health-interval 10s
+  #         --health-timeout 5s
+  #         --health-retries 5
+  #       ports:
+  #         - 5432:5432
 
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+  #   steps:
+  #   - name: Checkout code
+  #     uses: actions/checkout@v4
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
+  #   - name: Setup .NET
+  #     uses: actions/setup-dotnet@v4
+  #     with:
+  #       dotnet-version: ${{ env.DOTNET_VERSION }}
 
-    - name: Restore dependencies
-      run: dotnet restore
+  #   - name: Restore dependencies
+  #     run: dotnet restore
 
-    - name: Build solution
-      run: dotnet build --no-restore --configuration ${{ env.CONFIGURATION }}
+  #   - name: Build solution
+  #     run: dotnet build --no-restore --configuration ${{ env.CONFIGURATION }}
 
-    - name: Run integration tests
-      run: |
-        dotnet test --no-build --configuration ${{ env.CONFIGURATION }} \
-          --filter "Category=Integration|Category=Postgres${{ matrix.postgres }}" \
-          --verbosity normal \
-          --logger "console;verbosity=detailed"
-      env:
-        ConnectionStrings__TestDatabase: "Host=localhost;Port=5432;Database=testdb;Username=postgres;Password=testpassword"
+  #   - name: Run integration tests
+  #     run: |
+  #       dotnet test --no-build --configuration ${{ env.CONFIGURATION }} \
+  #         --filter "Category=Integration|Category=Postgres${{ matrix.postgres }}" \
+  #         --verbosity normal \
+  #         --logger "console;verbosity=detailed"
+  #     env:
+  #       ConnectionStrings__TestDatabase: "Host=localhost;Port=5432;Database=testdb;Username=postgres;Password=testpassword"
 
-    - name: Display PostgreSQL version
-      run: |
-        docker exec $(docker ps -q --filter ancestor=postgres:${{ matrix.postgres }}) psql -U postgres -c "SELECT version();"
+  #   - name: Display PostgreSQL version
+  #     run: |
+  #       docker exec $(docker ps -q --filter ancestor=postgres:${{ matrix.postgres }}) psql -U postgres -c "SELECT version();"
   

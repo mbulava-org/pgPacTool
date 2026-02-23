@@ -251,20 +251,23 @@ postgresPacTools compile [options]
 
 | Option | Alias | Required | Description |
 |--------|-------|----------|-------------|
-| `--source-file` | `-sf` | ✅ | Source `.pgproj.json` file |
+| `--source-file` | `-sf` | ✅ | Source `.pgproj.json` or `.csproj` file |
 | `--verbose` | `-v` | ❌ | Show detailed compilation output (default: `false`) |
 
 #### Examples
 
 ```bash
-# Basic compile
+# Compile from .pgproj.json
 postgresPacTools compile -sf myapp.pgproj.json
+
+# Compile from SDK-style .csproj
+postgresPacTools compile -sf MyDatabase.csproj --verbose
 
 # Verbose compile with deployment order
 postgresPacTools compile -sf myapp.pgproj.json --verbose
 ```
 
-#### Output
+#### Output (.pgproj.json)
 ```
 ╔════════════════════════════════════════════════════════════╗
 ║  PostgreSQL Project Compilation                            ║
@@ -272,7 +275,7 @@ postgresPacTools compile -sf myapp.pgproj.json --verbose
 
 📋 Source: myapp.pgproj.json
 
-📖 Loading project...
+📖 Loading .pgproj.json project...
 ✅ Loaded 2 schema(s)
 
 ⚙️  Compiling and validating...
@@ -360,6 +363,79 @@ The report is generated as JSON:
   ]
 }
 ```
+
+---
+
+## 📦 SDK-Style Projects (.csproj)
+
+postgresPacTools supports SDK-style `.csproj` projects, similar to [MSBuild.Sdk.SqlProj](https://github.com/rr-wfm/MSBuild.Sdk.SqlProj) for SQL Server.
+
+### Benefits
+
+- ✅ **Standard .NET Project Structure** - Use familiar .csproj format
+- ✅ **File Organization** - Organize SQL files in folders (Tables/, Views/, etc.)
+- ✅ **Version Control Friendly** - One object per file
+- ✅ **CI/CD Integration** - Works with standard .NET build pipelines
+- ✅ **Dependency Validation** - Compile validates all dependencies
+
+### Quick Example
+
+**MyDatabase.csproj:**
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="Tables\**\*.sql" />
+    <Content Include="Views\**\*.sql" />
+    <Content Include="Functions\**\*.sql" />
+  </ItemGroup>
+</Project>
+```
+
+**Tables/Users.sql:**
+```sql
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) NOT NULL,
+    email VARCHAR(255) NOT NULL
+);
+```
+
+**Compile:**
+```bash
+postgresPacTools compile -sf MyDatabase.csproj --verbose
+```
+
+**Output:**
+```
+╔════════════════════════════════════════════════════════════╗
+║  PostgreSQL Project Compilation                            ║
+╚════════════════════════════════════════════════════════════╝
+
+📋 Source: MyDatabase.csproj
+
+📖 Loading .csproj project (SDK-style)...
+✅ Loaded 1 schema(s) from SDK project
+
+⚙️  Compiling and validating...
+
+✅ Compilation successful!
+   📊 Objects: 5
+   📦 Levels: 3
+```
+
+### 📚 Full Documentation
+
+See [SDK Project Guide](SDK_PROJECT_GUIDE.md) for complete documentation on:
+- Project structure
+- File organization
+- Build configuration
+- CI/CD integration
+- Migration from .pgproj.json
 
 ---
 

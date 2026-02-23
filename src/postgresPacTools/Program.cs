@@ -191,6 +191,7 @@ internal class Program
 
     /// <summary>
     /// Compile: Validates and compiles a project, checking dependencies and circular references
+    /// Supports both .pgproj.json and SDK-style .csproj files
     /// Unique to pgPacTool (based on Milestone 2)
     /// </summary>
     static Command CreateCompileCommand()
@@ -199,7 +200,7 @@ internal class Program
 
         var sourceFileOption = new Option<string>(
             name: "--source-file",
-            description: "Source .pgproj.json file")
+            description: "Source .pgproj.json or .csproj file")
         {
             IsRequired = true
         };
@@ -469,11 +470,33 @@ internal class Program
             Console.WriteLine($"📋 Source: {sourceFile}");
             Console.WriteLine();
 
-            // Load project
-            Console.WriteLine("📖 Loading project...");
-            await using var fileStream = File.OpenRead(sourceFile);
-            var project = await PgProject.Load(fileStream);
-            Console.WriteLine($"✅ Loaded {project.Schemas.Count} schema(s)");
+            // Determine file type and load project
+            PgProject project;
+            var extension = Path.GetExtension(sourceFile).ToLowerInvariant();
+
+            if (extension == ".csproj")
+            {
+                // Load from .csproj (SDK-style project)
+                Console.WriteLine("📖 Loading .csproj project (SDK-style)...");
+                var loader = new CsprojProjectLoader(sourceFile);
+                project = await loader.LoadProjectAsync();
+                Console.WriteLine($"✅ Loaded {project.Schemas.Count} schema(s) from SDK project");
+            }
+            else if (extension == ".json")
+            {
+                // Load from .pgproj.json
+                Console.WriteLine("📖 Loading .pgproj.json project...");
+                await using var fileStream = File.OpenRead(sourceFile);
+                project = await PgProject.Load(fileStream);
+                Console.WriteLine($"✅ Loaded {project.Schemas.Count} schema(s)");
+            }
+            else
+            {
+                Console.WriteLine($"❌ Unsupported file type: {extension}");
+                Console.WriteLine($"   Supported types: .csproj, .pgproj.json");
+                Environment.Exit(1);
+                return;
+            }
 
             // Compile
             Console.WriteLine();

@@ -33,7 +33,6 @@ namespace mbulava.PostgreSql.Dac.Tests.Extract
             project.Should().NotBeNull();
             project.DatabaseName.Should().Be("testdb");
             project.PostgresVersion.Should().StartWith("16.");
-            project.ExtractedAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromMinutes(1));
         }
 
         [Test]

@@ -70,87 +70,83 @@ public class CsprojProjectLoader
     }
 
     /// <summary>
-    /// Gets all SQL files referenced in the .csproj.
+    /// Gets all SQL files in the project directory recursively.
+    /// Convention: All .sql files are included automatically.
+    /// Only Pre/Post deployment scripts need explicit configuration in .csproj.
     /// </summary>
     private List<string> GetSqlFilesFromProject(XDocument doc)
     {
         var sqlFiles = new List<string>();
 
-        // Look for <Content Include="**/*.sql" /> or similar patterns
-        var contentItems = doc.Descendants()
-            .Where(e => e.Name.LocalName == "Content" || e.Name.LocalName == "None" || e.Name.LocalName == "Compile")
-            .Select(e => e.Attribute("Include")?.Value)
-            .Where(v => v != null && v.EndsWith(".sql", StringComparison.OrdinalIgnoreCase))
-            .ToList();
+        // Get pre/post deployment scripts to exclude them from main objects
+        var prePostScripts = GetPrePostDeploymentScripts(doc);
+        var excludeFiles = new HashSet<string>(prePostScripts.Select(s => s.FilePath), StringComparer.OrdinalIgnoreCase);
 
-        sqlFiles.AddRange(contentItems!);
-
-        // Also look for wildcards like **/*.sql
-        var wildcardItems = doc.Descendants()
-            .Where(e => e.Name.LocalName == "Content" || e.Name.LocalName == "None")
-            .Select(e => e.Attribute("Include")?.Value)
-            .Where(v => v != null && (v.Contains("*.sql") || v.Contains("**")))
-            .ToList();
-
-        foreach (var pattern in wildcardItems!)
+        // Scan all .sql files recursively in project directory
+        if (Directory.Exists(_projectDirectory))
         {
-            var expandedFiles = ExpandWildcard(pattern);
-            sqlFiles.AddRange(expandedFiles);
-        }
+            var allSqlFiles = Directory.GetFiles(_projectDirectory, "*.sql", SearchOption.AllDirectories);
 
-        // If no explicit SQL files, scan directories
-        if (sqlFiles.Count == 0)
-        {
-            // Default scan: look for common SQL directories
-            var searchDirs = new[] { "Tables", "Views", "Functions", "Procedures", "Types", "Schemas", "Scripts", "SQL" };
-            
-            foreach (var dir in searchDirs)
+            foreach (var file in allSqlFiles)
             {
-                var dirPath = Path.Combine(_projectDirectory, dir);
-                if (Directory.Exists(dirPath))
-                {
-                    var files = Directory.GetFiles(dirPath, "*.sql", SearchOption.AllDirectories);
-                    sqlFiles.AddRange(files.Select(f => Path.GetRelativePath(_projectDirectory, f)));
-                }
-            }
+                var relativePath = Path.GetRelativePath(_projectDirectory, file);
 
-            // Also check root directory
-            var rootFiles = Directory.GetFiles(_projectDirectory, "*.sql", SearchOption.TopDirectoryOnly);
-            sqlFiles.AddRange(rootFiles.Select(f => Path.GetRelativePath(_projectDirectory, f)));
+                // Exclude bin, obj, and other build directories
+                if (relativePath.Contains("bin") || 
+                    relativePath.Contains("obj") || 
+                    relativePath.Contains(".vs") ||
+                    relativePath.StartsWith("."))
+                {
+                    continue;
+                }
+
+                // Exclude pre/post deployment scripts
+                if (excludeFiles.Contains(relativePath))
+                {
+                    continue;
+                }
+
+                sqlFiles.Add(relativePath);
+            }
         }
 
-        return sqlFiles.Distinct().ToList();
+        return sqlFiles.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     /// <summary>
-    /// Expands wildcard patterns like **/*.sql
+    /// Gets pre and post deployment scripts explicitly configured in .csproj.
+    /// Format: &lt;PreDeploy Include="Scripts\PreDeploy.sql" /&gt;
+    ///         &lt;PostDeploy Include="Scripts\PostDeploy.sql" /&gt;
     /// </summary>
-    private List<string> ExpandWildcard(string pattern)
+    private List<(string FilePath, string Type)> GetPrePostDeploymentScripts(XDocument doc)
     {
-        var results = new List<string>();
+        var scripts = new List<(string FilePath, string Type)>();
 
-        // Convert glob pattern to regex
-        var searchOption = pattern.Contains("**") ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-        var searchPattern = pattern.Replace("**\\", "").Replace("**/", "");
+        // Look for PreDeploy elements
+        var preDeployItems = doc.Descendants()
+            .Where(e => e.Name.LocalName == "PreDeploy")
+            .Select(e => e.Attribute("Include")?.Value)
+            .Where(v => !string.IsNullOrEmpty(v))
+            .ToList();
 
-        var searchDir = _projectDirectory;
-        
-        // Handle directory prefix in pattern
-        var lastSlash = pattern.LastIndexOfAny(new[] { '\\', '/' });
-        if (lastSlash > 0 && !pattern.Substring(0, lastSlash).Contains('*'))
+        foreach (var item in preDeployItems)
         {
-            var dirPrefix = pattern.Substring(0, lastSlash).Replace("**", "");
-            searchDir = Path.Combine(_projectDirectory, dirPrefix);
-            searchPattern = pattern.Substring(lastSlash + 1);
+            scripts.Add((item!, "PreDeploy"));
         }
 
-        if (Directory.Exists(searchDir))
+        // Look for PostDeploy elements
+        var postDeployItems = doc.Descendants()
+            .Where(e => e.Name.LocalName == "PostDeploy")
+            .Select(e => e.Attribute("Include")?.Value)
+            .Where(v => !string.IsNullOrEmpty(v))
+            .ToList();
+
+        foreach (var item in postDeployItems)
         {
-            var files = Directory.GetFiles(searchDir, searchPattern, searchOption);
-            results.AddRange(files.Select(f => Path.GetRelativePath(_projectDirectory, f)));
+            scripts.Add((item!, "PostDeploy"));
         }
 
-        return results;
+        return scripts;
     }
 
     /// <summary>

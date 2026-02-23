@@ -38,6 +38,8 @@ MyDatabase/
 
 ### 2. Create .csproj File
 
+**Simple and Clean - Convention Over Configuration!**
+
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
 
@@ -45,23 +47,27 @@ MyDatabase/
     <TargetFramework>net10.0</TargetFramework>
     <OutputType>Library</OutputType>
     <IsPackable>false</IsPackable>
-    
+
     <!-- PostgreSQL Project Settings -->
     <DatabaseName>MyPostgresDB</DatabaseName>
     <DefaultSchema>public</DefaultSchema>
   </PropertyGroup>
 
+  <!-- 
+    That's it! All .sql files are automatically included.
+    Just organize them in folders and they'll be discovered.
+
+    Only Pre/Post deployment scripts need explicit configuration:
+  -->
   <ItemGroup>
-    <!-- Include all SQL files -->
-    <Content Include="Tables\**\*.sql" />
-    <Content Include="Views\**\*.sql" />
-    <Content Include="Functions\**\*.sql" />
-    <Content Include="Types\**\*.sql" />
-    <Content Include="Sequences\**\*.sql" />
+    <PreDeploy Include="Scripts\PreDeployment\BackupData.sql" />
+    <PostDeploy Include="Scripts\PostDeployment\SeedData.sql" />
   </ItemGroup>
 
 </Project>
 ```
+
+**Key Point:** 🎯 **All `.sql` files in your project directory are automatically included!** No need for `<Content Include="**\*.sql" />` declarations.
 
 ### 3. Create SQL Files
 
@@ -157,29 +163,30 @@ MyDatabase.csproj
 │   └── order_id_seq.sql
 ├── Triggers/         # Trigger definitions
 │   └── update_timestamp.sql
-└── Scripts/          # Misc scripts
-    ├── Seed/        # Data seeding scripts
-    └── Migrations/  # Manual migration scripts
+└── Scripts/          # Pre/Post deployment scripts
+    ├── PreDeployment/  # Run before schema changes
+    │   └── BackupData.sql
+    └── PostDeployment/ # Run after schema changes
+        └── SeedData.sql
 ```
 
-### Auto-Discovery
+### 🎯 Auto-Discovery (Convention Over Configuration)
 
-If your .csproj doesn't explicitly include SQL files, pgPacTool will automatically scan these directories:
-- `Tables/`
-- `Views/`
-- `Functions/`
-- `Procedures/`
-- `Types/`
-- `Sequences/`
-- `Schemas/`
-- `Scripts/`
-- `SQL/`
+**All `.sql` files are automatically discovered recursively!**
+
+pgPacTool scans your entire project directory for `.sql` files, automatically excluding:
+- `bin/` and `obj/` directories
+- `.vs/` directory
+- Hidden directories (starting with `.`)
+- Files explicitly marked as `<PreDeploy>` or `<PostDeploy>`
+
+**No explicit file includes needed!** Just organize your SQL files logically and they'll be found.
 
 ---
 
 ## 🔧 .csproj Configuration
 
-### Basic Configuration
+### Minimal Configuration (Recommended)
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
@@ -189,46 +196,32 @@ If your .csproj doesn't explicitly include SQL files, pgPacTool will automatical
     <DatabaseName>MyDB</DatabaseName>
   </PropertyGroup>
 
+  <!-- All .sql files are automatically included! -->
+  <!-- Only specify Pre/Post deployment scripts: -->
   <ItemGroup>
-    <Content Include="**\*.sql" />
+    <PreDeploy Include="Scripts\PreDeployment\*.sql" />
+    <PostDeploy Include="Scripts\PostDeployment\*.sql" />
   </ItemGroup>
 </Project>
 ```
 
-### Explicit File Inclusion
+### With Pre/Post Deployment Scripts
 
 ```xml
-<ItemGroup>
-  <Content Include="Tables\Users.sql" />
-  <Content Include="Tables\Orders.sql" />
-  <Content Include="Views\ActiveOrders.sql" />
-</ItemGroup>
-```
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
 
-### Wildcard Patterns
-
-```xml
-<ItemGroup>
-  <!-- Include all SQL files recursively -->
-  <Content Include="**\*.sql" />
-  
-  <!-- Include only specific directories -->
-  <Content Include="Tables\**\*.sql" />
-  <Content Include="Views\**\*.sql" />
-  
-  <!-- Exclude certain files -->
-  <Content Include="**\*.sql" Exclude="bin\**;obj\**;Tests\**" />
-</ItemGroup>
-```
-
-### Using None Instead of Content
-
-```xml
-<ItemGroup>
-  <!-- Using None for SQL files -->
-  <None Include="Tables\**\*.sql" />
-  <None Include="Views\**\*.sql" />
-</ItemGroup>
+  <!-- Specify deployment scripts -->
+  <ItemGroup>
+    <PreDeploy Include="Scripts\PreDeployment\BackupTables.sql" />
+    <PreDeploy Include="Scripts\PreDeployment\DisableTriggers.sql" />
+    <PostDeploy Include="Scripts\PostDeployment\SeedReferenceData.sql" />
+    <PostDeploy Include="Scripts\PostDeployment\EnableTriggers.sql" />
+  </ItemGroup>
+</Project>
 ```
 
 ---

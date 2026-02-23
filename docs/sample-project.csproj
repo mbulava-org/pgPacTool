@@ -4,24 +4,29 @@
     <TargetFramework>net10.0</TargetFramework>
     <OutputType>Library</OutputType>
     <IsPackable>false</IsPackable>
-    
+
     <!-- PostgreSQL Project Settings -->
     <DatabaseName>MyPostgresDB</DatabaseName>
     <DefaultSchema>public</DefaultSchema>
   </PropertyGroup>
 
-  <ItemGroup>
-    <!-- SQL Files to include in project -->
-    <Content Include="Tables\**\*.sql" />
-    <Content Include="Views\**\*.sql" />
-    <Content Include="Functions\**\*.sql" />
-    <Content Include="Types\**\*.sql" />
-    <Content Include="Sequences\**\*.sql" />
-  </ItemGroup>
+  <!-- 
+    Convention: All .sql files are automatically included!
+    No need to explicitly list them - just organize in folders.
 
-  <!-- Reference pgPacTool for compilation -->
+    Directory structure:
+    - Tables/
+    - Views/
+    - Functions/
+    - Types/
+    - Sequences/
+    - etc.
+  -->
+
+  <!-- Only Pre/Post deployment scripts need explicit configuration -->
   <ItemGroup>
-    <PackageReference Include="mbulava.PostgreSql.Dac" Version="1.0.0" Condition="'$(DesignTimeBuild)' != 'true'" />
+    <PreDeploy Include="Scripts\PreDeployment\BackupData.sql" />
+    <PostDeploy Include="Scripts\PostDeployment\SeedData.sql" />
   </ItemGroup>
 
 </Project>

@@ -6,45 +6,176 @@ A modern .NET 10 tool providing SQL Server Data Tools (.sqlproj) functionality f
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%2B-336791)](https://www.postgresql.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-## Current State
-* pgpac file can be generated, with orginal source code and Ast (for comparisions) included, from an existing Database
-  * pgdac file is a Simple Json Document and "should" have everything needed to compare/script for the **Supported** object types
-  * this should get more and better testing too
-* SchemaDiff can be generated, from a "Source" to "Target"
-  * Requires testing
+---
+
+## 🎉 Milestone 1 Complete!
+
+✅ **Core Extraction Functionality** - All major database objects can be extracted with full metadata and AST parsing.
+
+**What's Working:**
+- Extract complete database schemas with all metadata
+- Tables, views, functions, triggers, sequences, and types
+- Full privilege and role extraction
+- AST parsing for all objects
+- Schema comparison (basic)
+- Save/load as JSON
+
+**[📚 Full Documentation](docs/README.md)**
+
+---
+
+## Quick Start
+
+### Installation
+```bash
+# Clone the repository
+git clone https://github.com/mbulava-org/pgPacTool.git
+cd pgPacTool
+
+# Add project reference
+dotnet add reference path/to/mbulava.PostgreSql.Dac.csproj
+```
+
+### Extract a Database
+```csharp
+using mbulava.PostgreSql.Dac.Extract;
+using mbulava.PostgreSql.Dac.Models;
+
+var connectionString = "Host=localhost;Database=mydb;Username=postgres;Password=secret";
+var extractor = new PgProjectExtractor(connectionString);
+
+// Extract complete project
+var project = await extractor.ExtractPgProject("mydb");
+
+// Save to file
+await using var file = File.Create("mydb.pgpac");
+await PgProject.Save(project, file);
+
+Console.WriteLine($"Extracted {project.Schemas.Count} schemas");
+```
+
+**[📖 More Examples](docs/USER_GUIDE.md)**
+
+---
+
 ## Supported Objects
-* Roles (ownership, membership, & privileges)
-* Schemas
-* Tables
-  * columns
-  * constraints
-  * indexes
-* User-Defined Types
-  * Enum
-  * Domain
-  * Composite
-* Sequences
-## Currently Working on
-* Generate Table Migration scripts
-  * Must be sure Dependant objects are updated in the correct order
-  * Must Create & properly apply Publish Options, simlar to SqlPrij PublishOptions
-* Custom MSBuild target to compile validate an entire Project
-  * Dependancy Validations
-  * Create ONLY scripts to build
-    * I think a few ALTERs may need to be allowed for a complete comparision to function
-  * Any other Checks?
-  * Injection for Code Analyzers?
-    
+
+| Object Type | Extraction | AST Parsing | Privileges |
+|-------------|------------|-------------|------------|
+| **Schemas** | ✅ | ✅ | ✅ |
+| **Tables** | ✅ | ✅ | ✅ |
+| **Views** | ✅ | ✅ | ✅ |
+| **Functions** | ✅ | ✅ | ✅ |
+| **Procedures** | ✅ | ✅ | ✅ |
+| **Triggers** | ✅ | ✅ | ❌ |
+| **Sequences** | ✅ | ✅ | ✅ |
+| **Types (Domain)** | ✅ | ✅ | ✅ |
+| **Types (Enum)** | ✅ | ✅ | ✅ |
+| **Types (Composite)** | ✅ | ✅ | ✅ |
+| **Roles** | ✅ | N/A | N/A |
+| **Constraints** | ✅ | ✅ | N/A |
+| **Indexes** | ✅ | ✅ | N/A |
+
+---
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| **[📚 Documentation Hub](docs/README.md)** | Complete documentation index |
+| **[📖 User Guide](docs/USER_GUIDE.md)** | Getting started, examples, troubleshooting |
+| **[🔧 API Reference](docs/API_REFERENCE.md)** | Complete API with code examples |
+| **[⚙️ Workflows](docs/WORKFLOWS.md)** | CI/CD, testing, code coverage |
+
+---
+
+## Roadmap
+
+### ✅ Milestone 1: Core Extraction (COMPLETE)
+- Database schema extraction
+- All major object types
+- Privilege management
+- AST parsing
+
+### 🚧 Milestone 2: Compilation & Validation (Next)
+- Dependency validation
+- Circular dependency detection
+- Build artifacts
+
+### 📋 Milestone 3: Schema Comparison & Scripts
+- Migration script generation
+- Pre/post deployment scripts
+- SQLCMD variables
+
+### 📋 Milestone 4: Deployment
+- Deployment automation
+- Rollback support
+- Publishing profiles
+
+### 📋 Milestone 5: Packaging
+- NuGet packages
+- Package references
+
+### 📋 Milestone 6: MSBuild SDK
+- .pgproj file support
+- MSBuild integration
+- Project templates
+
+**[📅 Full Roadmap](docs/README.md)**
+
+---
+
+## Requirements
+
+- **.NET 10 SDK** or higher
+- **PostgreSQL 16+** (17 supported)
+- **Npgsql** (included as dependency)
+
+---
+
 ## Testing
-* Setup a Postgres 16+ instance using Docker.
-* Look for some sample projects https://github.com/neondatabase-labs/postgres-sample-dbs
-* Follow the instructions on how to deploy each database.
-* UnitTest1.Test1 - Update the Connection string so that it points to your Postgres instance, and database.
-* I need to expand the Unit Tests, but this is a start, and other projects are easier to build out than something new...
+
+### Run Tests
+```bash
+# All tests
+dotnet test
+
+# Smoke tests (fast validation)
+dotnet test --filter "Category=Smoke"
+
+# Integration tests (requires PostgreSQL)
+dotnet test --filter "Category=Integration"
+
+# With coverage
+dotnet test --collect:"XPlat Code Coverage"
+```
+
+### Setup Test Database
+```bash
+# Using Docker
+docker run --name pgpac-test \
+  -e POSTGRES_PASSWORD=testpass \
+  -p 5432:5432 \
+  -d postgres:16
+```
+
+**[🧪 Testing Guide](docs/WORKFLOWS.md#postgresql-testing)**
+
+---
+
+## Features
 
 - **Database Version Control** - Store your database schema as code
-- **Schema Comparison** - Compare databases and generate migration scripts
-- **Deployment Automation** - Deploy schema changes safely and reliably
+- **Schema Comparison** - Compare databases and identify differences
+- **Full Metadata** - Extract complete object definitions with AST
+- **Privilege Management** - Track all grants and role memberships
+- **PostgreSQL 16+** - Built for modern PostgreSQL
+- **.NET 10** - Latest .NET technology
+- **Type Safe** - Full IntelliSense support
+
+**Future:**
+- **Migration Scripts** - Generate deployment scripts automatically
+- **Deployment Automation** - Deploy schema changes safely
 - **Package Distribution** - Share databases as NuGet packages
 - **MSBuild Integration** - Build databases like any other .NET project
 
@@ -52,6 +183,32 @@ A modern .NET 10 tool providing SQL Server Data Tools (.sqlproj) functionality f
 
 ---
 
-## Notes
-* pg_query.dll in the mbulava.PostgreSql.Dac project is a Native library that is licensed under the PostgreSQL License, which is a permissive free software license, similar to the MIT License. You can find more details about the PostgreSQL License here: https://www.postgresql.org/about/licence/
-* I'm currently working on building multiple versions (16.0+ ONLY) of pg_query for multiple platforms (Windows, Linux, MacOS), and properly including it in the "mbulava-org.Npgquery" package. If you need a specific build or have any questions regarding the usage of pg_query.dll, please feel free to open an issue in the repository or contact me directly.
+## Contributing
+
+Contributions welcome! See [docs/WORKFLOWS.md](docs/WORKFLOWS.md) for development setup.
+
+---
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+### Third-Party Licenses
+
+**pg_query.dll** - Licensed under the PostgreSQL License (similar to MIT). 
+- [PostgreSQL License](https://www.postgresql.org/about/licence/)
+- Building multi-platform versions (Windows, Linux, macOS) for pgPacTool
+
+---
+
+## Support
+
+- **Documentation**: [docs/](docs/)
+- **Issues**: [GitHub Issues](https://github.com/mbulava-org/pgPacTool/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/mbulava-org/pgPacTool/discussions)
+
+---
+
+**Status:** Milestone 1 Complete ✅  
+**Version:** 0.1.0  
+**Last Updated:** 2026-01-31

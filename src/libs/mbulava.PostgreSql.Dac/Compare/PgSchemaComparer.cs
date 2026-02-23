@@ -104,8 +104,8 @@ namespace mbulava.PostgreSql.Dac.Compare
                 if (src.Owner != tgt.Owner)
                     tableDiff.OwnerChanged = (src.Owner, tgt.Owner);
 
-                // Definition change (SQL text or AST JSON)
-                if (src.Definition != tgt.Definition || src.AstJson != tgt.AstJson)
+                // Definition change (compare SQL text)
+                if (src.Definition != tgt.Definition)
                     tableDiff.DefinitionChanged = true;
 
                 // Column diffs
@@ -165,8 +165,8 @@ namespace mbulava.PostgreSql.Dac.Compare
                 if (src.Owner != tgt.Owner)
                     typeDiff.OwnerChanged = (src.Owner, tgt.Owner);
 
-                // Definition change
-                if (src.Definition != tgt.Definition || src.AstJson != tgt.AstJson)
+                // Definition change (compare SQL text)
+                if (src.Definition != tgt.Definition)
                     typeDiff.DefinitionChanged = true;
 
                 // Enum labels

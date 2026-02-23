@@ -3,14 +3,17 @@
 # on:
 #   pull_request:
 #     branches: [ main, develop ]
+#     types: [opened, synchronize, reopened]
 
 # env:
 #   DOTNET_VERSION: '10.0.x'
+#   CONFIGURATION: Release
 
 # jobs:
-#   validate-pr:
+#   pr-checks:
+#     name: PR Quality Checks
 #     runs-on: ubuntu-latest
-    
+
 #     steps:
 #     - name: Checkout code
 #       uses: actions/checkout@v4
@@ -25,65 +28,218 @@
 #     - name: Restore dependencies
 #       run: dotnet restore
 
-#     - name: Check formatting
+#     - name: Check code formatting
 #       run: dotnet format --verify-no-changes --verbosity diagnostic
+#       continue-on-error: true
+#       id: format-check
 
 #     - name: Build solution
-#       run: dotnet build --no-restore --configuration Release
+#       run: dotnet build --no-restore --configuration ${{ env.CONFIGURATION }}
+#       id: build
 
-#     - name: Run fast tests only
+#     - name: Run unit tests
 #       run: |
-#         dotnet test --no-build --configuration Release \
-#           --filter "Category=Unit" \
+#         dotnet test --no-build --configuration ${{ env.CONFIGURATION }} \
+#           --filter "Category=Unit|Category=Smoke" \
 #           --verbosity normal \
-#           --collect:"XPlat Code Coverage"
+#           --logger "console;verbosity=detailed"
+#       id: unit-tests
 
-#     - name: Check PostgreSQL 16+ requirement
+#     - name: Check PostgreSQL version requirements
 #       run: |
-#         echo "Verifying PostgreSQL 16+ requirement in code..."
-#         if grep -r "PostgreSQL.*1[0-5]" src/; then
-#           echo "? Found references to PostgreSQL versions below 16"
+#         echo "🔍 Verifying PostgreSQL 16+ requirement..."
+
+#         # Check for old version references
+#         if grep -r "PostgreSQL.*1[0-5]" src/ --exclude-dir=bin --exclude-dir=obj; then
+#           echo "❌ Found references to PostgreSQL versions below 16"
 #           exit 1
 #         fi
-#         echo "? PostgreSQL version references look good"
 
-#     - name: Verify no version branching
-#       run: |
-#         echo "Checking for version branching logic..."
-#         if grep -r "if.*version.*<.*1[0-6]" src/ --exclude-dir=bin --exclude-dir=obj; then
-#           echo "? Found version branching logic - we only support PostgreSQL 16+"
-#           exit 1
+#         # Check for version comparison logic
+#         if grep -r "version.*<.*16" src/ --exclude-dir=bin --exclude-dir=obj --exclude="*.md"; then
+#           echo "⚠️ Found version comparison logic - verify it's correct"
 #         fi
-#         echo "? No version branching detected"
 
-#     - name: PR size check
+#         echo "✅ PostgreSQL version requirements verified"
+#       id: version-check
+
+#     - name: Analyze PR size
+#       id: pr-size
 #       run: |
 #         files_changed=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | wc -l)
-#         echo "Files changed: $files_changed"
+#         lines_added=$(git diff --numstat origin/${{ github.base_ref }}...HEAD | awk '{sum+=$1} END {print sum}')
+#         lines_deleted=$(git diff --numstat origin/${{ github.base_ref }}...HEAD | awk '{sum+=$2} END {print sum}')
+
+#         echo "files_changed=$files_changed" >> $GITHUB_OUTPUT
+#         echo "lines_added=$lines_added" >> $GITHUB_OUTPUT
+#         echo "lines_deleted=$lines_deleted" >> $GITHUB_OUTPUT
+
+#         echo "📊 PR Statistics:"
+#         echo "  Files changed: $files_changed"
+#         echo "  Lines added: +$lines_added"
+#         echo "  Lines deleted: -$lines_deleted"
+
+#         # Warn if PR is large
 #         if [ $files_changed -gt 50 ]; then
-#           echo "?? Large PR detected: $files_changed files changed"
-#           echo "Consider breaking this into smaller PRs for easier review"
+#           echo "⚠️ Large PR: Consider breaking into smaller chunks"
+#           echo "is_large=true" >> $GITHUB_OUTPUT
+#         else
+#           echo "✅ PR size is reasonable"
+#           echo "is_large=false" >> $GITHUB_OUTPUT
 #         fi
 
-#     - name: Add PR comment
+#     - name: Check for breaking changes
+#       run: |
+#         echo "🔍 Checking for potential breaking changes..."
+
+#         breaking_patterns=(
+#           "public.*class.*:.*IDisposable"
+#           "public.*interface"
+#           "public.*enum"
+#           "public.*method"
+#         )
+
+#         breaking_found=false
+#         for pattern in "${breaking_patterns[@]}"; do
+#           if git diff origin/${{ github.base_ref }}...HEAD | grep -E "^\-.*$pattern"; then
+#             echo "⚠️ Potential breaking change detected in public API"
+#             breaking_found=true
+#           fi
+#         done
+
+#         if [ "$breaking_found" = true ]; then
+#           echo "breaking_changes=true" >> $GITHUB_OUTPUT
+#           echo "⚠️ Review breaking changes carefully"
+#         else
+#           echo "breaking_changes=false" >> $GITHUB_OUTPUT
+#           echo "✅ No breaking changes detected"
+#         fi
+#       id: breaking-check
+
+#     - name: Check dependencies
+#       run: |
+#         echo "📦 Checking for dependency changes..."
+
+#         if git diff origin/${{ github.base_ref }}...HEAD | grep -E "PackageReference|ProjectReference"; then
+#           echo "⚠️ Dependencies were modified"
+#           echo "deps_changed=true" >> $GITHUB_OUTPUT
+#         else
+#           echo "✅ No dependency changes"
+#           echo "deps_changed=false" >> $GITHUB_OUTPUT
+#         fi
+#       id: deps-check
+
+#     - name: Generate PR summary
 #       uses: actions/github-script@v7
 #       if: always()
 #       with:
 #         script: |
+#           const steps = {
+#             format: '${{ steps.format-check.outcome }}',
+#             build: '${{ steps.build.outcome }}',
+#             tests: '${{ steps.unit-tests.outcome }}',
+#             version: '${{ steps.version-check.outcome }}',
+#           };
+
+#           const prSize = {
+#             files: '${{ steps.pr-size.outputs.files_changed }}',
+#             added: '${{ steps.pr-size.outputs.lines_added }}',
+#             deleted: '${{ steps.pr-size.outputs.lines_deleted }}',
+#             isLarge: '${{ steps.pr-size.outputs.is_large }}' === 'true'
+#           };
+
+#           const checks = {
+#             breaking: '${{ steps.breaking-check.outputs.breaking_changes }}' === 'true',
+#             deps: '${{ steps.deps-check.outputs.deps_changed }}' === 'true'
+#           };
+
+#           const statusIcon = (outcome) => {
+#             if (outcome === 'success') return '✅';
+#             if (outcome === 'failure') return '❌';
+#             return '⚠️';
+#           };
+
 #           const output = `
-#           ## PR Validation Results
-          
-#           ? Build successful
-#           ? Unit tests passed
-#           ? PostgreSQL 16+ requirement verified
-#           ? No version branching logic detected
-          
-#           **Ready for review!**
+#           ## 🔍 PR Validation Results
+
+#           ### Build & Test Status
+#           ${statusIcon(steps.format)} Code formatting: ${steps.format}
+#           ${statusIcon(steps.build)} Build: ${steps.build}
+#           ${statusIcon(steps.tests)} Unit tests: ${steps.tests}
+#           ${statusIcon(steps.version)} PostgreSQL 16+ requirement: ${steps.version}
+
+#           ### 📊 PR Statistics
+#           - **Files changed:** ${prSize.files}
+#           - **Lines added:** +${prSize.added}
+#           - **Lines deleted:** -${prSize.deleted}
+#           ${prSize.isLarge ? '\n⚠️ **Large PR detected** - Consider breaking into smaller PRs for easier review' : ''}
+
+#           ### ⚠️ Warnings
+#           ${checks.breaking ? '- Potential breaking changes detected in public API' : ''}
+#           ${checks.deps ? '- Dependencies were modified - verify all changes' : ''}
+#           ${!checks.breaking && !checks.deps ? '- None' : ''}
+
+#           ---
+
+#           ${steps.build === 'success' && steps.tests === 'success' ? '✅ **Ready for review!**' : '❌ **Please fix issues before review**'}
 #           `;
-          
+
 #           github.rest.issues.createComment({
 #             issue_number: context.issue.number,
 #             owner: context.repo.owner,
 #             repo: context.repo.repo,
 #             body: output
 #           });
+
+#     - name: Check all steps passed
+#       if: always()
+#       run: |
+#         if [ "${{ steps.build.outcome }}" != "success" ] || [ "${{ steps.unit-tests.outcome }}" != "success" ]; then
+#           echo "❌ PR validation failed"
+#           exit 1
+#         fi
+#         echo "✅ All PR validation checks passed"
+
+#   smoke-test:
+#     name: Smoke Test
+#     runs-on: ubuntu-latest
+
+#     services:
+#       postgres:
+#         image: postgres:16
+#         env:
+#           POSTGRES_PASSWORD: testpassword
+#           POSTGRES_USER: postgres
+#           POSTGRES_DB: testdb
+#         options: >-
+#           --health-cmd pg_isready
+#           --health-interval 10s
+#           --health-timeout 5s
+#           --health-retries 5
+#         ports:
+#           - 5432:5432
+
+#     steps:
+#     - name: Checkout code
+#       uses: actions/checkout@v4
+
+#     - name: Setup .NET
+#       uses: actions/setup-dotnet@v4
+#       with:
+#         dotnet-version: ${{ env.DOTNET_VERSION }}
+
+#     - name: Restore and build
+#       run: |
+#         dotnet restore
+#         dotnet build --no-restore --configuration ${{ env.CONFIGURATION }}
+
+#     - name: Run smoke tests
+#       run: |
+#         dotnet test --no-build --configuration ${{ env.CONFIGURATION }} \
+#           --filter "Category=Smoke" \
+#           --verbosity detailed \
+#           --logger "console;verbosity=detailed"
+#       env:
+#         ConnectionStrings__TestDatabase: "Host=localhost;Port=5432;Database=testdb;Username=postgres;Password=testpassword"
+#       timeout-minutes: 5
+

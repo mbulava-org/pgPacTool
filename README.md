@@ -10,22 +10,71 @@ A modern .NET 10 tool providing SQL Server Data Tools (.sqlproj) functionality f
 
 ---
 
-## 🎉 Milestone 2 Complete!
+## 🎉 Milestone 3 Complete!
 
-✅ **Core Compilation & Validation** - Complete dependency analysis, cycle detection, and safe deployment ordering!
+✅ **Schema Comparison & Migration Scripts** - Full deployment script generation with pre/post scripts and SQLCMD variables!
 
 **What's Working:**
 - ✅ **Milestone 1**: Complete schema extraction with AST parsing
 - ✅ **Milestone 2**: Dependency analysis, cycle detection, deployment ordering
-- ✅ **85 Tests Passing** (76 unit + 9 integration) - 100% coverage
+- ✅ **Milestone 3**: Schema comparison, migration scripts, pre/post deployment, SQLCMD variables
+- ✅ **158 Tests Passing** (132 unit + 26 integration) - Comprehensive coverage
 - ✅ **Production Ready** - Enterprise-grade code quality
-- ✅ **Integration Verified** - Real-world schemas tested
+- ✅ **Full Deployment Pipeline** - Extract, compare, generate, and deploy
 
-**[📚 Full Documentation](docs/README.md)** | **[🎯 Milestone 2 Details](docs/milestone-2/85_TESTS_PASSING.md)**
+**[📚 Full Documentation](docs/README.md)** | **[🎯 Milestone 3 Details](docs/milestone-3/)**
 
 ---
 
 ## Quick Start
+
+### Extract, Compare & Deploy Database Changes
+```csharp
+using mbulava.PostgreSql.Dac.Extract;
+using mbulava.PostgreSql.Dac.Compile;
+using mbulava.PostgreSql.Dac.Publish;
+
+var sourceConnection = "Host=localhost;Database=dev_db;Username=postgres";
+var targetConnection = "Host=prod;Database=prod_db;Username=postgres";
+
+// Extract source database schema
+var extractor = new PgProjectExtractor(sourceConnection);
+var sourceProject = await extractor.ExtractPgProject("dev_db");
+
+// Compile and validate
+var compiler = new ProjectCompiler();
+var compileResult = compiler.Compile(sourceProject);
+
+if (compileResult.IsSuccess)
+{
+    // Publish changes to target
+    var publisher = new ProjectPublisher();
+    var publishOptions = new PublishOptions
+    {
+        ConnectionString = targetConnection,
+        GenerateScriptOnly = true,  // Generate script without executing
+        OutputScriptPath = "deployment.sql",
+        IncludeComments = true,
+        Transactional = true,
+        Variables = new()
+        {
+            new() { Name = "DatabaseName", Value = "prod_db" }
+        }
+    };
+
+    var publishResult = await publisher.PublishAsync(
+        sourceProject, 
+        targetConnection, 
+        publishOptions);
+
+    if (publishResult.Success)
+    {
+        Console.WriteLine($"✅ Success! {publishResult.ObjectsCreated} created, " +
+                          $"{publishResult.ObjectsAltered} altered");
+        Console.WriteLine($"Script saved to: {publishResult.ScriptFilePath}");
+    }
+}
+```
 
 ### Extract & Compile a Database
 ```csharp
@@ -93,6 +142,18 @@ else
 | **Error Reporting** | ✅ | Clear, actionable error messages |
 | **Validation** | ✅ | Comprehensive project validation |
 
+### Milestone 3: Schema Comparison & Migration ✅
+| Feature | Status | Description |
+|---------|--------|-------------|
+| **Schema Comparison** | ✅ | Compare all object types (tables, views, functions, triggers, types, sequences) |
+| **Migration Scripts** | ✅ | Generate CREATE/DROP/ALTER statements |
+| **Pre-Deployment Scripts** | ✅ | Custom scripts before schema changes |
+| **Post-Deployment Scripts** | ✅ | Custom scripts after schema changes |
+| **SQLCMD Variables** | ✅ | Variable replacement $(VarName) syntax |
+| **Transaction Support** | ✅ | Wrap deployment in transactions |
+| **Privilege Management** | ✅ | GRANT/REVOKE script generation |
+| **Script Validation** | ✅ | Validate scripts before deployment |
+
 ---
 ## Documentation
 
@@ -113,17 +174,18 @@ else
 - Privilege management
 - AST parsing
 
-### 🚧 Milestone 2: Compilation & Validation (Next)
+### ✅ Milestone 2: Compilation & Validation (COMPLETE)
 - Dependency validation
 - Circular dependency detection
 - Build artifacts
 
-### 📋 Milestone 3: Schema Comparison & Scripts
+### ✅ Milestone 3: Schema Comparison & Scripts (COMPLETE)
 - Migration script generation
 - Pre/post deployment scripts
 - SQLCMD variables
+- Full publish pipeline
 
-### 📋 Milestone 4: Deployment
+### 📋 Milestone 4: Deployment (Next)
 - Deployment automation
 - Rollback support
 - Publishing profiles

@@ -14,6 +14,9 @@ namespace mbulava.PostgreSql.Dac.Models
         public (string SourceOwner, string TargetOwner)? OwnerChanged { get; set; }
         public List<PgPrivilegeDiff> PrivilegeChanges { get; set; } = new();
         public List<PgTableDiff> TableDiffs { get; set; } = new();
+        public List<PgViewDiff> ViewDiffs { get; set; } = new();
+        public List<PgFunctionDiff> FunctionDiffs { get; set; } = new();
+        public List<PgTriggerDiff> TriggerDiffs { get; set; } = new();
         public List<PgTypeDiff> TypeDiffs { get; set; } = new();
         public List<PgSequenceDiff> SequenceDiffs { get; set; } = new();
     }
@@ -87,6 +90,10 @@ namespace mbulava.PostgreSql.Dac.Models
         // Definition changes
         public bool DefinitionChanged { get; set; }
 
+        // Source/target definitions for script generation
+        public string? SourceDefinition { get; set; }
+        public string? TargetDefinition { get; set; }
+
         // Kind-specific differences
         public List<string>? SourceEnumLabels { get; set; }
         public List<string>? TargetEnumLabels { get; set; }
@@ -110,6 +117,62 @@ namespace mbulava.PostgreSql.Dac.Models
         public List<SeqOption>? TargetOptions { get; set; }
 
         public List<PgPrivilegeDiff> PrivilegeChanges { get; set; } = new();
+    }
+
+    public class PgViewDiff
+    {
+        public string ViewName { get; set; } = string.Empty;
+
+        // Ownership changes
+        public (string SourceOwner, string TargetOwner)? OwnerChanged { get; set; }
+
+        // Definition changes
+        public bool DefinitionChanged { get; set; }
+
+        // Source/target definitions for comparison
+        public string? SourceDefinition { get; set; }
+        public string? TargetDefinition { get; set; }
+
+        // Materialized flag change
+        public bool? SourceIsMaterialized { get; set; }
+        public bool? TargetIsMaterialized { get; set; }
+
+        // Privilege changes
+        public List<PgPrivilegeDiff> PrivilegeChanges { get; set; } = new();
+    }
+
+    public class PgFunctionDiff
+    {
+        public string FunctionName { get; set; } = string.Empty;
+
+        // Ownership changes
+        public (string SourceOwner, string TargetOwner)? OwnerChanged { get; set; }
+
+        // Definition changes
+        public bool DefinitionChanged { get; set; }
+
+        // Source/target definitions for comparison
+        public string? SourceDefinition { get; set; }
+        public string? TargetDefinition { get; set; }
+
+        // Privilege changes
+        public List<PgPrivilegeDiff> PrivilegeChanges { get; set; } = new();
+    }
+
+    public class PgTriggerDiff
+    {
+        public string TriggerName { get; set; } = string.Empty;
+        public string TableName { get; set; } = string.Empty;
+
+        // Ownership changes (triggers inherit table ownership)
+        public (string SourceOwner, string TargetOwner)? OwnerChanged { get; set; }
+
+        // Definition changes
+        public bool DefinitionChanged { get; set; }
+
+        // Source/target definitions for comparison
+        public string? SourceDefinition { get; set; }
+        public string? TargetDefinition { get; set; }
     }
 
 }

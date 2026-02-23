@@ -38,7 +38,15 @@ namespace mbulava.PostgreSql.Dac.Compare
             // Compare sequences
             diff.SequenceDiffs = CompareSequences(source.Sequences, target.Sequences, options);
 
-            // Views, Functions, Triggers can be added later
+            // Compare views
+            diff.ViewDiffs = CompareViews(source.Views, target.Views, options);
+
+            // Compare functions
+            diff.FunctionDiffs = CompareFunctions(source.Functions, target.Functions, options);
+
+            // Compare triggers
+            diff.TriggerDiffs = CompareTriggers(source.Triggers, target.Triggers, options);
+
             return diff;
         }
 
@@ -146,7 +154,10 @@ namespace mbulava.PostgreSql.Dac.Compare
                     diffs.Add(new PgTypeDiff
                     {
                         TypeName = src.Name,
-                        DefinitionChanged = true // missing in target
+                        DefinitionChanged = true, // missing in target
+                        SourceDefinition = src.Definition,
+                        TargetDefinition = null,
+                        SourceKind = src.Kind
                     });
                     continue;
                 }
@@ -167,7 +178,11 @@ namespace mbulava.PostgreSql.Dac.Compare
 
                 // Definition change (compare SQL text)
                 if (src.Definition != tgt.Definition)
+                {
                     typeDiff.DefinitionChanged = true;
+                    typeDiff.SourceDefinition = src.Definition;
+                    typeDiff.TargetDefinition = tgt.Definition;
+                }
 
                 // Enum labels
                 if (src.Kind == PgTypeKind.Enum)
@@ -415,6 +430,197 @@ namespace mbulava.PostgreSql.Dac.Compare
                     diffs.Add(new PgIndexDiff
                     {
                         IndexName = tgt.Name,
+                        SourceDefinition = null,
+                        TargetDefinition = tgt.Definition
+                    });
+                }
+            }
+
+            return diffs;
+        }
+
+        private List<PgViewDiff> CompareViews(List<PgView> sourceViews, List<PgView> targetViews, CompareOptions options)
+        {
+            var diffs = new List<PgViewDiff>();
+
+            foreach (var src in sourceViews)
+            {
+                var tgt = targetViews.FirstOrDefault(v => v.Name == src.Name);
+                if (tgt == null)
+                {
+                    diffs.Add(new PgViewDiff
+                    {
+                        ViewName = src.Name,
+                        DefinitionChanged = true,
+                        SourceDefinition = src.Definition,
+                        TargetDefinition = null,
+                        SourceIsMaterialized = src.IsMaterialized,
+                        TargetIsMaterialized = null
+                    });
+                    continue;
+                }
+
+                var viewDiff = new PgViewDiff { ViewName = src.Name };
+
+                // Owner change
+                if (options.CompareOwners && src.Owner != tgt.Owner)
+                    viewDiff.OwnerChanged = (src.Owner, tgt.Owner);
+
+                // Materialized flag change
+                if (src.IsMaterialized != tgt.IsMaterialized)
+                {
+                    viewDiff.SourceIsMaterialized = src.IsMaterialized;
+                    viewDiff.TargetIsMaterialized = tgt.IsMaterialized;
+                    viewDiff.DefinitionChanged = true;
+                }
+
+                // Definition change (compare normalized SQL)
+                if (src.Definition != tgt.Definition)
+                {
+                    viewDiff.DefinitionChanged = true;
+                    viewDiff.SourceDefinition = src.Definition;
+                    viewDiff.TargetDefinition = tgt.Definition;
+                }
+
+                // Privileges
+                if (options.ComparePrivileges)
+                    viewDiff.PrivilegeChanges = ComparePrivileges(src.Privileges, tgt.Privileges);
+
+                if (viewDiff.DefinitionChanged || viewDiff.OwnerChanged != null || viewDiff.PrivilegeChanges.Any())
+                    diffs.Add(viewDiff);
+            }
+
+            // Extra views in target
+            foreach (var tgt in targetViews)
+            {
+                if (!sourceViews.Any(v => v.Name == tgt.Name))
+                {
+                    diffs.Add(new PgViewDiff
+                    {
+                        ViewName = tgt.Name,
+                        DefinitionChanged = true,
+                        SourceDefinition = null,
+                        TargetDefinition = tgt.Definition,
+                        SourceIsMaterialized = null,
+                        TargetIsMaterialized = tgt.IsMaterialized
+                    });
+                }
+            }
+
+            return diffs;
+        }
+
+        private List<PgFunctionDiff> CompareFunctions(List<PgFunction> sourceFunctions, List<PgFunction> targetFunctions, CompareOptions options)
+        {
+            var diffs = new List<PgFunctionDiff>();
+
+            foreach (var src in sourceFunctions)
+            {
+                var tgt = targetFunctions.FirstOrDefault(f => f.Name == src.Name);
+                if (tgt == null)
+                {
+                    diffs.Add(new PgFunctionDiff
+                    {
+                        FunctionName = src.Name,
+                        DefinitionChanged = true,
+                        SourceDefinition = src.Definition,
+                        TargetDefinition = null
+                    });
+                    continue;
+                }
+
+                var funcDiff = new PgFunctionDiff { FunctionName = src.Name };
+
+                // Owner change
+                if (options.CompareOwners && src.Owner != tgt.Owner)
+                    funcDiff.OwnerChanged = (src.Owner, tgt.Owner);
+
+                // Definition change (compare SQL text)
+                if (src.Definition != tgt.Definition)
+                {
+                    funcDiff.DefinitionChanged = true;
+                    funcDiff.SourceDefinition = src.Definition;
+                    funcDiff.TargetDefinition = tgt.Definition;
+                }
+
+                // Privileges
+                if (options.ComparePrivileges)
+                    funcDiff.PrivilegeChanges = ComparePrivileges(src.Privileges, tgt.Privileges);
+
+                if (funcDiff.DefinitionChanged || funcDiff.OwnerChanged != null || funcDiff.PrivilegeChanges.Any())
+                    diffs.Add(funcDiff);
+            }
+
+            // Extra functions in target
+            foreach (var tgt in targetFunctions)
+            {
+                if (!sourceFunctions.Any(f => f.Name == tgt.Name))
+                {
+                    diffs.Add(new PgFunctionDiff
+                    {
+                        FunctionName = tgt.Name,
+                        DefinitionChanged = true,
+                        SourceDefinition = null,
+                        TargetDefinition = tgt.Definition
+                    });
+                }
+            }
+
+            return diffs;
+        }
+
+        private List<PgTriggerDiff> CompareTriggers(List<PgTrigger> sourceTriggers, List<PgTrigger> targetTriggers, CompareOptions options)
+        {
+            var diffs = new List<PgTriggerDiff>();
+
+            foreach (var src in sourceTriggers)
+            {
+                var tgt = targetTriggers.FirstOrDefault(t => t.Name == src.Name && t.TableName == src.TableName);
+                if (tgt == null)
+                {
+                    diffs.Add(new PgTriggerDiff
+                    {
+                        TriggerName = src.Name,
+                        TableName = src.TableName,
+                        DefinitionChanged = true,
+                        SourceDefinition = src.Definition,
+                        TargetDefinition = null
+                    });
+                    continue;
+                }
+
+                var triggerDiff = new PgTriggerDiff
+                {
+                    TriggerName = src.Name,
+                    TableName = src.TableName
+                };
+
+                // Owner change (triggers inherit table ownership)
+                if (options.CompareOwners && src.Owner != tgt.Owner)
+                    triggerDiff.OwnerChanged = (src.Owner, tgt.Owner);
+
+                // Definition change (compare SQL text)
+                if (src.Definition != tgt.Definition)
+                {
+                    triggerDiff.DefinitionChanged = true;
+                    triggerDiff.SourceDefinition = src.Definition;
+                    triggerDiff.TargetDefinition = tgt.Definition;
+                }
+
+                if (triggerDiff.DefinitionChanged || triggerDiff.OwnerChanged != null)
+                    diffs.Add(triggerDiff);
+            }
+
+            // Extra triggers in target
+            foreach (var tgt in targetTriggers)
+            {
+                if (!sourceTriggers.Any(t => t.Name == tgt.Name && t.TableName == tgt.TableName))
+                {
+                    diffs.Add(new PgTriggerDiff
+                    {
+                        TriggerName = tgt.Name,
+                        TableName = tgt.TableName,
+                        DefinitionChanged = true,
                         SourceDefinition = null,
                         TargetDefinition = tgt.Definition
                     });

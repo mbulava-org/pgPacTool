@@ -25,6 +25,7 @@
     <Project Path="src/libs/Npgquery/Npgquery/Npgquery.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/mbulava.PostgreSql.Dac.Tests/mbulava.PostgreSql.Dac.Tests.csproj" />
     <Project Path="tests/ProjectExtract-Tests/ProjectExtract-Tests.csproj" />
   </Folder>
 </Solution>

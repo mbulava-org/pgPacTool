@@ -467,24 +467,16 @@ public class ViewExtractionTests
         var view = schema?.Views.FirstOrDefault(v => v.Name == "customer_list");
 
         Assert.That(view, Is.Not.Null);
-        
-        // Check if AST is parsed (implementation may vary)
+
+        // Check if AST is parsed
         if (view!.Ast != null)
         {
             Assert.That(view.Ast, Is.Not.Null, "AST should be parsed");
             TestContext.Out.WriteLine($"✓ View AST parsed successfully");
         }
-        
-        // At minimum, AstJson should be available
-        if (view.AstJson != null)
-        {
-            Assert.That(view.AstJson, Is.Not.Empty, "AstJson should not be empty");
-            TestContext.Out.WriteLine($"✓ View AstJson available");
-        }
 
         TestContext.Out.WriteLine($"  View: {view.Name}");
         TestContext.Out.WriteLine($"  AST present: {view.Ast != null}");
-        TestContext.Out.WriteLine($"  AstJson present: {view.AstJson != null}");
     }
 
     #endregion

@@ -102,8 +102,7 @@ namespace mbulava.PostgreSql.Dac.Extract
                     Name = schema.Name, 
                     Owner = schema.Owner, 
                     Ast = schema.Ast,
-                    AstJson = schema.AstJson,
-                    Privileges = schema.Privileges  // ✅ Don't forget to copy privileges!
+                    Privileges = schema.Privileges
                 };
 
                 pgSchema.Tables.AddRange(await ExtractTablesAsync(schema.Name));
@@ -152,10 +151,9 @@ namespace mbulava.PostgreSql.Dac.Extract
                     throw new InvalidOperationException($"Invalid SQL for schema {name}: {result.Error}");
 
                 CreateSchemaStmt? ast = null;
-                string? astJson = null;
                 if (result.ParseTree != null)
                 {
-                    astJson = result.ParseTree.RootElement.GetRawText();
+                    var astJson = result.ParseTree.RootElement.GetRawText();
                     ast = JsonSerializer.Deserialize<CreateSchemaStmt>(astJson);
                 }
 
@@ -167,7 +165,6 @@ namespace mbulava.PostgreSql.Dac.Extract
                     Name = name,
                     Owner = owner,
                     Ast = ast,
-                    AstJson = astJson,
                     Privileges = await ExtractPrivilegesAsync(privilegesSql, "schema", name)
                 });
             }
@@ -449,8 +446,8 @@ namespace mbulava.PostgreSql.Dac.Extract
                 var table = new PgTable
                 {
                     Name = name,
+                    Definition = sql,
                     Ast = ast,
-                    AstJson = JsonSerializer.Serialize(ast),
                     Owner = owner
                 };
 
@@ -705,7 +702,6 @@ namespace mbulava.PostgreSql.Dac.Extract
             foreach (var (oid, name, typtype, owner) in typeInfos)
             {
                 string sql;
-                string? astJson;
                 PgType pgType = new PgType { Name = name, Owner = owner };
 
                 switch (typtype)
@@ -735,11 +731,10 @@ namespace mbulava.PostgreSql.Dac.Extract
                         }
 
                         var domResult = new Parser().Parse(sql);
-                        astJson = domResult.ParseTree?.RootElement.GetRawText();
+                        var astJson = domResult.ParseTree?.RootElement.GetRawText();
                         pgType.Kind = PgTypeKind.Domain;
                         pgType.Definition = sql;
                         pgType.AstDomain = JsonSerializer.Deserialize<CreateDomainStmt>(astJson!);
-                        pgType.AstJson = astJson;
                         break;
 
                     case 'e': // Enum
@@ -761,12 +756,11 @@ namespace mbulava.PostgreSql.Dac.Extract
                         sql = $"CREATE TYPE {schema}.{name} AS ENUM ({string.Join(", ", labels.Select(l => $"'{l}'"))});";
 
                         var enumResult = new Parser().Parse(sql);
-                        astJson = enumResult.ParseTree?.RootElement.GetRawText();
+                        var enumAstJson = enumResult.ParseTree?.RootElement.GetRawText();
                         pgType.Kind = PgTypeKind.Enum;
                         pgType.Definition = sql;
                         pgType.EnumLabels = labels;
-                        pgType.AstEnum = JsonSerializer.Deserialize<CreateEnumStmt>(astJson!);
-                        pgType.AstJson = astJson;
+                        pgType.AstEnum = JsonSerializer.Deserialize<CreateEnumStmt>(enumAstJson!);
                         break;
 
                     case 'c': // Composite
@@ -799,12 +793,11 @@ namespace mbulava.PostgreSql.Dac.Extract
                         sql = $"CREATE TYPE {schema}.{name} AS ({attrSql});";
 
                         var compResult = new Parser().Parse(sql);
-                        astJson = compResult.ParseTree?.RootElement.GetRawText();
+                        var compAstJson = compResult.ParseTree?.RootElement.GetRawText();
                         pgType.Kind = PgTypeKind.Composite;
                         pgType.Definition = sql;
                         pgType.CompositeAttributes = attrs;
-                        pgType.AstComposite = JsonSerializer.Deserialize<CompositeTypeStmt>(astJson!);
-                        pgType.AstJson = astJson;
+                        pgType.AstComposite = JsonSerializer.Deserialize<CompositeTypeStmt>(compAstJson!);
                         break;
                 }
 
@@ -915,7 +908,6 @@ namespace mbulava.PostgreSql.Dac.Extract
                     Owner = owner,
                     Definition = definition,
                     Ast = ast,
-                    AstJson = astJson,
                     Options = options,
                     Privileges = privileges
                 });
@@ -968,12 +960,11 @@ namespace mbulava.PostgreSql.Dac.Extract
                 var result = parser.Parse(createViewSql);
 
                 ViewStmt? ast = null;
-                string? astJson = null;
                 if (result.IsSuccess && result.ParseTree != null)
                 {
                     try
                     {
-                        astJson = result.ParseTree.RootElement.GetRawText();
+                        var astJson = result.ParseTree.RootElement.GetRawText();
                         ast = System.Text.Json.JsonSerializer.Deserialize<ViewStmt>(astJson);
                     }
                     catch (Exception ex)
@@ -997,7 +988,6 @@ namespace mbulava.PostgreSql.Dac.Extract
                     Owner = owner,
                     Definition = definition,
                     Ast = ast,
-                    AstJson = astJson,
                     IsMaterialized = isMaterialized,
                     Privileges = privileges,
                     Dependencies = new List<string>() // TODO: Extract dependencies from pg_depend
@@ -1039,13 +1029,31 @@ namespace mbulava.PostgreSql.Dac.Extract
                 var definition = reader.GetString(3);
                 var kind = reader.GetChar(4);
 
+                // Parse AST from function definition
+                CreateFunctionStmt? ast = null;
+                try
+                {
+                    var parser = new Parser();
+                    var result = parser.Parse(definition);
+
+                    if (result.IsSuccess && result.ParseTree != null)
+                    {
+                        var astJson = result.ParseTree.RootElement.GetRawText();
+                        ast = JsonSerializer.Deserialize<CreateFunctionStmt>(astJson);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Warning: Failed to parse AST for function {name}: {ex.Message}");
+                    // Continue without AST - definition is still available
+                }
+
                 functions.Add(new PgFunction
                 {
                     Name = name,
                     Owner = owner,
                     Definition = definition,
-                    Ast = null,  // TODO: Parse function AST
-                    AstJson = null,
+                    Ast = ast,
                     Privileges = new List<PgPrivilege>()  // TODO: Extract function privileges
                 });
             }
@@ -1084,11 +1092,31 @@ namespace mbulava.PostgreSql.Dac.Extract
                 var tableName = reader.GetString(2);
                 var definition = reader.GetString(3);
 
+                // Parse AST from trigger definition
+                CreateTrigStmt? ast = null;
+                try
+                {
+                    var parser = new Parser();
+                    var result = parser.Parse(definition);
+
+                    if (result.IsSuccess && result.ParseTree != null)
+                    {
+                        var astJson = result.ParseTree.RootElement.GetRawText();
+                        ast = JsonSerializer.Deserialize<CreateTrigStmt>(astJson);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Warning: Failed to parse AST for trigger {name}: {ex.Message}");
+                    // Continue without AST - definition is still available
+                }
+
                 triggers.Add(new PgTrigger
                 {
                     Name = name,
                     TableName = tableName,
                     Definition = definition,
+                    Ast = ast,
                     Owner = "postgres"  // Triggers inherit table owner
                 });
             }

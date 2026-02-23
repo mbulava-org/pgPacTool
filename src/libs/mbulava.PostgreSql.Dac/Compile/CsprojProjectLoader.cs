@@ -1,6 +1,6 @@
 using mbulava.PostgreSql.Dac.Models;
 using Npgquery;
-using System.Text.RegularExpressions;
+using System.Text.Json;
 using System.Xml.Linq;
 
 namespace mbulava.PostgreSql.Dac.Compile;
@@ -8,16 +8,18 @@ namespace mbulava.PostgreSql.Dac.Compile;
 /// <summary>
 /// Loads PostgreSQL projects from SDK-style .csproj files.
 /// Similar to MSBuild.Sdk.SqlProj for SQL Server.
+/// Uses Npgquery parser for accurate SQL parsing.
 /// </summary>
-public partial class CsprojProjectLoader
+public class CsprojProjectLoader
 {
     private readonly string _projectPath;
     private readonly string _projectDirectory;
+    private readonly Parser _parser = new();
 
     public CsprojProjectLoader(string projectPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(projectPath);
-        
+
         if (!File.Exists(projectPath))
         {
             throw new FileNotFoundException($"Project file not found: {projectPath}");
@@ -39,7 +41,7 @@ public partial class CsprojProjectLoader
 
         // Parse .csproj XML
         var doc = XDocument.Load(_projectPath);
-        
+
         // Get SQL files from the project
         var sqlFiles = GetSqlFilesFromProject(doc);
 
@@ -152,21 +154,35 @@ public partial class CsprojProjectLoader
     }
 
     /// <summary>
-    /// Parses a SQL file and adds objects to the schema.
+    /// Parses a SQL file and adds objects to the schema using Npgquery parser.
     /// </summary>
     private async Task ParseSqlFileAsync(string sql, string fileName, PgSchema schema)
     {
         try
         {
-            // Split by statement delimiter (;) and parse each statement
-            var statements = SplitSqlStatements(sql);
+            // Parse with Npgquery
+            var result = _parser.Parse(sql);
 
-            foreach (var statement in statements)
+            if (!result.IsSuccess)
             {
-                if (string.IsNullOrWhiteSpace(statement))
+                Console.WriteLine($"Warning: Failed to parse {fileName}: {result.Error}");
+                return;
+            }
+
+            if (result.ParseTree == null)
+            {
+                return;
+            }
+
+            // Process each statement in the parse tree
+            var stmts = result.ParseTree.RootElement.GetProperty("stmts");
+
+            foreach (var stmtWrapper in stmts.EnumerateArray())
+            {
+                if (!stmtWrapper.TryGetProperty("stmt", out var stmt))
                     continue;
 
-                await ParseStatementAsync(statement.Trim(), fileName, schema);
+                await ProcessStatementAsync(stmt, sql, fileName, schema);
             }
         }
         catch (Exception ex)
@@ -176,260 +192,388 @@ public partial class CsprojProjectLoader
     }
 
     /// <summary>
-    /// Splits SQL into individual statements.
+    /// Processes a single parsed statement and adds the appropriate object to the schema.
     /// </summary>
-    private static List<string> SplitSqlStatements(string sql)
+    private async Task ProcessStatementAsync(JsonElement stmt, string fullSql, string fileName, PgSchema schema)
     {
-        var statements = new List<string>();
-        var currentStatement = new System.Text.StringBuilder();
-        var inString = false;
-        var inComment = false;
-        var inBlockComment = false;
-
-        for (int i = 0; i < sql.Length; i++)
-        {
-            var c = sql[i];
-            var next = i < sql.Length - 1 ? sql[i + 1] : '\0';
-
-            // Handle comments
-            if (!inString)
-            {
-                if (c == '-' && next == '-' && !inBlockComment)
-                {
-                    inComment = true;
-                }
-                else if (c == '/' && next == '*')
-                {
-                    inBlockComment = true;
-                    i++; // Skip next char
-                    continue;
-                }
-                else if (c == '*' && next == '/' && inBlockComment)
-                {
-                    inBlockComment = false;
-                    i++; // Skip next char
-                    continue;
-                }
-                else if (c == '\n' && inComment)
-                {
-                    inComment = false;
-                }
-            }
-
-            // Handle strings
-            if (c == '\'' && !inComment && !inBlockComment)
-            {
-                inString = !inString;
-            }
-
-            // Statement delimiter
-            if (c == ';' && !inString && !inComment && !inBlockComment)
-            {
-                statements.Add(currentStatement.ToString());
-                currentStatement.Clear();
-                continue;
-            }
-
-            if (!inComment && !inBlockComment)
-            {
-                currentStatement.Append(c);
-            }
-        }
-
-        // Add final statement if any
-        if (currentStatement.Length > 0)
-        {
-            statements.Add(currentStatement.ToString());
-        }
-
-        return statements;
-    }
-
-    /// <summary>
-    /// Parses a single SQL statement and adds the appropriate object to the schema.
-    /// </summary>
-    private static async Task ParseStatementAsync(string statement, string fileName, PgSchema schema)
-    {
-        var upperStatement = statement.TrimStart().ToUpperInvariant();
-
         try
         {
-            if (upperStatement.StartsWith("CREATE TABLE"))
+            // Check what type of statement this is
+            if (stmt.TryGetProperty("CreateStmt", out var createStmt))
             {
-                var table = ParseCreateTable(statement, fileName);
-                if (table != null)
-                {
-                    schema.Tables.Add(table);
-                }
+                // This is a CREATE TABLE statement
+                await ProcessCreateTableAsync(createStmt, fullSql, fileName, schema);
             }
-            else if (upperStatement.StartsWith("CREATE VIEW") || upperStatement.StartsWith("CREATE OR REPLACE VIEW"))
+            else if (stmt.TryGetProperty("ViewStmt", out var viewStmt))
             {
-                var view = ParseCreateView(statement, fileName);
-                if (view != null)
-                {
-                    schema.Views.Add(view);
-                }
+                // This is a CREATE VIEW statement
+                await ProcessCreateViewAsync(viewStmt, fullSql, fileName, schema);
             }
-            else if (upperStatement.StartsWith("CREATE FUNCTION") || upperStatement.StartsWith("CREATE OR REPLACE FUNCTION"))
+            else if (stmt.TryGetProperty("CreateFunctionStmt", out var functionStmt))
             {
-                var function = ParseCreateFunction(statement, fileName);
-                if (function != null)
-                {
-                    schema.Functions.Add(function);
-                }
+                // This is a CREATE FUNCTION statement
+                await ProcessCreateFunctionAsync(functionStmt, fullSql, fileName, schema);
             }
-            else if (upperStatement.StartsWith("CREATE TYPE"))
+            else if (stmt.TryGetProperty("CompositeTypeStmt", out var compositeStmt))
             {
-                var type = ParseCreateType(statement, fileName);
-                if (type != null)
-                {
-                    schema.Types.Add(type);
-                }
+                // This is a CREATE TYPE (composite) statement
+                await ProcessCreateCompositeTypeAsync(compositeStmt, fullSql, fileName, schema);
             }
-            else if (upperStatement.StartsWith("CREATE SEQUENCE"))
+            else if (stmt.TryGetProperty("CreateEnumStmt", out var enumStmt))
             {
-                var sequence = ParseCreateSequence(statement, fileName);
-                if (sequence != null)
-                {
-                    schema.Sequences.Add(sequence);
-                }
+                // This is a CREATE TYPE AS ENUM statement
+                await ProcessCreateEnumTypeAsync(enumStmt, fullSql, fileName, schema);
             }
-            else if (upperStatement.StartsWith("CREATE TRIGGER"))
+            else if (stmt.TryGetProperty("CreateDomainStmt", out var domainStmt))
             {
-                var trigger = ParseCreateTrigger(statement, fileName);
-                if (trigger != null)
-                {
-                    schema.Triggers.Add(trigger);
-                }
+                // This is a CREATE DOMAIN statement
+                await ProcessCreateDomainTypeAsync(domainStmt, fullSql, fileName, schema);
+            }
+            else if (stmt.TryGetProperty("CreateSeqStmt", out var seqStmt))
+            {
+                // This is a CREATE SEQUENCE statement
+                await ProcessCreateSequenceAsync(seqStmt, fullSql, fileName, schema);
+            }
+            else if (stmt.TryGetProperty("CreateTrigStmt", out var trigStmt))
+            {
+                // This is a CREATE TRIGGER statement
+                await ProcessCreateTriggerAsync(trigStmt, fullSql, fileName, schema);
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Warning: Failed to parse statement in {fileName}: {ex.Message}");
+            Console.WriteLine($"Warning: Failed to process statement in {fileName}: {ex.Message}");
         }
 
         await Task.CompletedTask;
     }
 
-    // Simple regex patterns for object name extraction
-    [GeneratedRegex(@"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:(\w+)\.)?(\w+)", RegexOptions.IgnoreCase)]
-    private static partial Regex TableNamePattern();
-
-    [GeneratedRegex(@"CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\s+(?:(\w+)\.)?(\w+)", RegexOptions.IgnoreCase)]
-    private static partial Regex ViewNamePattern();
-
-    [GeneratedRegex(@"CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:(\w+)\.)?(\w+)", RegexOptions.IgnoreCase)]
-    private static partial Regex FunctionNamePattern();
-
-    [GeneratedRegex(@"CREATE\s+TYPE\s+(?:(\w+)\.)?(\w+)", RegexOptions.IgnoreCase)]
-    private static partial Regex TypeNamePattern();
-
-    [GeneratedRegex(@"CREATE\s+SEQUENCE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:(\w+)\.)?(\w+)", RegexOptions.IgnoreCase)]
-    private static partial Regex SequenceNamePattern();
-
-    [GeneratedRegex(@"CREATE\s+TRIGGER\s+(\w+)", RegexOptions.IgnoreCase)]
-    private static partial Regex TriggerNamePattern();
-
-    private static PgTable? ParseCreateTable(string sql, string fileName)
+    private async Task ProcessCreateTableAsync(JsonElement createStmt, string fullSql, string fileName, PgSchema schema)
     {
-        var match = TableNamePattern().Match(sql);
-        if (!match.Success) return null;
-
-        var tableName = match.Groups[2].Value;
-        
-        return new PgTable
+        try
         {
-            Name = tableName,
-            Definition = sql.Trim(),
-            Owner = "postgres"
-        };
+            if (!createStmt.TryGetProperty("relation", out var relation))
+                return;
+
+            var tableName = GetRelationName(relation);
+            if (string.IsNullOrEmpty(tableName))
+                return;
+
+            // Extract the CREATE TABLE statement from the full SQL
+            var tableDefinition = ExtractStatementForObject(fullSql, "TABLE", tableName);
+
+            var table = new PgTable
+            {
+                Name = tableName,
+                Definition = tableDefinition ?? fullSql.Trim(),
+                Owner = "postgres"
+            };
+
+            schema.Tables.Add(table);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Warning: Failed to process CREATE TABLE in {fileName}: {ex.Message}");
+        }
+
+        await Task.CompletedTask;
     }
 
-    private static PgView? ParseCreateView(string sql, string fileName)
+    private async Task ProcessCreateViewAsync(JsonElement viewStmt, string fullSql, string fileName, PgSchema schema)
     {
-        var match = ViewNamePattern().Match(sql);
-        if (!match.Success) return null;
-
-        var viewName = match.Groups[2].Value;
-
-        return new PgView
+        try
         {
-            Name = viewName,
-            Definition = sql.Trim(),
-            Owner = "postgres",
-            IsMaterialized = sql.ToUpperInvariant().Contains("MATERIALIZED VIEW")
-        };
+            if (!viewStmt.TryGetProperty("view", out var viewRelation))
+                return;
+
+            var viewName = GetRelationName(viewRelation);
+            if (string.IsNullOrEmpty(viewName))
+                return;
+
+            // Check if it's a materialized view
+            var isMaterialized = viewStmt.TryGetProperty("replace", out _) ? false : 
+                                 fullSql.ToUpperInvariant().Contains("MATERIALIZED VIEW");
+
+            var viewDefinition = ExtractStatementForObject(fullSql, isMaterialized ? "MATERIALIZED VIEW" : "VIEW", viewName);
+
+            var view = new PgView
+            {
+                Name = viewName,
+                Definition = viewDefinition ?? fullSql.Trim(),
+                Owner = "postgres",
+                IsMaterialized = isMaterialized
+            };
+
+            schema.Views.Add(view);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Warning: Failed to process CREATE VIEW in {fileName}: {ex.Message}");
+        }
+
+        await Task.CompletedTask;
     }
 
-    private static PgFunction? ParseCreateFunction(string sql, string fileName)
+    private async Task ProcessCreateFunctionAsync(JsonElement functionStmt, string fullSql, string fileName, PgSchema schema)
     {
-        var match = FunctionNamePattern().Match(sql);
-        if (!match.Success) return null;
-
-        var functionName = match.Groups[2].Value;
-
-        return new PgFunction
+        try
         {
-            Name = functionName,
-            Definition = sql.Trim(),
-            Owner = "postgres"
-        };
+            if (!functionStmt.TryGetProperty("funcname", out var funcnameArray))
+                return;
+
+            var functionName = GetQualifiedName(funcnameArray);
+            if (string.IsNullOrEmpty(functionName))
+                return;
+
+            var functionDefinition = ExtractStatementForObject(fullSql, "FUNCTION", functionName);
+
+            var function = new PgFunction
+            {
+                Name = functionName,
+                Definition = functionDefinition ?? fullSql.Trim(),
+                Owner = "postgres"
+            };
+
+            schema.Functions.Add(function);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Warning: Failed to process CREATE FUNCTION in {fileName}: {ex.Message}");
+        }
+
+        await Task.CompletedTask;
     }
 
-    private static PgType? ParseCreateType(string sql, string fileName)
+    private async Task ProcessCreateCompositeTypeAsync(JsonElement compositeStmt, string fullSql, string fileName, PgSchema schema)
     {
-        var match = TypeNamePattern().Match(sql);
-        if (!match.Success) return null;
-
-        var typeName = match.Groups[2].Value;
-        var kind = PgTypeKind.Domain; // Default
-
-        if (sql.ToUpperInvariant().Contains("AS ENUM"))
-            kind = PgTypeKind.Enum;
-        else if (sql.ToUpperInvariant().Contains("AS (") || sql.ToUpperInvariant().Contains("AS\n("))
-            kind = PgTypeKind.Composite;
-
-        return new PgType
+        try
         {
-            Name = typeName,
-            Definition = sql.Trim(),
-            Owner = "postgres",
-            Kind = kind
-        };
+            if (!compositeStmt.TryGetProperty("typevar", out var typevar))
+                return;
+
+            var typeName = GetRelationName(typevar);
+            if (string.IsNullOrEmpty(typeName))
+                return;
+
+            var typeDefinition = ExtractStatementForObject(fullSql, "TYPE", typeName);
+
+            var type = new PgType
+            {
+                Name = typeName,
+                Definition = typeDefinition ?? fullSql.Trim(),
+                Owner = "postgres",
+                Kind = PgTypeKind.Composite
+            };
+
+            schema.Types.Add(type);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Warning: Failed to process CREATE TYPE (composite) in {fileName}: {ex.Message}");
+        }
+
+        await Task.CompletedTask;
     }
 
-    private static PgSequence? ParseCreateSequence(string sql, string fileName)
+    private async Task ProcessCreateEnumTypeAsync(JsonElement enumStmt, string fullSql, string fileName, PgSchema schema)
     {
-        var match = SequenceNamePattern().Match(sql);
-        if (!match.Success) return null;
-
-        var sequenceName = match.Groups[2].Value;
-
-        return new PgSequence
+        try
         {
-            Name = sequenceName,
-            Definition = sql.Trim(),
-            Owner = "postgres"
-        };
+            if (!enumStmt.TryGetProperty("typeName", out var typeNameArray))
+                return;
+
+            var typeName = GetQualifiedName(typeNameArray);
+            if (string.IsNullOrEmpty(typeName))
+                return;
+
+            var typeDefinition = ExtractStatementForObject(fullSql, "TYPE", typeName);
+
+            var type = new PgType
+            {
+                Name = typeName,
+                Definition = typeDefinition ?? fullSql.Trim(),
+                Owner = "postgres",
+                Kind = PgTypeKind.Enum
+            };
+
+            schema.Types.Add(type);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Warning: Failed to process CREATE TYPE (enum) in {fileName}: {ex.Message}");
+        }
+
+        await Task.CompletedTask;
     }
 
-    private static PgTrigger? ParseCreateTrigger(string sql, string fileName)
+    private async Task ProcessCreateDomainTypeAsync(JsonElement domainStmt, string fullSql, string fileName, PgSchema schema)
     {
-        var match = TriggerNamePattern().Match(sql);
-        if (!match.Success) return null;
-
-        var triggerName = match.Groups[1].Value;
-
-        // Try to extract table name
-        var tableMatch = Regex.Match(sql, @"ON\s+(?:(\w+)\.)?(\w+)", RegexOptions.IgnoreCase);
-        var tableName = tableMatch.Success ? tableMatch.Groups[2].Value : "unknown";
-
-        return new PgTrigger
+        try
         {
-            Name = triggerName,
-            TableName = tableName,
-            Definition = sql.Trim(),
-            Owner = "postgres"
-        };
+            if (!domainStmt.TryGetProperty("domainname", out var domainnameArray))
+                return;
+
+            var typeName = GetQualifiedName(domainnameArray);
+            if (string.IsNullOrEmpty(typeName))
+                return;
+
+            var typeDefinition = ExtractStatementForObject(fullSql, "DOMAIN", typeName);
+
+            var type = new PgType
+            {
+                Name = typeName,
+                Definition = typeDefinition ?? fullSql.Trim(),
+                Owner = "postgres",
+                Kind = PgTypeKind.Domain
+            };
+
+            schema.Types.Add(type);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Warning: Failed to process CREATE DOMAIN in {fileName}: {ex.Message}");
+        }
+
+        await Task.CompletedTask;
+    }
+
+    private async Task ProcessCreateSequenceAsync(JsonElement seqStmt, string fullSql, string fileName, PgSchema schema)
+    {
+        try
+        {
+            if (!seqStmt.TryGetProperty("sequence", out var seqRelation))
+                return;
+
+            var sequenceName = GetRelationName(seqRelation);
+            if (string.IsNullOrEmpty(sequenceName))
+                return;
+
+            var sequenceDefinition = ExtractStatementForObject(fullSql, "SEQUENCE", sequenceName);
+
+            var sequence = new PgSequence
+            {
+                Name = sequenceName,
+                Definition = sequenceDefinition ?? fullSql.Trim(),
+                Owner = "postgres"
+            };
+
+            schema.Sequences.Add(sequence);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Warning: Failed to process CREATE SEQUENCE in {fileName}: {ex.Message}");
+        }
+
+        await Task.CompletedTask;
+    }
+
+    private async Task ProcessCreateTriggerAsync(JsonElement trigStmt, string fullSql, string fileName, PgSchema schema)
+    {
+        try
+        {
+            if (!trigStmt.TryGetProperty("trigname", out var triggerNameElement))
+                return;
+
+            var triggerName = triggerNameElement.GetString();
+            if (string.IsNullOrEmpty(triggerName))
+                return;
+
+            // Get the table name
+            string tableName = "unknown";
+            if (trigStmt.TryGetProperty("relation", out var relation))
+            {
+                tableName = GetRelationName(relation) ?? "unknown";
+            }
+
+            var triggerDefinition = ExtractStatementForObject(fullSql, "TRIGGER", triggerName);
+
+            var trigger = new PgTrigger
+            {
+                Name = triggerName,
+                TableName = tableName,
+                Definition = triggerDefinition ?? fullSql.Trim(),
+                Owner = "postgres"
+            };
+
+            schema.Triggers.Add(trigger);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Warning: Failed to process CREATE TRIGGER in {fileName}: {ex.Message}");
+        }
+
+        await Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Extracts the name from a relation node (RangeVar).
+    /// </summary>
+    private static string? GetRelationName(JsonElement relation)
+    {
+        if (relation.TryGetProperty("relname", out var relnameElement))
+        {
+            return relnameElement.GetString();
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Extracts a qualified name from an array of String nodes.
+    /// </summary>
+    private static string? GetQualifiedName(JsonElement nameArray)
+    {
+        var nameParts = new List<string>();
+
+        foreach (var item in nameArray.EnumerateArray())
+        {
+            if (item.TryGetProperty("String", out var stringNode))
+            {
+                if (stringNode.TryGetProperty("sval", out var sval))
+                {
+                    var part = sval.GetString();
+                    if (!string.IsNullOrEmpty(part))
+                    {
+                        nameParts.Add(part);
+                    }
+                }
+            }
+        }
+
+        return nameParts.Count > 0 ? nameParts[^1] : null; // Return last part (unqualified name)
+    }
+
+    /// <summary>
+    /// Extracts the specific CREATE statement for an object from the full SQL text.
+    /// This handles files with multiple statements.
+    /// </summary>
+    private static string? ExtractStatementForObject(string fullSql, string objectType, string objectName)
+    {
+        // Simple extraction: find CREATE <type> <name> and extract until the next CREATE or end of file
+        var pattern = $@"CREATE\s+(?:OR\s+REPLACE\s+)?{objectType}\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:\w+\.)?{objectName}";
+        var match = System.Text.RegularExpressions.Regex.Match(fullSql, pattern, 
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        if (!match.Success)
+            return null;
+
+        var startIndex = match.Index;
+
+        // Find the end - look for next CREATE statement or end of string
+        var nextCreatePattern = @"\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|VIEW|FUNCTION|PROCEDURE|TYPE|SEQUENCE|TRIGGER|DOMAIN)";
+        var nextMatch = System.Text.RegularExpressions.Regex.Match(fullSql.Substring(startIndex + match.Length), 
+            nextCreatePattern, 
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        int endIndex;
+        if (nextMatch.Success)
+        {
+            endIndex = startIndex + match.Length + nextMatch.Index;
+        }
+        else
+        {
+            endIndex = fullSql.Length;
+        }
+
+        return fullSql.Substring(startIndex, endIndex - startIndex).Trim();
     }
 }

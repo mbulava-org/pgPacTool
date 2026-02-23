@@ -386,6 +386,130 @@ namespace mbulava.PostgreSql.Dac.Models
             return false;
         }
 
+        /// <summary>
+        /// Gets all direct dependencies of an object
+        /// </summary>
+        public List<string> GetDependencies(string objectName)
+        {
+            if (!_dependencies.ContainsKey(objectName))
+                return new List<string>();
+
+            return _dependencies[objectName].ToList();
+        }
+
+        /// <summary>
+        /// Gets all objects that depend on this object (reverse dependencies)
+        /// </summary>
+        public List<string> GetDependents(string objectName)
+        {
+            var dependents = new List<string>();
+
+            foreach (var kvp in _dependencies)
+            {
+                if (kvp.Value.Contains(objectName))
+                {
+                    dependents.Add(kvp.Key);
+                }
+            }
+
+            return dependents;
+        }
+
+        /// <summary>
+        /// Checks if there is a path from one object to another
+        /// </summary>
+        public bool HasPath(string from, string to)
+        {
+            // Self-reference is always true
+            if (from == to)
+                return true;
+
+            if (!_dependencies.ContainsKey(from))
+                return false;
+
+            var visited = new HashSet<string>();
+            return HasPathDFS(from, to, visited);
+        }
+
+        private bool HasPathDFS(string current, string target, HashSet<string> visited)
+        {
+            if (current == target)
+                return true;
+
+            if (visited.Contains(current))
+                return false;
+
+            visited.Add(current);
+
+            if (!_dependencies.ContainsKey(current))
+                return false;
+
+            foreach (var neighbor in _dependencies[current])
+            {
+                if (HasPathDFS(neighbor, target, visited))
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Gets all paths from one object to another
+        /// </summary>
+        public List<List<string>> GetAllPaths(string from, string to)
+        {
+            var allPaths = new List<List<string>>();
+            var currentPath = new List<string>();
+            var visited = new HashSet<string>();
+
+            FindAllPathsDFS(from, to, visited, currentPath, allPaths);
+
+            return allPaths;
+        }
+
+        private void FindAllPathsDFS(string current, string target, HashSet<string> visited, 
+            List<string> currentPath, List<List<string>> allPaths)
+        {
+            visited.Add(current);
+            currentPath.Add(current);
+
+            if (current == target)
+            {
+                // Found a path, add a copy to results
+                allPaths.Add(new List<string>(currentPath));
+            }
+            else if (_dependencies.ContainsKey(current))
+            {
+                foreach (var neighbor in _dependencies[current])
+                {
+                    if (!visited.Contains(neighbor))
+                    {
+                        FindAllPathsDFS(neighbor, target, visited, currentPath, allPaths);
+                    }
+                }
+            }
+
+            // Backtrack
+            currentPath.RemoveAt(currentPath.Count - 1);
+            visited.Remove(current);
+        }
+
+        /// <summary>
+        /// Gets the type of an object
+        /// </summary>
+        public string? GetObjectType(string objectName)
+        {
+            return _objectTypes.TryGetValue(objectName, out var type) ? type : null;
+        }
+
+        /// <summary>
+        /// Gets all objects in the graph
+        /// </summary>
+        public List<string> GetAllObjects()
+        {
+            return _dependencies.Keys.ToList();
+        }
+
         public Dictionary<string, HashSet<string>> GetDependencies() => _dependencies;
     }
 }

@@ -311,11 +311,38 @@ internal class Program
                     $"{schema.Functions.Count} functions, {schema.Types.Count} types");
             }
 
-            // Save to file
+            // Determine output format by extension
+            var extension = Path.GetExtension(targetFile).ToLowerInvariant();
+
             Console.WriteLine();
-            Console.WriteLine($"💾 Saving to {targetFile}...");
-            await using var fileStream = File.Create(targetFile);
-            await PgProject.Save(project, fileStream);
+            if (extension == ".csproj")
+            {
+                // Generate SDK-style .csproj project with folder structure
+                Console.WriteLine($"📦 Generating SDK-style project...");
+                var generator = new CsprojProjectGenerator(targetFile);
+                await generator.GenerateProjectAsync(project);
+
+                var stats = CsprojProjectGenerator.GetStats(project);
+                Console.WriteLine();
+                Console.WriteLine("📊 Project structure:");
+                Console.WriteLine($"   📁 Schemas: {stats.Schemas}");
+                Console.WriteLine($"   📄 Tables: {stats.Tables}");
+                Console.WriteLine($"   📄 Views: {stats.Views}");
+                Console.WriteLine($"   📄 Functions: {stats.Functions}");
+                Console.WriteLine($"   📄 Types: {stats.Types}");
+                Console.WriteLine($"   📄 Sequences: {stats.Sequences}");
+                Console.WriteLine($"   📄 Triggers: {stats.Triggers}");
+                Console.WriteLine($"   📝 Total SQL files: {stats.TotalFiles}");
+                Console.WriteLine();
+                Console.WriteLine($"💡 Open {targetFile} in Visual Studio to edit!");
+            }
+            else
+            {
+                // Save as .pgproj.json
+                Console.WriteLine($"💾 Saving to {targetFile}...");
+                await using var fileStream = File.Create(targetFile);
+                await PgProject.Save(project, fileStream);
+            }
 
             Console.WriteLine();
             Console.WriteLine("✅ Extraction completed successfully!");

@@ -58,7 +58,7 @@ postgresPacTools script \
 
 ### `extract`
 
-Extracts database schema to a `.pgproj.json` file.
+Extracts database schema to a `.pgproj.json` file or SDK-style `.csproj` project.
 
 #### Syntax
 ```bash
@@ -70,16 +70,25 @@ postgresPacTools extract [options]
 | Option | Alias | Required | Description |
 |--------|-------|----------|-------------|
 | `--source-connection-string` | `-scs` | ✅ | Source PostgreSQL database connection string |
-| `--target-file` | `-tf` | ✅ | Path to output `.pgproj.json` file |
+| `--target-file` | `-tf` | ✅ | Path to output file (`.pgproj.json` or `.csproj`) |
 | `--database-name` | `-dn` | ❌ | Database name (overrides connection string) |
+
+**Output Formats:**
+- **`.pgproj.json`** - Single JSON file (traditional)
+- **`.csproj`** - SDK-style project with folder structure (Visual Studio editable)
 
 #### Examples
 
 ```bash
-# Extract from local database
+# Extract to JSON file
 postgresPacTools extract \
   -scs "Host=localhost;Database=myapp;Username=postgres;Password=pass123" \
   -tf myapp.pgproj.json
+
+# Extract to SDK-style project (folder structure)
+postgresPacTools extract \
+  -scs "Host=localhost;Database=myapp;Username=postgres;Password=pass123" \
+  -tf MyApp.Database/MyApp.Database.csproj
 
 # Extract with explicit database name
 postgresPacTools extract \
@@ -88,7 +97,7 @@ postgresPacTools extract \
   -dn myapp
 ```
 
-#### Output
+#### Output (JSON Format)
 ```
 ╔════════════════════════════════════════════════════════════╗
 ║  PostgreSQL Schema Extraction                              ║
@@ -105,6 +114,64 @@ postgresPacTools extract \
 💾 Saving to myapp.pgproj.json...
 
 ✅ Extraction completed successfully!
+```
+
+#### Output (SDK-Style .csproj)
+```
+╔════════════════════════════════════════════════════════════╗
+║  PostgreSQL Schema Extraction                              ║
+╚════════════════════════════════════════════════════════════╝
+
+📋 Source: Host=localhost;Database=myapp;Username=postgres;Password=****
+💾 Target: MyApp.Database/MyApp.Database.csproj
+
+🔍 Extracting schema from database 'myapp'...
+✅ Extracted 2 schema(s)
+   📁 public: 15 tables, 3 views, 8 functions, 2 types
+   📁 auth: 5 tables, 1 views, 2 functions, 0 types
+
+📦 Generating SDK-style project...
+✅ Generated SDK-style project in: MyApp.Database
+   📁 Schemas: 2
+   📄 SQL files created
+   📦 Project file: MyApp.Database.csproj
+
+📊 Project structure:
+   📁 Schemas: 2
+   📄 Tables: 20
+   📄 Views: 4
+   📄 Functions: 10
+   📄 Types: 2
+   📄 Sequences: 3
+   📄 Triggers: 1
+   📝 Total SQL files: 40
+
+💡 Open MyApp.Database/MyApp.Database.csproj in Visual Studio to edit!
+
+✅ Extraction completed successfully!
+```
+
+**Folder Structure Created:**
+```
+MyApp.Database/
+├── MyApp.Database.csproj
+├── public/
+│   ├── Tables/
+│   │   ├── users.sql
+│   │   ├── orders.sql
+│   │   └── ...
+│   ├── Views/
+│   │   ├── active_users.sql
+│   │   └── ...
+│   ├── Functions/
+│   │   └── calculate_total.sql
+│   └── Types/
+│       └── order_status.sql
+└── auth/
+    ├── Tables/
+    │   └── sessions.sql
+    └── Functions/
+        └── validate_token.sql
 ```
 
 ---

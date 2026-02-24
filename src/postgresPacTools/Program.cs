@@ -214,8 +214,8 @@ internal class Program
 
         var outputFormatOption = new Option<string>(
             name: "--output-format",
-            description: "Output format: dacpac (default) or json",
-            getDefaultValue: () => "dacpac");
+            description: "Output format: pgpac (default) or json",
+            getDefaultValue: () => "pgpac");
         outputFormatOption.AddAlias("-of");
 
         var verboseOption = new Option<bool>(
@@ -514,7 +514,7 @@ internal class Program
             // Parse output format
             var format = outputFormatStr.ToLowerInvariant() switch
             {
-                "dacpac" => OutputFormat.DacPac,
+                "pgpac" => OutputFormat.DacPac,
                 "json" => OutputFormat.Json,
                 _ => OutputFormat.DacPac
             };

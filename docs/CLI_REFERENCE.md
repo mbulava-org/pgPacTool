@@ -320,7 +320,7 @@ postgresPacTools compile [options]
 |--------|-------|----------|-------------|
 | `--source-file` | `-sf` | ✅ | Source `.pgproj.json` or `.csproj` file |
 | `--output-path` | `-o` | ❌ | Output file path (default: `bin/Debug/net10.0/{DatabaseName}.pgpac`) |
-| `--output-format` | `-of` | ❌ | Output format: `dacpac` (default) or `json` |
+| `--output-format` | `-of` | ❌ | Output format: `pgpac` (default) or `json` |
 | `--verbose` | `-v` | ❌ | Show detailed compilation output (default: `false`) |
 
 **Note:** Output options only apply to `.csproj` projects. For `.pgproj.json` files, only validation is performed.

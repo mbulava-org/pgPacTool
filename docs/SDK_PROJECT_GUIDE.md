@@ -109,10 +109,20 @@ $$;
 ### 4. Compile the Project
 
 ```bash
+# Default: Generates .pgpac file (PostgreSQL Data-tier Application Package)
+postgresPacTools compile --source-file MyDatabase.csproj
+
+# With verbose output
 postgresPacTools compile --source-file MyDatabase.csproj --verbose
+
+# Generate JSON instead of .pgpac
+postgresPacTools compile --source-file MyDatabase.csproj --output-format json
+
+# Specify custom output path
+postgresPacTools compile --source-file MyDatabase.csproj --output-path ../artifacts/MyDB.pgpac
 ```
 
-Output:
+Output (.pgpac format - default):
 ```
 ╔════════════════════════════════════════════════════════════╗
 ║  PostgreSQL Project Compilation                            ║
@@ -122,6 +132,9 @@ Output:
 
 📖 Loading .csproj project (SDK-style)...
 ✅ Loaded 1 schema(s) from SDK project
+
+📦 Generating output (DacPac)...
+✅ Generated: bin/Debug/net10.0/MyPostgresDB.pgpac
 
 ⚙️  Compiling and validating...
 
@@ -136,7 +149,22 @@ Output:
    3. public.orders
    4. public.active_orders
    5. public.calculate_order_total
+
+📦 Output:
+   💾 File: bin/Debug/net10.0/MyPostgresDB.pgpac
+   📊 Size: 12,345 bytes
+   📁 Format: .pgpac (ZIP archive)
+   📄 Contains: content.json
 ```
+
+**What is .pgpac?**
+
+A `.pgpac` (PostgreSQL Data-tier Application Package) is:
+- 📦 A **ZIP file** containing your database schema
+- 📄 Single `content.json` file with serialized `PgProject`
+- 🔒 **Portable** - distribute one file instead of many SQL files
+- ✅ **Easy deployment** - same format as SQL Server's `.dacpac`
+- 🚀 **Ready for CI/CD** - build once, deploy anywhere
 
 ---
 
@@ -226,16 +254,68 @@ pgPacTool scans your entire project directory for `.sql` files, automatically ex
 
 ---
 
+## 📦 Output Formats
+
+### .pgpac (PostgreSQL Data-tier Application Package) - Default
+
+The `.pgpac` format is the default output for compiled projects:
+
+**Structure:**
+```
+MyDatabase.pgpac (ZIP file)
+└── content.json (serialized PgProject)
+```
+
+**Advantages:**
+- ✅ **Single file distribution** - entire schema in one package
+- ✅ **Portable** - easy to version, share, and deploy
+- ✅ **Compressed** - ZIP compression reduces file size
+- ✅ **SQL Server compatible** - similar to `.dacpac` format
+- ✅ **CI/CD friendly** - build artifact you can deploy anywhere
+
+**Usage:**
+```bash
+# Generate .pgpac (default)
+postgresPacTools compile -sf MyDatabase.csproj
+
+# Deploy the .pgpac
+postgresPacTools publish -sf MyDatabase.pgpac -tcs "Host=prod;Database=mydb;..."
+```
+
+### .pgproj.json - Alternative Format
+
+Plain JSON format for human readability:
+
+```bash
+# Generate .pgproj.json
+postgresPacTools compile -sf MyDatabase.csproj --output-format json
+
+# Output: bin/Debug/net10.0/MyDatabase.pgproj.json
+```
+
+**Use cases:**
+- 🔍 Inspecting schema structure
+- 📝 Version control diffing
+- 🔧 Debugging and troubleshooting
+
+---
+
 ## 🎯 Usage Examples
 
 ### Compile and Validate
 
 ```bash
-# Basic compile
+# Basic compile (generates .pgpac)
 postgresPacTools compile -sf MyDatabase.csproj
 
 # Verbose output with deployment order
 postgresPacTools compile -sf MyDatabase.csproj --verbose
+
+# Generate JSON format instead
+postgresPacTools compile -sf MyDatabase.csproj --output-format json
+
+# Custom output location
+postgresPacTools compile -sf MyDatabase.csproj -o ../artifacts/MyDB.pgpac
 ```
 
 ### Generate Deployment Script

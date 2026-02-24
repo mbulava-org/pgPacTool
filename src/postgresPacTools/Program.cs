@@ -192,6 +192,7 @@ internal class Program
     /// <summary>
     /// Compile: Validates and compiles a project, checking dependencies and circular references
     /// Supports both .pgproj.json and SDK-style .csproj files
+    /// For .csproj: Generates .pgpac (default) or .pgproj.json output
     /// Unique to pgPacTool (based on Milestone 2)
     /// </summary>
     static Command CreateCompileCommand()
@@ -206,6 +207,17 @@ internal class Program
         };
         sourceFileOption.AddAlias("-sf");
 
+        var outputPathOption = new Option<string?>(
+            name: "--output-path",
+            description: "Output file path (default: bin/Debug/net10.0/{DatabaseName}.pgpac)");
+        outputPathOption.AddAlias("-o");
+
+        var outputFormatOption = new Option<string>(
+            name: "--output-format",
+            description: "Output format: dacpac (default) or json",
+            getDefaultValue: () => "dacpac");
+        outputFormatOption.AddAlias("-of");
+
         var verboseOption = new Option<bool>(
             name: "--verbose",
             description: "Show detailed compilation output",
@@ -213,12 +225,14 @@ internal class Program
         verboseOption.AddAlias("-v");
 
         command.AddOption(sourceFileOption);
+        command.AddOption(outputPathOption);
+        command.AddOption(outputFormatOption);
         command.AddOption(verboseOption);
 
-        command.SetHandler(async (sourceFile, verbose) =>
+        command.SetHandler(async (sourceFile, outputPath, outputFormat, verbose) =>
         {
-            await CompileAction(sourceFile, verbose);
-        }, sourceFileOption, verboseOption);
+            await CompileAction(sourceFile, outputPath, outputFormat, verbose);
+        }, sourceFileOption, outputPathOption, outputFormatOption, verboseOption);
 
         return command;
     }
@@ -458,7 +472,7 @@ internal class Program
         }
     }
 
-    static async Task CompileAction(string sourceFile, bool verbose)
+    static async Task CompileAction(string sourceFile, string? outputPath, string outputFormatStr, bool verbose)
     {
         Console.WriteLine("╔════════════════════════════════════════════════════════════╗");
         Console.WriteLine("║  PostgreSQL Project Compilation                            ║");
@@ -470,8 +484,17 @@ internal class Program
             Console.WriteLine($"📋 Source: {sourceFile}");
             Console.WriteLine();
 
+            // Parse output format
+            var format = outputFormatStr.ToLowerInvariant() switch
+            {
+                "dacpac" => OutputFormat.DacPac,
+                "json" => OutputFormat.Json,
+                _ => OutputFormat.DacPac
+            };
+
             // Determine file type and load project
             PgProject project;
+            string? generatedOutputPath = null;
             var extension = Path.GetExtension(sourceFile).ToLowerInvariant();
 
             if (extension == ".csproj")
@@ -481,6 +504,12 @@ internal class Program
                 var loader = new CsprojProjectLoader(sourceFile);
                 project = await loader.LoadProjectAsync();
                 Console.WriteLine($"✅ Loaded {project.Schemas.Count} schema(s) from SDK project");
+
+                // Generate output file for .csproj projects
+                Console.WriteLine();
+                Console.WriteLine($"📦 Generating output ({format})...");
+                generatedOutputPath = await loader.CompileAndGenerateOutputAsync(outputPath, format);
+                Console.WriteLine($"✅ Generated: {generatedOutputPath}");
             }
             else if (extension == ".json")
             {
@@ -552,6 +581,26 @@ internal class Program
                     {
                         Console.WriteLine($"      📍 {warning.Location}");
                     }
+                }
+            }
+
+            // Show output file information for .csproj projects
+            if (extension == ".csproj" && generatedOutputPath != null)
+            {
+                Console.WriteLine();
+                Console.WriteLine("📦 Output:");
+                Console.WriteLine($"   💾 File: {generatedOutputPath}");
+                var fileInfo = new FileInfo(generatedOutputPath);
+                Console.WriteLine($"   📊 Size: {fileInfo.Length:N0} bytes");
+
+                if (format == OutputFormat.DacPac)
+                {
+                    Console.WriteLine($"   📁 Format: .pgpac (ZIP archive)");
+                    Console.WriteLine($"   📄 Contains: content.json");
+                }
+                else
+                {
+                    Console.WriteLine($"   📁 Format: .pgproj.json");
                 }
             }
         }

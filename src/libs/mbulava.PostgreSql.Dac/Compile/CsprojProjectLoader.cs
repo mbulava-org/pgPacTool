@@ -1,9 +1,27 @@
 using mbulava.PostgreSql.Dac.Models;
 using Npgquery;
+using System.IO.Compression;
 using System.Text.Json;
 using System.Xml.Linq;
 
 namespace mbulava.PostgreSql.Dac.Compile;
+
+/// <summary>
+/// Output format for compilation.
+/// </summary>
+public enum OutputFormat
+{
+    /// <summary>
+    /// PostgreSQL Data-tier Application Package (.pgpac) - ZIP file containing content.json.
+    /// Similar to SQL Server's .dacpac format.
+    /// </summary>
+    DacPac,
+
+    /// <summary>
+    /// Plain JSON file (.pgproj.json).
+    /// </summary>
+    Json
+}
 
 /// <summary>
 /// Loads PostgreSQL projects from SDK-style .csproj files.
@@ -42,6 +60,14 @@ public class CsprojProjectLoader
         // Parse .csproj XML
         var doc = XDocument.Load(_projectPath);
 
+        // Get database name from project properties if specified
+        var dbNameElement = doc.Descendants()
+            .FirstOrDefault(e => e.Name.LocalName == "DatabaseName");
+        if (dbNameElement != null && !string.IsNullOrWhiteSpace(dbNameElement.Value))
+        {
+            project.DatabaseName = dbNameElement.Value;
+        }
+
         // Get SQL files from the project
         var sqlFiles = GetSqlFilesFromProject(doc);
 
@@ -67,6 +93,79 @@ public class CsprojProjectLoader
 
         project.Schemas.Add(schema);
         return project;
+    }
+
+    /// <summary>
+    /// Compiles the project and generates output based on format.
+    /// </summary>
+    /// <param name="outputPath">Output file path. If null, uses default based on format.</param>
+    /// <param name="format">Output format (DacPac or Json).</param>
+    /// <returns>Path to the generated output file.</returns>
+    public async Task<string> CompileAndGenerateOutputAsync(string? outputPath = null, OutputFormat format = OutputFormat.DacPac)
+    {
+        // Load the project
+        var project = await LoadProjectAsync();
+
+        // Determine output path
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            var outputDir = Path.Combine(_projectDirectory, "bin", "Debug", "net10.0");
+            Directory.CreateDirectory(outputDir);
+
+            outputPath = format switch
+            {
+                OutputFormat.DacPac => Path.Combine(outputDir, $"{project.DatabaseName}.pgpac"),
+                OutputFormat.Json => Path.Combine(outputDir, $"{project.DatabaseName}.pgproj.json"),
+                _ => throw new ArgumentOutOfRangeException(nameof(format))
+            };
+        }
+
+        // Generate output
+        switch (format)
+        {
+            case OutputFormat.DacPac:
+                await GeneratePgPacAsync(project, outputPath);
+                break;
+
+            case OutputFormat.Json:
+                await GenerateJsonAsync(project, outputPath);
+                break;
+
+            default:
+                throw new ArgumentOutOfRangeException(nameof(format));
+        }
+
+        return outputPath;
+    }
+
+    /// <summary>
+    /// Generates a .pgpac file (ZIP containing content.json).
+    /// </summary>
+    private static async Task GeneratePgPacAsync(PgProject project, string outputPath)
+    {
+        // Delete existing file if present
+        if (File.Exists(outputPath))
+        {
+            File.Delete(outputPath);
+        }
+
+        // Create ZIP file
+        using var archive = ZipFile.Open(outputPath, ZipArchiveMode.Create);
+
+        // Add content.json entry
+        var contentEntry = archive.CreateEntry("content.json", CompressionLevel.Optimal);
+
+        await using var entryStream = contentEntry.Open();
+        await PgProject.Save(project, entryStream);
+    }
+
+    /// <summary>
+    /// Generates a plain .pgproj.json file.
+    /// </summary>
+    private static async Task GenerateJsonAsync(PgProject project, string outputPath)
+    {
+        await using var fileStream = File.Create(outputPath);
+        await PgProject.Save(project, fileStream);
     }
 
     /// <summary>

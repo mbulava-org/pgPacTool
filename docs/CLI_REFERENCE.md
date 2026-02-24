@@ -252,19 +252,57 @@ postgresPacTools compile [options]
 | Option | Alias | Required | Description |
 |--------|-------|----------|-------------|
 | `--source-file` | `-sf` | ✅ | Source `.pgproj.json` or `.csproj` file |
+| `--output-path` | `-o` | ❌ | Output file path (default: `bin/Debug/net10.0/{DatabaseName}.pgpac`) |
+| `--output-format` | `-of` | ❌ | Output format: `dacpac` (default) or `json` |
 | `--verbose` | `-v` | ❌ | Show detailed compilation output (default: `false`) |
+
+**Note:** Output options only apply to `.csproj` projects. For `.pgproj.json` files, only validation is performed.
 
 #### Examples
 
 ```bash
-# Compile from .pgproj.json
+# Compile .pgproj.json (validation only)
 postgresPacTools compile -sf myapp.pgproj.json
 
-# Compile from SDK-style .csproj
-postgresPacTools compile -sf MyDatabase.csproj --verbose
+# Compile .csproj - generates .pgpac (default)
+postgresPacTools compile -sf MyDatabase.csproj
 
-# Verbose compile with deployment order
-postgresPacTools compile -sf myapp.pgproj.json --verbose
+# Generate JSON format instead
+postgresPacTools compile -sf MyDatabase.csproj --output-format json
+
+# Custom output location
+postgresPacTools compile -sf MyDatabase.csproj -o ../artifacts/MyDB.pgpac
+
+# Verbose output
+postgresPacTools compile -sf MyDatabase.csproj --verbose
+```
+
+#### Output (.csproj → .pgpac)
+```
+╔════════════════════════════════════════════════════════════╗
+║  PostgreSQL Project Compilation                            ║
+╚════════════════════════════════════════════════════════════╝
+
+📋 Source: MyDatabase.csproj
+
+📖 Loading .csproj project (SDK-style)...
+✅ Loaded 1 schema(s) from SDK project
+
+📦 Generating output (DacPac)...
+✅ Generated: bin/Debug/net10.0/MyDatabase.pgpac
+
+⚙️  Compiling and validating...
+
+✅ Compilation successful!
+   📊 Objects: 15
+   📦 Levels: 4
+   ⏱️  Time: 85ms
+
+📦 Output:
+   💾 File: bin/Debug/net10.0/MyDatabase.pgpac
+   📊 Size: 23,456 bytes
+   📁 Format: .pgpac (ZIP archive)
+   📄 Contains: content.json
 ```
 
 #### Output (.pgproj.json)

@@ -100,7 +100,7 @@ namespace mbulava.PostgreSql.Dac.Tests.Extract
 
             // Assert
             major.Should().Be(16);
-            minor.Should().BeGreaterOrEqualTo(0);
+            minor.Should().BeGreaterThanOrEqualTo(0);
             full.Should().StartWith("16.");
         }
 

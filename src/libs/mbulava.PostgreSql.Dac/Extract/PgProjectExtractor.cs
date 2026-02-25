@@ -19,10 +19,12 @@ namespace mbulava.PostgreSql.Dac.Extract
     public class PgProjectExtractor
     {
         private readonly string _conn;
+        private readonly bool _verbose;
 
-        public PgProjectExtractor(string conString)
+        public PgProjectExtractor(string conString, bool verbose = false)
         {
             _conn = conString;
+            _verbose = verbose;
         }
 
         /// <summary>
@@ -140,6 +142,9 @@ namespace mbulava.PostgreSql.Dac.Extract
                 var name = reader.GetString(0);
                 var owner = reader.GetString(1);
 
+                if (_verbose)
+                    Console.WriteLine($"   🔍 Found schema: {name} (owner: {owner})");
+
                 // Build CREATE SCHEMA SQL
                 var sql = $"CREATE SCHEMA {QuoteIdent(name)} AUTHORIZATION {QuoteIdent(owner)};";
 
@@ -148,10 +153,17 @@ namespace mbulava.PostgreSql.Dac.Extract
                 var result = parser.Parse(sql);
 
                 if (!result.IsSuccess)
-                    throw new InvalidOperationException($"Invalid SQL for schema {name}: {result.Error}");
+                {
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"   ⚠️ Warning: Failed to parse CREATE SCHEMA for '{name}': {result.Error}");
+                        Console.WriteLine($"   Continuing extraction without AST for this schema...");
+                    }
+                    // Continue without AST instead of throwing
+                }
 
                 CreateSchemaStmt? ast = null;
-                if (result.ParseTree != null)
+                if (result.IsSuccess && result.ParseTree != null)
                 {
                     var astJson = result.ParseTree.RootElement.GetRawText();
                     ast = JsonSerializer.Deserialize<CreateSchemaStmt>(astJson);
@@ -168,6 +180,9 @@ namespace mbulava.PostgreSql.Dac.Extract
                     Privileges = await ExtractPrivilegesAsync(privilegesSql, "schema", name)
                 });
             }
+
+            if (_verbose)
+                Console.WriteLine($"   ✅ Total schemas found: {schemas.Count}");
 
             return schemas;
         }

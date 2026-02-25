@@ -60,14 +60,21 @@ internal class Program
         };
         databaseNameOption.AddAlias("-dn");
 
+        var verboseOption = new Option<bool>(
+            name: "--verbose",
+            description: "Show detailed extraction progress",
+            getDefaultValue: () => false);
+        verboseOption.AddAlias("-v");
+
         command.AddOption(sourceConnectionOption);
         command.AddOption(targetFileOption);
         command.AddOption(databaseNameOption);
+        command.AddOption(verboseOption);
 
-        command.SetHandler(async (sourceConnection, targetFile, databaseName) =>
+        command.SetHandler(async (sourceConnection, targetFile, databaseName, verbose) =>
         {
-            await ExtractAction(sourceConnection, targetFile, databaseName);
-        }, sourceConnectionOption, targetFileOption, databaseNameOption);
+            await ExtractAction(sourceConnection, targetFile, databaseName, verbose);
+        }, sourceConnectionOption, targetFileOption, databaseNameOption, verboseOption);
 
         return command;
     }
@@ -285,7 +292,7 @@ internal class Program
     // Action Implementations
     // ========================================================================
 
-    static async Task ExtractAction(string sourceConnection, string targetFile, string? databaseName)
+    static async Task ExtractAction(string sourceConnection, string targetFile, string? databaseName, bool verbose = false)
     {
         Console.WriteLine("╔════════════════════════════════════════════════════════════╗");
         Console.WriteLine("║  PostgreSQL Schema Extraction                              ║");
@@ -298,7 +305,7 @@ internal class Program
             Console.WriteLine($"💾 Target: {targetFile}");
             Console.WriteLine();
 
-            var extractor = new PgProjectExtractor(sourceConnection);
+            var extractor = new PgProjectExtractor(sourceConnection, verbose);
             var dbName = databaseName ?? GetDatabaseFromConnection(sourceConnection);
 
             Console.WriteLine($"🔍 Extracting schema from database '{dbName}'...");

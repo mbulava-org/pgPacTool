@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <!-- 
+    Sdk.props: Default properties for PostgreSQL database projects
+    This file is imported BEFORE the project file
+  -->
+
+  <PropertyGroup>
+    <!-- Mark this as a database project -->
+    <IsDatabaseProject>true</IsDatabaseProject>
+    <IsPostgreSqlProject>true</IsPostgreSqlProject>
+    
+    <!-- Default output type -->
+    <OutputType Condition="'$(OutputType)' == ''">Library</OutputType>
+    
+    <!-- Not packable by default -->
+    <IsPackable Condition="'$(IsPackable)' == ''">false</IsPackable>
+    
+    <!-- Enable nullable reference types -->
+    <Nullable Condition="'$(Nullable)' == ''">enable</Nullable>
+    
+    <!-- Default database name (from project name) -->
+    <DatabaseName Condition="'$(DatabaseName)' == ''">$(MSBuildProjectName)</DatabaseName>
+    
+    <!-- Output format: pgpac (default) or json -->
+    <OutputFormat Condition="'$(OutputFormat)' == ''">pgpac</OutputFormat>
+    
+    <!-- Output file name -->
+    <PgPacFileName Condition="'$(PgPacFileName)' == ''">$(DatabaseName).pgpac</PgPacFileName>
+    <PgPacFilePath Condition="'$(PgPacFilePath)' == ''">$(OutputPath)$(PgPacFileName)</PgPacFilePath>
+    
+    <!-- Enable validation during build -->
+    <ValidateOnBuild Condition="'$(ValidateOnBuild)' == ''">true</ValidateOnBuild>
+    
+    <!-- SQL file discovery -->
+    <EnableDefaultItems Condition="'$(EnableDefaultItems)' == ''">false</EnableDefaultItems>
+  </PropertyGroup>
+
+  <!-- Auto-include SQL files -->
+  <ItemGroup Condition="'$(EnableDefaultSqlItems)' != 'false'">
+    <SqlFile Include="**\*.sql" Exclude="$(DefaultItemExcludes);bin\**;obj\**;.vs\**" />
+  </ItemGroup>
+
+  <!-- Properties for pre/post deployment scripts -->
+  <PropertyGroup>
+    <PreDeploymentScript Condition="'$(PreDeploymentScript)' == ''"></PreDeploymentScript>
+    <PostDeploymentScript Condition="'$(PostDeploymentScript)' == ''"></PostDeploymentScript>
+  </PropertyGroup>
+
+</Project>

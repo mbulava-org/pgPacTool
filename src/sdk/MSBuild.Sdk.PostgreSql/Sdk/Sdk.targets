@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <!-- 
+    Sdk.targets: Build integration for PostgreSQL database projects
+    This file is imported AFTER the project file
+  -->
+
+  <!-- Define the build task -->
+  <UsingTask 
+    TaskName="MSBuild.Sdk.PostgreSql.Tasks.CompilePgProject" 
+    AssemblyFile="$(MSBuildThisFileDirectory)..\..\lib\net10.0\MSBuild.Sdk.PostgreSql.dll" />
+
+  <!-- Set the target path for the database package -->
+  <PropertyGroup>
+    <TargetPath>$(PgPacFilePath)</TargetPath>
+    <TargetFileName>$(PgPacFileName)</TargetFileName>
+  </PropertyGroup>
+
+  <!-- Override CoreBuild to compile PostgreSQL project -->
+  <PropertyGroup>
+    <CoreBuildDependsOn>
+      BuildOnlySettings;
+      PrepareForBuild;
+      PreBuildEvent;
+      CompilePostgreSqlProject;
+      PostBuildEvent
+    </CoreBuildDependsOn>
+  </PropertyGroup>
+
+  <!-- Main compilation target -->
+  <Target Name="CompilePostgreSqlProject"
+          DependsOnTargets="$(CompilePostgreSqlProjectDependsOn)"
+          Inputs="@(SqlFile);@(PreDeploy);@(PostDeploy);$(MSBuildProjectFullPath)"
+          Outputs="$(PgPacFilePath)">
+
+    <Message Text="Compiling PostgreSQL Database Project: $(DatabaseName)" Importance="high" />
+    <Message Text="  Project: $(MSBuildProjectFullPath)" Importance="normal" />
+    <Message Text="  Output: $(PgPacFilePath)" Importance="normal" />
+    <Message Text="  Format: $(OutputFormat)" Importance="normal" />
+
+    <!-- Execute the compilation task -->
+    <CompilePgProject
+      ProjectFile="$(MSBuildProjectFullPath)"
+      OutputPath="$(PgPacFilePath)"
+      OutputFormat="$(OutputFormat)"
+      DatabaseName="$(DatabaseName)"
+      ValidateOnBuild="$(ValidateOnBuild)"
+      SqlFiles="@(SqlFile)"
+      PreDeploymentScripts="@(PreDeploy)"
+      PostDeploymentScripts="@(PostDeploy)">
+      
+      <Output TaskParameter="Success" PropertyName="CompilationSucceeded" />
+    </CompilePgProject>
+
+    <!-- Report compilation result -->
+    <Message Text="✅ PostgreSQL project compiled successfully!" Importance="high" Condition="'$(CompilationSucceeded)' == 'true'" />
+    <Error Text="❌ PostgreSQL project compilation failed!" Condition="'$(CompilationSucceeded)' != 'true'" />
+
+  </Target>
+
+  <!-- Clean target -->
+  <Target Name="Clean">
+    <Delete Files="$(PgPacFilePath)" />
+    <Message Text="Cleaned PostgreSQL output: $(PgPacFilePath)" Importance="high" />
+  </Target>
+
+  <!-- Rebuild target -->
+  <Target Name="Rebuild" DependsOnTargets="Clean;Build" />
+
+</Project>

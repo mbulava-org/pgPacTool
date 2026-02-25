@@ -102,7 +102,8 @@ namespace mbulava.PostgreSql.Dac.Extract
                 var pgSchema = new PgSchema 
                 { 
                     Name = schema.Name, 
-                    Owner = schema.Owner, 
+                    Owner = schema.Owner,
+                    Definition = schema.Definition, // Copy the SQL definition
                     Ast = schema.Ast,
                     Privileges = schema.Privileges
                 };
@@ -176,6 +177,7 @@ namespace mbulava.PostgreSql.Dac.Extract
                 {
                     Name = name,
                     Owner = owner,
+                    Definition = sql, // Store the original SQL definition
                     Ast = ast,
                     Privileges = await ExtractPrivilegesAsync(privilegesSql, "schema", name)
                 });
@@ -373,6 +375,25 @@ namespace mbulava.PostgreSql.Dac.Extract
                     Replication = reader.GetBoolean(4),
                     BypassRLS = reader.GetBoolean(5),
                 };
+
+                // Build CREATE ROLE SQL definition
+                var attributes = new List<string>();
+                if (role.IsSuperUser) attributes.Add("SUPERUSER");
+                else attributes.Add("NOSUPERUSER");
+
+                if (role.CanLogin) attributes.Add("LOGIN");
+                else attributes.Add("NOLOGIN");
+
+                if (role.Inherit) attributes.Add("INHERIT");
+                else attributes.Add("NOINHERIT");
+
+                if (role.Replication) attributes.Add("REPLICATION");
+                else attributes.Add("NOREPLICATION");
+
+                if (role.BypassRLS) attributes.Add("BYPASSRLS");
+                else attributes.Add("NOBYPASSRLS");
+
+                role.Definition = $"CREATE ROLE {QuoteIdent(roleName)} WITH {string.Join(" ", attributes)};";
 
                 roles[role.Name] = role;
                 reader.Close();

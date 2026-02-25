@@ -339,6 +339,9 @@ internal class Program
                 Console.WriteLine($"   📄 Types: {stats.Types}");
                 Console.WriteLine($"   📄 Sequences: {stats.Sequences}");
                 Console.WriteLine($"   📄 Triggers: {stats.Triggers}");
+                Console.WriteLine($"   📄 Indexes: {stats.Indexes}");
+                Console.WriteLine($"   👤 Roles: {stats.Roles}");
+                Console.WriteLine($"   🔐 Permission files: {stats.PermissionFiles}");
                 Console.WriteLine($"   📝 Total SQL files: {stats.TotalFiles}");
                 Console.WriteLine();
                 Console.WriteLine($"💡 Open {targetFile} in Visual Studio to edit!");

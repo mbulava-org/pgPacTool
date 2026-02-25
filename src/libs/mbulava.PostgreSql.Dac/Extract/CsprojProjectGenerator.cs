@@ -27,17 +27,21 @@ public class CsprojProjectGenerator
     /// </summary>
     public async Task GenerateProjectAsync(PgProject project)
     {
-        // Create folder structure and SQL files
+        // Create folder structure and SQL files for schemas
         foreach (var schema in project.Schemas)
         {
             await GenerateSchemaFilesAsync(schema);
         }
+
+        // Generate roles and permissions
+        await GenerateRolesAndPermissionsAsync(project);
 
         // Generate .csproj file
         GenerateCsprojFile(project);
 
         Console.WriteLine($"✅ Generated SDK-style project in: {_projectDirectory}");
         Console.WriteLine($"   📁 Schemas: {project.Schemas.Count}");
+        Console.WriteLine($"   👤 Roles: {project.Roles.Count}");
         Console.WriteLine($"   📄 SQL files created");
         Console.WriteLine($"   📦 Project file: {_projectName}.csproj");
     }
@@ -48,17 +52,43 @@ public class CsprojProjectGenerator
     private async Task GenerateSchemaFilesAsync(PgSchema schema)
     {
         var schemaDir = Path.Combine(_projectDirectory, schema.Name);
-        
+        Directory.CreateDirectory(schemaDir);
+
+        // Generate CREATE SCHEMA statement file
+        // Use _schema.sql so it sorts first (underscore before letters)
+        var schemaFilePath = Path.Combine(schemaDir, "_schema.sql");
+
+        // Use the original SQL definition from extraction (already properly quoted from AST)
+        var schemaDefinition = !string.IsNullOrWhiteSpace(schema.Definition) 
+            ? schema.Definition 
+            : $"CREATE SCHEMA IF NOT EXISTS {schema.Name} AUTHORIZATION {schema.Owner};";
+
+        await File.WriteAllTextAsync(schemaFilePath, schemaDefinition, Encoding.UTF8);
+
         // Tables
         if (schema.Tables.Count > 0)
         {
             var tablesDir = Path.Combine(schemaDir, "Tables");
             Directory.CreateDirectory(tablesDir);
-            
+
             foreach (var table in schema.Tables)
             {
                 var filePath = Path.Combine(tablesDir, $"{table.Name}.sql");
                 await File.WriteAllTextAsync(filePath, table.Definition, Encoding.UTF8);
+            }
+        }
+
+        // Indexes (from all tables in the schema)
+        var allIndexes = schema.Tables.SelectMany(t => t.Indexes).ToList();
+        if (allIndexes.Count > 0)
+        {
+            var indexesDir = Path.Combine(schemaDir, "Indexes");
+            Directory.CreateDirectory(indexesDir);
+
+            foreach (var index in allIndexes)
+            {
+                var filePath = Path.Combine(indexesDir, $"{index.Name}.sql");
+                await File.WriteAllTextAsync(filePath, index.Definition, Encoding.UTF8);
             }
         }
 
@@ -119,11 +149,96 @@ public class CsprojProjectGenerator
         {
             var triggersDir = Path.Combine(schemaDir, "Triggers");
             Directory.CreateDirectory(triggersDir);
-            
+
             foreach (var trigger in schema.Triggers)
             {
                 var filePath = Path.Combine(triggersDir, $"{trigger.Name}.sql");
                 await File.WriteAllTextAsync(filePath, trigger.Definition, Encoding.UTF8);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Generates SQL files for roles and permissions.
+    /// </summary>
+    private async Task GenerateRolesAndPermissionsAsync(PgProject project)
+    {
+        if (project.Roles.Count == 0)
+            return;
+
+        // Create Security directory for roles and permissions
+        var securityDir = Path.Combine(_projectDirectory, "Security");
+        Directory.CreateDirectory(securityDir);
+
+        // Roles subdirectory
+        var rolesDir = Path.Combine(securityDir, "Roles");
+        Directory.CreateDirectory(rolesDir);
+
+        foreach (var role in project.Roles)
+        {
+            var roleFilePath = Path.Combine(rolesDir, $"{role.Name}.sql");
+            var roleDefinition = new StringBuilder();
+
+            // Add CREATE ROLE statement
+            roleDefinition.AppendLine(role.Definition);
+
+            // Add role memberships (GRANT role TO role)
+            if (role.MemberOf.Count > 0)
+            {
+                roleDefinition.AppendLine();
+                roleDefinition.AppendLine($"-- Role memberships for {role.Name}");
+                foreach (var parentRole in role.MemberOf)
+                {
+                    roleDefinition.AppendLine($"GRANT {parentRole} TO {role.Name};");
+                }
+            }
+
+            await File.WriteAllTextAsync(roleFilePath, roleDefinition.ToString(), Encoding.UTF8);
+        }
+
+        // Generate permissions (GRANT statements) for each schema
+        var permissionsDir = Path.Combine(securityDir, "Permissions");
+        Directory.CreateDirectory(permissionsDir);
+
+        foreach (var schema in project.Schemas)
+        {
+            var schemaPermissions = new StringBuilder();
+            var hasPermissions = false;
+
+            // Schema privileges
+            if (schema.Privileges.Count > 0)
+            {
+                schemaPermissions.AppendLine($"-- Schema: {schema.Name}");
+                foreach (var privilege in schema.Privileges)
+                {
+                    var grantOption = privilege.IsGrantable ? " WITH GRANT OPTION" : "";
+                    schemaPermissions.AppendLine($"GRANT {privilege.PrivilegeType} ON SCHEMA {schema.Name} TO {privilege.Grantee}{grantOption};");
+                }
+                schemaPermissions.AppendLine();
+                hasPermissions = true;
+            }
+
+            // Table privileges
+            foreach (var table in schema.Tables)
+            {
+                if (table.Privileges.Count > 0)
+                {
+                    schemaPermissions.AppendLine($"-- Table: {schema.Name}.{table.Name}");
+                    foreach (var privilege in table.Privileges)
+                    {
+                        var grantOption = privilege.IsGrantable ? " WITH GRANT OPTION" : "";
+                        schemaPermissions.AppendLine($"GRANT {privilege.PrivilegeType} ON TABLE {schema.Name}.{table.Name} TO {privilege.Grantee}{grantOption};");
+                    }
+                    schemaPermissions.AppendLine();
+                    hasPermissions = true;
+                }
+            }
+
+            // Only create file if there are permissions
+            if (hasPermissions)
+            {
+                var permissionFilePath = Path.Combine(permissionsDir, $"{schema.Name}.sql");
+                await File.WriteAllTextAsync(permissionFilePath, schemaPermissions.ToString(), Encoding.UTF8);
             }
         }
     }
@@ -136,31 +251,39 @@ public class CsprojProjectGenerator
         var csproj = new XDocument(
             new XElement("Project",
                 new XAttribute("Sdk", "Microsoft.NET.Sdk"),
-                
+
                 // PropertyGroup
                 new XElement("PropertyGroup",
                     new XElement("TargetFramework", "net10.0"),
                     new XElement("OutputType", "Library"),
                     new XElement("IsPackable", "false"),
-                    new XElement("DatabaseName", project.DatabaseName ?? _projectName)
+                    new XElement("DatabaseName", project.DatabaseName ?? _projectName),
+                    new XElement("PostgresVersion", project.PostgresVersion ?? "16.0"),
+                    new XComment(" PostgreSQL target version - used for compilation and deployment validation ")
                 ),
 
                 // Comment about auto-discovery
                 new XComment(@" 
     Convention: All .sql files are automatically included!
     No need to explicitly list them - just organize in folders.
-    
+
     Folder structure:
-    - {schema}/Tables/
-    - {schema}/Views/
-    - {schema}/Functions/
-    - {schema}/Types/
-    - {schema}/Sequences/
-    - {schema}/Triggers/
+    - {schema}/_schema.sql         (CREATE SCHEMA statement)
+    - {schema}/Tables/             (CREATE TABLE statements)
+    - {schema}/Indexes/            (CREATE INDEX statements)
+    - {schema}/Views/              (CREATE VIEW statements)
+    - {schema}/Functions/          (CREATE FUNCTION/PROCEDURE statements)
+    - {schema}/Types/              (CREATE TYPE statements)
+    - {schema}/Sequences/          (CREATE SEQUENCE statements)
+    - {schema}/Triggers/           (CREATE TRIGGER statements)
+    - Security/Roles/              (CREATE ROLE statements)
+    - Security/Permissions/        (GRANT statements per schema)
+
+    Files are deployed in dependency order automatically.
   "),
 
                 // ItemGroup for Pre/Post deployment scripts (placeholder)
-                new XComment(" Only Pre/Post deployment scripts need explicit configuration "),
+                new XComment(" Pre/Post deployment scripts (optional) "),
                 new XElement("ItemGroup",
                     new XComment(" <PreDeploy Include=\"Scripts\\PreDeployment\\*.sql\" /> "),
                     new XComment(" <PostDeploy Include=\"Scripts\\PostDeployment\\*.sql\" /> ")
@@ -178,7 +301,7 @@ public class CsprojProjectGenerator
     public static GenerationStats GetStats(PgProject project)
     {
         var stats = new GenerationStats();
-        
+
         foreach (var schema in project.Schemas)
         {
             stats.Schemas++;
@@ -188,10 +311,27 @@ public class CsprojProjectGenerator
             stats.Types += schema.Types.Count;
             stats.Sequences += schema.Sequences.Count;
             stats.Triggers += schema.Triggers.Count;
+
+            // Count indexes from all tables
+            stats.Indexes += schema.Tables.Sum(t => t.Indexes.Count);
+
+            // Count permissions per schema
+            if (schema.Privileges.Count > 0 || schema.Tables.Any(t => t.Privileges.Count > 0))
+            {
+                stats.PermissionFiles++;
+            }
         }
 
-        stats.TotalFiles = stats.Tables + stats.Views + stats.Functions + 
-                          stats.Types + stats.Sequences + stats.Triggers;
+        stats.Roles = project.Roles.Count;
+
+        // Total files includes:
+        // - Schema definition files (_schema.sql for each schema)
+        // - All object files (tables, views, functions, types, sequences, triggers, indexes)
+        // - Role files (one per role in Security/Roles/)
+        // - Permission files (one per schema with permissions in Security/Permissions/)
+        stats.TotalFiles = stats.Schemas + stats.Tables + stats.Views + stats.Functions + 
+                          stats.Types + stats.Sequences + stats.Triggers + stats.Indexes + 
+                          stats.Roles + stats.PermissionFiles;
 
         return stats;
     }
@@ -209,5 +349,8 @@ public record GenerationStats
     public int Types { get; set; }
     public int Sequences { get; set; }
     public int Triggers { get; set; }
+    public int Indexes { get; set; }
+    public int Roles { get; set; }
+    public int PermissionFiles { get; set; }
     public int TotalFiles { get; set; }
 }

@@ -45,6 +45,9 @@ namespace mbulava.PostgreSql.Dac.Models
         public string Name { get; set; } = string.Empty;
         public string Owner { get; set; } = string.Empty;
 
+        // SQL definition from database
+        public string Definition { get; set; } = string.Empty;
+
         // Parsed AST for programmatic access and comparison
         public CreateSchemaStmt Ast { get; set; }
         public List<PgPrivilege> Privileges { get; set; } = new();

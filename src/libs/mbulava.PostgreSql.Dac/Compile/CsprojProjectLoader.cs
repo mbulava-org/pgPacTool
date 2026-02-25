@@ -68,30 +68,55 @@ public class CsprojProjectLoader
             project.DatabaseName = dbNameElement.Value;
         }
 
-        // Get SQL files from the project
-        var sqlFiles = GetSqlFilesFromProject(doc);
-
-        // Parse SQL files and build schema
-        var schema = new PgSchema
+        // Get PostgreSQL version from project properties if specified
+        var pgVersionElement = doc.Descendants()
+            .FirstOrDefault(e => e.Name.LocalName == "PostgresVersion");
+        if (pgVersionElement != null && !string.IsNullOrWhiteSpace(pgVersionElement.Value))
         {
-            Name = "public", // Default schema, could be configurable
-            Owner = "postgres"
-        };
-
-        foreach (var sqlFile in sqlFiles)
-        {
-            var fullPath = Path.Combine(_projectDirectory, sqlFile);
-            if (!File.Exists(fullPath))
-            {
-                Console.WriteLine($"Warning: SQL file not found: {sqlFile}");
-                continue;
-            }
-
-            var sql = await File.ReadAllTextAsync(fullPath);
-            await ParseSqlFileAsync(sql, sqlFile, schema);
+            project.PostgresVersion = pgVersionElement.Value;
         }
 
-        project.Schemas.Add(schema);
+        // Get SQL files from the project (convention-based: all *.sql files)
+        var sqlFiles = GetSqlFilesFromProject(doc);
+
+        // Group SQL files by schema folder
+        var schemaGroups = sqlFiles
+            .Select(f => new 
+            { 
+                FilePath = f,
+                FullPath = Path.Combine(_projectDirectory, f),
+                // Extract schema name from path (first directory)
+                SchemaName = f.Contains(Path.DirectorySeparatorChar) || f.Contains(Path.AltDirectorySeparatorChar)
+                    ? f.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)[0]
+                    : "public"
+            })
+            .GroupBy(x => x.SchemaName);
+
+        // Process each schema
+        foreach (var schemaGroup in schemaGroups)
+        {
+            var schemaName = schemaGroup.Key;
+            var schema = new PgSchema
+            {
+                Name = schemaName,
+                Owner = "postgres" // Default owner, could be read from _schema.sql
+            };
+
+            foreach (var fileInfo in schemaGroup)
+            {
+                if (!File.Exists(fileInfo.FullPath))
+                {
+                    Console.WriteLine($"Warning: SQL file not found: {fileInfo.FilePath}");
+                    continue;
+                }
+
+                var sql = await File.ReadAllTextAsync(fileInfo.FullPath);
+                await ParseSqlFileAsync(sql, fileInfo.FilePath, schema);
+            }
+
+            project.Schemas.Add(schema);
+        }
+
         return project;
     }
 

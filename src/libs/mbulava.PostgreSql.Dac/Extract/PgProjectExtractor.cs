@@ -1155,6 +1155,7 @@ namespace mbulava.PostgreSql.Dac.Extract
         JOIN pg_namespace n ON n.oid = p.pronamespace
         JOIN pg_roles r ON r.oid = p.proowner
         WHERE n.nspname = @schema
+          AND p.prokind IN ('f', 'p')  -- Only functions and procedures, exclude aggregates ('a') and window functions ('w')
         ORDER BY p.proname;
     ";
 

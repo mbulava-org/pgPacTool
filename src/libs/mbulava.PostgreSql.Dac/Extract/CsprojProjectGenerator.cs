@@ -65,6 +65,9 @@ public class CsprojProjectGenerator
 
         await File.WriteAllTextAsync(schemaFilePath, schemaDefinition, Encoding.UTF8);
 
+        // Generate owner ALTER statements if any objects have different owners
+        await GenerateOwnerStatementsAsync(schema);
+
         // Tables
         if (schema.Tables.Count > 0)
         {
@@ -74,7 +77,25 @@ public class CsprojProjectGenerator
             foreach (var table in schema.Tables)
             {
                 var filePath = Path.Combine(tablesDir, $"{table.Name}.sql");
-                await File.WriteAllTextAsync(filePath, table.Definition, Encoding.UTF8);
+                var tableDefinition = new StringBuilder();
+
+                // Add CREATE TABLE statement
+                tableDefinition.AppendLine(table.Definition);
+
+                // Add column comments if any exist
+                var columnsWithComments = table.Columns.Where(c => !string.IsNullOrWhiteSpace(c.Comment)).ToList();
+                if (columnsWithComments.Count > 0)
+                {
+                    tableDefinition.AppendLine();
+                    tableDefinition.AppendLine($"-- Column comments for {schema.Name}.{table.Name}");
+                    foreach (var column in columnsWithComments)
+                    {
+                        var escapedComment = column.Comment!.Replace("'", "''");
+                        tableDefinition.AppendLine($"COMMENT ON COLUMN {schema.Name}.{table.Name}.{column.Name} IS '{escapedComment}';");
+                    }
+                }
+
+                await File.WriteAllTextAsync(filePath, tableDefinition.ToString(), Encoding.UTF8);
             }
         }
 
@@ -159,6 +180,68 @@ public class CsprojProjectGenerator
     }
 
     /// <summary>
+    /// Generates ALTER ... OWNER TO statements for objects with different owners than schema owner.
+    /// </summary>
+    private async Task GenerateOwnerStatementsAsync(PgSchema schema)
+    {
+        var ownerStatements = new StringBuilder();
+        var hasOwners = false;
+
+        // Check tables
+        foreach (var table in schema.Tables.Where(t => t.Owner != schema.Owner))
+        {
+            ownerStatements.AppendLine($"ALTER TABLE {schema.Name}.{table.Name} OWNER TO {table.Owner};");
+            hasOwners = true;
+        }
+
+        // Check views
+        foreach (var view in schema.Views.Where(v => v.Owner != schema.Owner))
+        {
+            ownerStatements.AppendLine($"ALTER VIEW {schema.Name}.{view.Name} OWNER TO {view.Owner};");
+            hasOwners = true;
+        }
+
+        // Check functions
+        foreach (var function in schema.Functions.Where(f => f.Owner != schema.Owner))
+        {
+            ownerStatements.AppendLine($"ALTER FUNCTION {schema.Name}.{function.Name} OWNER TO {function.Owner};");
+            hasOwners = true;
+        }
+
+        // Check sequences
+        foreach (var sequence in schema.Sequences.Where(s => s.Owner != schema.Owner))
+        {
+            ownerStatements.AppendLine($"ALTER SEQUENCE {schema.Name}.{sequence.Name} OWNER TO {sequence.Owner};");
+            hasOwners = true;
+        }
+
+        // Check types
+        foreach (var type in schema.Types.Where(t => t.Owner != schema.Owner))
+        {
+            ownerStatements.AppendLine($"ALTER TYPE {schema.Name}.{type.Name} OWNER TO {type.Owner};");
+            hasOwners = true;
+        }
+
+        // Check indexes (if owner differs from table owner)
+        foreach (var table in schema.Tables)
+        {
+            foreach (var index in table.Indexes.Where(i => i.Owner != table.Owner))
+            {
+                ownerStatements.AppendLine($"ALTER INDEX {schema.Name}.{index.Name} OWNER TO {index.Owner};");
+                hasOwners = true;
+            }
+        }
+
+        // Only create file if there are owner statements
+        if (hasOwners)
+        {
+            var schemaDir = Path.Combine(_projectDirectory, schema.Name);
+            var ownerFilePath = Path.Combine(schemaDir, "_owners.sql");
+            await File.WriteAllTextAsync(ownerFilePath, ownerStatements.ToString(), Encoding.UTF8);
+        }
+    }
+
+    /// <summary>
     /// Generates SQL files for roles and permissions.
     /// </summary>
     private async Task GenerateRolesAndPermissionsAsync(PgProject project)
@@ -234,6 +317,70 @@ public class CsprojProjectGenerator
                 }
             }
 
+            // View privileges
+            foreach (var view in schema.Views)
+            {
+                if (view.Privileges.Count > 0)
+                {
+                    schemaPermissions.AppendLine($"-- View: {schema.Name}.{view.Name}");
+                    foreach (var privilege in view.Privileges)
+                    {
+                        var grantOption = privilege.IsGrantable ? " WITH GRANT OPTION" : "";
+                        schemaPermissions.AppendLine($"GRANT {privilege.PrivilegeType} ON TABLE {schema.Name}.{view.Name} TO {privilege.Grantee}{grantOption};");
+                    }
+                    schemaPermissions.AppendLine();
+                    hasPermissions = true;
+                }
+            }
+
+            // Function privileges
+            foreach (var function in schema.Functions)
+            {
+                if (function.Privileges.Count > 0)
+                {
+                    schemaPermissions.AppendLine($"-- Function: {schema.Name}.{function.Name}");
+                    foreach (var privilege in function.Privileges)
+                    {
+                        var grantOption = privilege.IsGrantable ? " WITH GRANT OPTION" : "";
+                        schemaPermissions.AppendLine($"GRANT {privilege.PrivilegeType} ON FUNCTION {schema.Name}.{function.Name} TO {privilege.Grantee}{grantOption};");
+                    }
+                    schemaPermissions.AppendLine();
+                    hasPermissions = true;
+                }
+            }
+
+            // Sequence privileges
+            foreach (var sequence in schema.Sequences)
+            {
+                if (sequence.Privileges.Count > 0)
+                {
+                    schemaPermissions.AppendLine($"-- Sequence: {schema.Name}.{sequence.Name}");
+                    foreach (var privilege in sequence.Privileges)
+                    {
+                        var grantOption = privilege.IsGrantable ? " WITH GRANT OPTION" : "";
+                        schemaPermissions.AppendLine($"GRANT {privilege.PrivilegeType} ON SEQUENCE {schema.Name}.{sequence.Name} TO {privilege.Grantee}{grantOption};");
+                    }
+                    schemaPermissions.AppendLine();
+                    hasPermissions = true;
+                }
+            }
+
+            // Type privileges
+            foreach (var type in schema.Types)
+            {
+                if (type.Privileges.Count > 0)
+                {
+                    schemaPermissions.AppendLine($"-- Type: {schema.Name}.{type.Name}");
+                    foreach (var privilege in type.Privileges)
+                    {
+                        var grantOption = privilege.IsGrantable ? " WITH GRANT OPTION" : "";
+                        schemaPermissions.AppendLine($"GRANT {privilege.PrivilegeType} ON TYPE {schema.Name}.{type.Name} TO {privilege.Grantee}{grantOption};");
+                    }
+                    schemaPermissions.AppendLine();
+                    hasPermissions = true;
+                }
+            }
+
             // Only create file if there are permissions
             if (hasPermissions)
             {
@@ -258,9 +405,16 @@ public class CsprojProjectGenerator
                     new XElement("OutputType", "Library"),
                     new XElement("IsPackable", "false"),
                     new XElement("DatabaseName", project.DatabaseName ?? _projectName),
-                    new XElement("PostgresVersion", project.PostgresVersion ?? "16.0"),
-                    new XComment(" PostgreSQL target version - used for compilation and deployment validation ")
+                    new XElement("PostgresVersion", project.PostgresVersion ?? "16"),
+                    new XComment(" PostgreSQL target version (major version only) - used for compilation and deployment validation "),
+                    new XElement("DefaultOwner", project.DefaultOwner ?? "postgres"),
+                    new XComment(" Default owner for objects that don't explicitly specify one "),
+                    new XElement("DefaultTablespace", project.DefaultTablespace ?? "pg_default"),
+                    new XComment(" Default tablespace for tables/indexes that don't explicitly specify one ")
                 ),
+
+                // Comment documenting source (not used in compilation, just for reference)
+                new XComment($" Extracted from: {project.SourceConnection ?? "unknown"} "),
 
                 // Comment about auto-discovery
                 new XComment(@" 
@@ -278,6 +432,10 @@ public class CsprojProjectGenerator
     - {schema}/Triggers/           (CREATE TRIGGER statements)
     - Security/Roles/              (CREATE ROLE statements)
     - Security/Permissions/        (GRANT statements per schema)
+
+    Default values (used if SQL doesn't specify):
+    - DefaultOwner: Applied to objects without explicit OWNER clause
+    - DefaultTablespace: Applied to tables/indexes without TABLESPACE clause
 
     Files are deployed in dependency order automatically.
   "),
@@ -316,7 +474,12 @@ public class CsprojProjectGenerator
             stats.Indexes += schema.Tables.Sum(t => t.Indexes.Count);
 
             // Count permissions per schema
-            if (schema.Privileges.Count > 0 || schema.Tables.Any(t => t.Privileges.Count > 0))
+            if (schema.Privileges.Count > 0 || 
+                schema.Tables.Any(t => t.Privileges.Count > 0) ||
+                schema.Views.Any(v => v.Privileges.Count > 0) ||
+                schema.Functions.Any(f => f.Privileges.Count > 0) ||
+                schema.Sequences.Any(s => s.Privileges.Count > 0) ||
+                schema.Types.Any(t => t.Privileges.Count > 0))
             {
                 stats.PermissionFiles++;
             }

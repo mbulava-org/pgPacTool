@@ -28,6 +28,28 @@ namespace mbulava.PostgreSql.Dac.Extract
         }
 
         /// <summary>
+        /// Sanitizes connection string by removing password for documentation.
+        /// </summary>
+        private string SanitizeConnectionString(string connectionString)
+        {
+            try
+            {
+                var builder = new NpgsqlConnectionStringBuilder(connectionString);
+                builder.Password = "****";
+                return builder.ToString();
+            }
+            catch
+            {
+                // If parsing fails, return generic sanitized string
+                return connectionString.Contains("Password=", StringComparison.OrdinalIgnoreCase)
+                    ? System.Text.RegularExpressions.Regex.Replace(connectionString, 
+                        @"Password=[^;]*", "Password=****", 
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+                    : connectionString;
+            }
+        }
+
+        /// <summary>
         /// Creates and opens a new database connection. MUST be disposed by caller using 'using' statement.
         /// </summary>
         private async Task<NpgsqlConnection> CreateConnectionAsync() 
@@ -78,20 +100,95 @@ namespace mbulava.PostgreSql.Dac.Extract
         }
 
         /// <summary>
+        /// Validates that the specified database exists in the PostgreSQL instance.
+        /// </summary>
+        /// <param name="databaseName">Name of the database to validate</param>
+        /// <exception cref="InvalidOperationException">Thrown when database doesn't exist</exception>
+        private async Task ValidateDatabaseExistsAsync(string databaseName)
+        {
+            try
+            {
+                // Build a connection string to the 'postgres' database to check if target database exists
+                var builder = new NpgsqlConnectionStringBuilder(_conn);
+                var targetDatabase = builder.Database;
+
+                // If no database specified in connection string, use the parameter
+                if (string.IsNullOrEmpty(targetDatabase))
+                {
+                    targetDatabase = databaseName;
+                }
+
+                // Connect to 'postgres' database to query pg_database
+                builder.Database = "postgres";
+                var postgresConnString = builder.ToString();
+
+                await using var conn = new NpgsqlConnection(postgresConnString);
+                await conn.OpenAsync();
+
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT 1 FROM pg_database WHERE datname = @dbname;";
+                cmd.Parameters.AddWithValue("dbname", targetDatabase);
+
+                var result = await cmd.ExecuteScalarAsync();
+                if (result == null)
+                {
+                    throw new InvalidOperationException(
+                        $"Database '{targetDatabase}' does not exist in the PostgreSQL instance. " +
+                        $"Please verify the database name or create the database before extraction.");
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // Re-throw our validation exception
+                throw;
+            }
+            catch (NpgsqlException ex)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to validate database existence: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
         /// Extracts PostgreSQL database project with version validation
         /// </summary>
         /// <param name="databaseName">Name of the database to extract</param>
         /// <returns>Complete PgProject with all database objects</returns>
         /// <exception cref="NotSupportedException">Thrown when PostgreSQL version is below 16</exception>
+        /// <exception cref="InvalidOperationException">Thrown when database doesn't exist</exception>
         public async Task<PgProject> ExtractPgProject(string databaseName)
         {
-            // Validate version first - will throw NotSupportedException if < 16
+            // Validate database exists first
+            await ValidateDatabaseExistsAsync(databaseName);
+
+            // Validate version - will throw NotSupportedException if < 16
             var postgresVersion = await DetectPostgresVersion();
-            
+
+            // Extract only major version (e.g., "16.12" -> "16")
+            var majorVersion = postgresVersion.Split('.')[0];
+
+            // Sanitize connection string for documentation (remove password)
+            var sourceConnection = SanitizeConnectionString(_conn);
+
+            // Extract username from connection string for default owner
+            var defaultOwner = "postgres"; // fallback
+            try
+            {
+                var connBuilder = new NpgsqlConnectionStringBuilder(_conn);
+                defaultOwner = connBuilder.Username ?? "postgres";
+            }
+            catch
+            {
+                // If parsing fails, use default
+            }
+
             var project = new PgProject
             {
                 DatabaseName = databaseName,
-                PostgresVersion = postgresVersion
+                PostgresVersion = majorVersion, // Only major version
+                SourceConnection = sourceConnection, // Sanitized connection string
+                DefaultOwner = defaultOwner, // Use connection user as default
+                DefaultTablespace = "pg_default"
             };
 
 
@@ -509,7 +606,7 @@ namespace mbulava.PostgreSql.Dac.Extract
         private async Task<string> BuildCreateTableSqlAsync(UInt32 oid, string schema, string name)
         {
             var sb = new StringBuilder();
-            sb.AppendLine($"CREATE TABLE {schema}.{name} (");
+            sb.AppendLine($"CREATE TABLE {QuoteIdent(schema)}.{QuoteIdent(name)} (");
 
             await using var conn = await CreateConnectionAsync();
             await using var colCmd = conn.CreateCommand();
@@ -528,7 +625,8 @@ namespace mbulava.PostgreSql.Dac.Extract
             var cols = new List<string>();
             while (colReader.Read())
             {
-                var colDef = $"{colReader.GetString(0)} {colReader.GetString(1)}";
+                var colName = QuoteIdent(colReader.GetString(0));
+                var colDef = $"{colName} {colReader.GetString(1)}";
                 if (colReader.GetBoolean(2)) colDef += " NOT NULL";
                 if (!colReader.IsDBNull(3)) colDef += $" DEFAULT {colReader.GetString(3)}";
                 cols.Add(colDef);
@@ -551,7 +649,8 @@ namespace mbulava.PostgreSql.Dac.Extract
         SELECT a.attname,
                pg_catalog.format_type(a.atttypid, a.atttypmod),
                a.attnotnull,
-               pg_get_expr(d.adbin, d.adrelid)
+               pg_get_expr(d.adbin, d.adrelid),
+               col_description(a.attrelid, a.attnum)
         FROM pg_attribute a
         LEFT JOIN pg_attrdef d ON a.attrelid = d.adrelid AND a.attnum = d.adnum
         WHERE a.attrelid = @oid AND a.attnum > 0 AND NOT a.attisdropped;";
@@ -566,7 +665,8 @@ namespace mbulava.PostgreSql.Dac.Extract
                     Name = reader.GetString(0),
                     DataType = reader.GetString(1),
                     IsNotNull = reader.GetBoolean(2),
-                    DefaultExpression = reader.IsDBNull(3) ? null : reader.GetString(3)
+                    DefaultExpression = reader.IsDBNull(3) ? null : reader.GetString(3),
+                    Comment = reader.IsDBNull(4) ? null : reader.GetString(4)
                 });
             }
             await reader.CloseAsync();
@@ -934,8 +1034,15 @@ namespace mbulava.PostgreSql.Dac.Extract
                 if (!string.IsNullOrEmpty(definition))
                 {
                     var parseResult = new Parser().Parse(definition);
-                    ast = JsonSerializer.Deserialize<CreateSeqStmt>(parseResult.ParseTree!.RootElement.GetRawText());
-                    astJson = parseResult.ParseTree?.RootElement.GetRawText();
+                    if (parseResult.IsSuccess && parseResult.ParseTree != null)
+                    {
+                        ast = JsonSerializer.Deserialize<CreateSeqStmt>(parseResult.ParseTree.RootElement.GetRawText());
+                        astJson = parseResult.ParseTree.RootElement.GetRawText();
+                    }
+                    else if (_verbose)
+                    {
+                        Console.WriteLine($"   ⚠️  Warning: Failed to parse sequence definition for '{name}': {parseResult.Error}");
+                    }
                 }
 
                 sequences.Add(new PgSequence

@@ -15,6 +15,9 @@ namespace mbulava.PostgreSql.Dac.Models
     {
         public string DatabaseName { get; set; } = string.Empty;
         public string PostgresVersion { get; set; } = string.Empty;
+        public string SourceConnection { get; set; } = string.Empty; // Sanitized connection string for documentation
+        public string DefaultOwner { get; set; } = "postgres";
+        public string DefaultTablespace { get; set; } = "pg_default";
 
         public List<PgSchema> Schemas { get; set; } = new();
         public List<PgRole> Roles { get; set; } = new();   

@@ -1,5 +1,6 @@
 using mbulava.PostgreSql.Dac.Models;
 using Npgquery;
+using PgQuery;
 using System.IO.Compression;
 using System.Text.Json;
 using System.Xml.Linq;
@@ -76,48 +77,278 @@ public class CsprojProjectLoader
             project.PostgresVersion = pgVersionElement.Value;
         }
 
+        // Get default owner from project properties
+        var defaultOwnerElement = doc.Descendants()
+            .FirstOrDefault(e => e.Name.LocalName == "DefaultOwner");
+        if (defaultOwnerElement != null && !string.IsNullOrWhiteSpace(defaultOwnerElement.Value))
+        {
+            project.DefaultOwner = defaultOwnerElement.Value;
+        }
+
+        // Get default tablespace from project properties
+        var defaultTablespaceElement = doc.Descendants()
+            .FirstOrDefault(e => e.Name.LocalName == "DefaultTablespace");
+        if (defaultTablespaceElement != null && !string.IsNullOrWhiteSpace(defaultTablespaceElement.Value))
+        {
+            project.DefaultTablespace = defaultTablespaceElement.Value;
+        }
+
         // Get SQL files from the project (convention-based: all *.sql files)
         var sqlFiles = GetSqlFilesFromProject(doc);
 
-        // Group SQL files by schema folder
-        var schemaGroups = sqlFiles
-            .Select(f => new 
-            { 
-                FilePath = f,
-                FullPath = Path.Combine(_projectDirectory, f),
-                // Extract schema name from path (first directory)
-                SchemaName = f.Contains(Path.DirectorySeparatorChar) || f.Contains(Path.AltDirectorySeparatorChar)
-                    ? f.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)[0]
-                    : "public"
-            })
-            .GroupBy(x => x.SchemaName);
+        // Phase 1: Parse all SQL files and extract object information from AST
+        var parsedObjects = new List<ParsedSqlObject>();
+        foreach (var sqlFile in sqlFiles)
+        {
+            var fullPath = Path.Combine(_projectDirectory, sqlFile);
+            if (!File.Exists(fullPath))
+            {
+                Console.WriteLine($"Warning: SQL file not found: {sqlFile}");
+                continue;
+            }
 
-        // Process each schema
+            var sql = await File.ReadAllTextAsync(fullPath);
+            var parsed = await ParseAndClassifySqlFileAsync(sql, sqlFile);
+            if (parsed != null)
+            {
+                parsedObjects.Add(parsed);
+            }
+        }
+
+        // Phase 2: Build dependency graph and order objects
+        var orderedObjects = OrderObjectsByDependencies(parsedObjects);
+
+        // Phase 3: Group by schema (extracted from AST, not folder structure)
+        var schemaGroups = orderedObjects.GroupBy(o => o.SchemaName);
+
         foreach (var schemaGroup in schemaGroups)
         {
-            var schemaName = schemaGroup.Key;
             var schema = new PgSchema
             {
-                Name = schemaName,
-                Owner = "postgres" // Default owner, could be read from _schema.sql
+                Name = schemaGroup.Key,
+                Owner = project.DefaultOwner // Use default from project settings
             };
 
-            foreach (var fileInfo in schemaGroup)
+            // Process objects in dependency order
+            foreach (var obj in schemaGroup)
             {
-                if (!File.Exists(fileInfo.FullPath))
-                {
-                    Console.WriteLine($"Warning: SQL file not found: {fileInfo.FilePath}");
-                    continue;
-                }
-
-                var sql = await File.ReadAllTextAsync(fileInfo.FullPath);
-                await ParseSqlFileAsync(sql, fileInfo.FilePath, schema);
+                await AddObjectToSchemaAsync(schema, obj);
             }
 
             project.Schemas.Add(schema);
         }
 
         return project;
+    }
+
+    /// <summary>
+    /// Parses a SQL file and extracts object information from AST.
+    /// </summary>
+    private async Task<ParsedSqlObject?> ParseAndClassifySqlFileAsync(string sql, string filePath)
+    {
+        try
+        {
+            var result = _parser.Parse(sql);
+            if (!result.IsSuccess || result.ParseTree == null)
+            {
+                Console.WriteLine($"Warning: Failed to parse {filePath}: {result.Error}");
+                return null;
+            }
+
+            var astJson = result.ParseTree.RootElement.GetRawText();
+            var parsed = new ParsedSqlObject
+            {
+                Sql = sql,
+                FilePath = filePath,
+                AstJson = astJson
+            };
+
+            // Determine object type and extract schema/name from AST
+            if (sql.Contains("CREATE SCHEMA", StringComparison.OrdinalIgnoreCase))
+            {
+                var stmt = JsonSerializer.Deserialize<CreateSchemaStmt>(astJson);
+                parsed.ObjectType = SqlObjectType.Schema;
+                parsed.SchemaName = stmt?.Schemaname ?? "public";
+                parsed.ObjectName = stmt?.Schemaname ?? "public";
+            }
+            else if (sql.Contains("CREATE TABLE", StringComparison.OrdinalIgnoreCase))
+            {
+                var stmt = JsonSerializer.Deserialize<CreateStmt>(astJson);
+                parsed.ObjectType = SqlObjectType.Table;
+                ExtractSchemaAndName(stmt?.Relation, out var schema, out var name);
+                parsed.SchemaName = schema ?? "public";
+                parsed.ObjectName = name ?? "unknown";
+                parsed.Ast = stmt;
+            }
+            else if (sql.Contains("CREATE INDEX", StringComparison.OrdinalIgnoreCase) || 
+                     sql.Contains("CREATE UNIQUE INDEX", StringComparison.OrdinalIgnoreCase))
+            {
+                var stmt = JsonSerializer.Deserialize<IndexStmt>(astJson);
+                parsed.ObjectType = SqlObjectType.Index;
+                ExtractSchemaAndName(stmt?.Relation, out var schema, out var name);
+                parsed.SchemaName = schema ?? "public";
+                parsed.ObjectName = stmt?.Idxname ?? name ?? "unknown";
+                parsed.Ast = stmt;
+            }
+            else if (sql.Contains("CREATE VIEW", StringComparison.OrdinalIgnoreCase))
+            {
+                var stmt = JsonSerializer.Deserialize<ViewStmt>(astJson);
+                parsed.ObjectType = SqlObjectType.View;
+                ExtractSchemaAndName(stmt?.View, out var schema, out var name);
+                parsed.SchemaName = schema ?? "public";
+                parsed.ObjectName = name ?? "unknown";
+                parsed.Ast = stmt;
+            }
+            else if (sql.Contains("CREATE FUNCTION", StringComparison.OrdinalIgnoreCase) ||
+                     sql.Contains("CREATE PROCEDURE", StringComparison.OrdinalIgnoreCase))
+            {
+                var stmt = JsonSerializer.Deserialize<CreateFunctionStmt>(astJson);
+                parsed.ObjectType = SqlObjectType.Function;
+                // Function name is in Funcname array
+                if (stmt?.Funcname != null && stmt.Funcname.Any())
+                {
+                    var nameNode = stmt.Funcname.Last();
+                    parsed.ObjectName = nameNode?.String?.Sval ?? "unknown";
+                    if (stmt.Funcname.Count > 1)
+                    {
+                        parsed.SchemaName = stmt.Funcname[0]?.String?.Sval ?? "public";
+                    }
+                    else
+                    {
+                        parsed.SchemaName = "public";
+                    }
+                }
+            }
+            else if (sql.Contains("CREATE TYPE", StringComparison.OrdinalIgnoreCase))
+            {
+                var stmt = JsonSerializer.Deserialize<CompositeTypeStmt>(astJson);
+                parsed.ObjectType = SqlObjectType.Type;
+                ExtractSchemaAndName(stmt?.Typevar, out var schema, out var name);
+                parsed.SchemaName = schema ?? "public";
+                parsed.ObjectName = name ?? "unknown";
+                parsed.Ast = stmt;
+            }
+            else if (sql.Contains("CREATE SEQUENCE", StringComparison.OrdinalIgnoreCase))
+            {
+                var stmt = JsonSerializer.Deserialize<CreateSeqStmt>(astJson);
+                parsed.ObjectType = SqlObjectType.Sequence;
+                ExtractSchemaAndName(stmt?.Sequence, out var schema, out var name);
+                parsed.SchemaName = schema ?? "public";
+                parsed.ObjectName = name ?? "unknown";
+                parsed.Ast = stmt;
+            }
+            else if (sql.Contains("CREATE TRIGGER", StringComparison.OrdinalIgnoreCase))
+            {
+                var stmt = JsonSerializer.Deserialize<CreateTrigStmt>(astJson);
+                parsed.ObjectType = SqlObjectType.Trigger;
+                ExtractSchemaAndName(stmt?.Relation, out var schema, out var name);
+                parsed.SchemaName = schema ?? "public";
+                parsed.ObjectName = stmt?.Trigname ?? "unknown";
+                parsed.Ast = stmt;
+            }
+            else if (sql.Contains("CREATE ROLE", StringComparison.OrdinalIgnoreCase))
+            {
+                var stmt = JsonSerializer.Deserialize<CreateRoleStmt>(astJson);
+                parsed.ObjectType = SqlObjectType.Role;
+                parsed.SchemaName = ""; // Roles are not schema-scoped
+                parsed.ObjectName = stmt?.Role ?? "unknown";
+                parsed.Ast = stmt;
+            }
+            else if (sql.Contains("GRANT", StringComparison.OrdinalIgnoreCase))
+            {
+                parsed.ObjectType = SqlObjectType.Permission;
+                parsed.SchemaName = "public"; // Will be refined later
+                parsed.ObjectName = "_permissions";
+            }
+            else if (sql.Contains("ALTER", StringComparison.OrdinalIgnoreCase) && sql.Contains("OWNER", StringComparison.OrdinalIgnoreCase))
+            {
+                parsed.ObjectType = SqlObjectType.Owner;
+                parsed.SchemaName = "public"; // Will be refined later
+                parsed.ObjectName = "_owners";
+            }
+            else if (sql.Contains("COMMENT ON", StringComparison.OrdinalIgnoreCase))
+            {
+                parsed.ObjectType = SqlObjectType.Comment;
+                parsed.SchemaName = "public"; // Will be refined later
+                parsed.ObjectName = "_comments";
+            }
+            else
+            {
+                Console.WriteLine($"Warning: Unknown object type in {filePath}");
+                return null;
+            }
+
+            return parsed;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error parsing {filePath}: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Extracts schema and object name from RangeVar.
+    /// </summary>
+    private void ExtractSchemaAndName(RangeVar? rangeVar, out string? schema, out string? name)
+    {
+        schema = rangeVar?.Schemaname;
+        name = rangeVar?.Relname;
+    }
+
+    /// <summary>
+    /// Orders objects by dependencies (schemas first, then types, sequences, tables, etc.)
+    /// </summary>
+    private List<ParsedSqlObject> OrderObjectsByDependencies(List<ParsedSqlObject> objects)
+    {
+        var ordered = new List<ParsedSqlObject>();
+
+        // Phase 1: Schemas (must be created first)
+        ordered.AddRange(objects.Where(o => o.ObjectType == SqlObjectType.Schema));
+
+        // Phase 2: Roles (needed for ownership)
+        ordered.AddRange(objects.Where(o => o.ObjectType == SqlObjectType.Role));
+
+        // Phase 3: Types (needed before tables that reference them)
+        ordered.AddRange(objects.Where(o => o.ObjectType == SqlObjectType.Type));
+
+        // Phase 4: Sequences (needed before tables with DEFAULT nextval)
+        ordered.AddRange(objects.Where(o => o.ObjectType == SqlObjectType.Sequence));
+
+        // Phase 5: Tables
+        ordered.AddRange(objects.Where(o => o.ObjectType == SqlObjectType.Table));
+
+        // Phase 6: Indexes
+        ordered.AddRange(objects.Where(o => o.ObjectType == SqlObjectType.Index));
+
+        // Phase 7: Views
+        ordered.AddRange(objects.Where(o => o.ObjectType == SqlObjectType.View));
+
+        // Phase 8: Functions
+        ordered.AddRange(objects.Where(o => o.ObjectType == SqlObjectType.Function));
+
+        // Phase 9: Triggers
+        ordered.AddRange(objects.Where(o => o.ObjectType == SqlObjectType.Trigger));
+
+        // Phase 10: Ownership changes
+        ordered.AddRange(objects.Where(o => o.ObjectType == SqlObjectType.Owner));
+
+        // Phase 11: Permissions
+        ordered.AddRange(objects.Where(o => o.ObjectType == SqlObjectType.Permission));
+
+        // Phase 12: Comments
+        ordered.AddRange(objects.Where(o => o.ObjectType == SqlObjectType.Comment));
+
+        return ordered;
+    }
+
+    /// <summary>
+    /// Adds a parsed object to the schema.
+    /// </summary>
+    private async Task AddObjectToSchemaAsync(PgSchema schema, ParsedSqlObject obj)
+    {
+        // For now, just parse and add - full implementation would use AST
+        await ParseSqlFileAsync(obj.Sql, obj.FilePath, schema);
     }
 
     /// <summary>
@@ -130,6 +361,12 @@ public class CsprojProjectLoader
     {
         // Load the project
         var project = await LoadProjectAsync();
+
+        // Always save the full pgproj.json to obj folder for debugging/inspection
+        var objDir = Path.Combine(_projectDirectory, "obj");
+        Directory.CreateDirectory(objDir);
+        var objJsonPath = Path.Combine(objDir, $"{project.DatabaseName}.pgproj.json");
+        await GenerateJsonAsync(project, objJsonPath);
 
         // Determine output path
         if (string.IsNullOrWhiteSpace(outputPath))
@@ -696,4 +933,38 @@ public class CsprojProjectLoader
 
         return fullSql.Substring(startIndex, endIndex - startIndex).Trim();
     }
+}
+
+/// <summary>
+/// SQL object type classification.
+/// </summary>
+internal enum SqlObjectType
+{
+    Schema,
+    Table,
+    Index,
+    View,
+    Function,
+    Type,
+    Sequence,
+    Trigger,
+    Role,
+    Permission,
+    Owner,
+    Comment
+}
+
+/// <summary>
+/// Parsed SQL object with AST information.
+/// </summary>
+internal class ParsedSqlObject
+{
+    public string Sql { get; set; } = string.Empty;
+    public string FilePath { get; set; } = string.Empty;
+    public string AstJson { get; set; } = string.Empty;
+    public SqlObjectType ObjectType { get; set; }
+    public string SchemaName { get; set; } = string.Empty;
+    public string ObjectName { get; set; } = string.Empty;
+    public object? Ast { get; set; }
+    public List<string> Dependencies { get; set; } = new();
 }

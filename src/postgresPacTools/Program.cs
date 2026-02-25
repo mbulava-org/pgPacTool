@@ -361,6 +361,21 @@ internal class Program
         {
             Console.WriteLine();
             Console.WriteLine($"❌ Error: {ex.Message}");
+
+            if (verbose)
+            {
+                Console.WriteLine();
+                Console.WriteLine("Stack trace:");
+                Console.WriteLine(ex.StackTrace);
+
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine();
+                    Console.WriteLine($"Inner exception: {ex.InnerException.Message}");
+                    Console.WriteLine(ex.InnerException.StackTrace);
+                }
+            }
+
             Environment.Exit(1);
         }
     }

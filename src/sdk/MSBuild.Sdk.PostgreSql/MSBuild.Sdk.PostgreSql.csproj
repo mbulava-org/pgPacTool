@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+
+    <!-- Package Metadata -->
+    <PackageId>MSBuild.Sdk.PostgreSql</PackageId>
+    <Title>MSBuild SDK for PostgreSQL Database Projects</Title>
+    <Description>MSBuild SDK that enables SQL Server-style database project workflow for PostgreSQL. Build .csproj files with SQL scripts into deployable .pgpac packages.</Description>
+    <Authors>mbulava</Authors>
+    <Company>mbulava</Company>
+    <Copyright>© mbulava. All rights reserved.</Copyright>
+    <PackageTags>postgresql;database;msbuild;sdk;dacpac;pgpac;sql;devops</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/mbulava-org/pgPacTool</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/mbulava-org/pgPacTool</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+
+    <!-- SDK Package Configuration -->
+    <IsPackable>true</IsPackable>
+    <IncludeBuildOutput>true</IncludeBuildOutput>
+    <DevelopmentDependency>true</DevelopmentDependency>
+
+    <!-- Version -->
+    <Version>1.0.0-preview1</Version>
+  </PropertyGroup>
+
+  <!-- Include SDK files in package -->
+  <ItemGroup>
+    <None Include="Sdk\**\*" Pack="true" PackagePath="Sdk\" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <!-- Dependencies for build tasks -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Build.Framework" Version="18.3.3" />
+    <PackageReference Include="Microsoft.Build.Utilities.Core" Version="18.3.3" />
+  </ItemGroup>
+
+  <!-- Reference to our DAC library -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\libs\mbulava.PostgreSql.Dac\mbulava.PostgreSql.Dac.csproj" />
+  </ItemGroup>
+
+  <!-- Copy build output to package lib folder -->
+  <ItemGroup>
+    <None Include="$(OutputPath)**\*.dll" Pack="true" PackagePath="lib\$(TargetFramework)\" />
+  </ItemGroup>
+
+</Project>

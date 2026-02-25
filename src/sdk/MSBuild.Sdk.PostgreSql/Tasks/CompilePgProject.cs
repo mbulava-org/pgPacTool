@@ -133,7 +133,7 @@ public class CompilePgProject : Task
 
             // Generate output
             Log.LogMessage(MessageImportance.Normal, $"   📦 Generating {format} output...");
-            var actualOutput = loader.CompileAndGenerateOutputAsync(OutputPath, format).GetAwaiter().GetResult();
+            var actualOutput = loader.CompileAndGenerateOutputAsync(project, OutputPath, format).GetAwaiter().GetResult();
 
             var fileInfo = new FileInfo(actualOutput);
             Log.LogMessage(MessageImportance.High, 

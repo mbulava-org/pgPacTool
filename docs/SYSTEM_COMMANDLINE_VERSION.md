@@ -79,7 +79,7 @@ Migrating to 2.0.3 would require:
 Reasons:
 1. ✅ Works perfectly with our code
 2. ✅ Well-tested (23 CLI tests passing)
-3. ✅ No security vulnerabilities
+3. ✅ No known security vulnerabilities as of February 2026
 4. ✅ API is stable and mature
 5. ✅ Widely used in production
 6. ❌ 2.0.3 provides NO new features we need

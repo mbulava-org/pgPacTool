@@ -18,7 +18,7 @@ Build SQL Server-style database projects for PostgreSQL! This SDK enables you to
 ### 1. Create a Database Project
 
 ```xml
-<Project Sdk="MSBuild.Sdk.PostgreSql/1.0.0">
+<Project Sdk="MSBuild.Sdk.PostgreSql/1.0.0-preview1">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -95,7 +95,7 @@ Only these need explicit configuration:
 ### Example
 
 ```xml
-<Project Sdk="MSBuild.Sdk.PostgreSql/1.0.0">
+<Project Sdk="MSBuild.Sdk.PostgreSql/1.0.0-preview1">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>

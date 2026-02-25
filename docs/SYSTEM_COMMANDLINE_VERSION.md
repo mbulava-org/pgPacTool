@@ -107,7 +107,7 @@ Reasons:
 
 **System.CommandLine 2.0.0-beta4.22272.1 is the right choice for pgPacTool.**
 
-The "beta" label is misleading - this is a mature, stable API that has been in use for years. Version 2.0.3 represents a API redesign that broke backward compatibility without providing migration guidance or new features that justify the rewrite.
+The "beta" label is misleading - this is a mature, stable API that has been in use for years. Version 2.0.3 represents an API redesign that broke backward compatibility without providing migration guidance or new features that justify the rewrite.
 
 We will re-evaluate when:
 1. Microsoft publishes official guidance for beta4 → 2.0.3 migration

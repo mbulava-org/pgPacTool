@@ -19,10 +19,34 @@ namespace mbulava.PostgreSql.Dac.Extract
     public class PgProjectExtractor
     {
         private readonly string _conn;
+        private readonly bool _verbose;
 
-        public PgProjectExtractor(string conString)
+        public PgProjectExtractor(string conString, bool verbose = false)
         {
             _conn = conString;
+            _verbose = verbose;
+        }
+
+        /// <summary>
+        /// Sanitizes connection string by removing password for documentation.
+        /// </summary>
+        private string SanitizeConnectionString(string connectionString)
+        {
+            try
+            {
+                var builder = new NpgsqlConnectionStringBuilder(connectionString);
+                builder.Password = "****";
+                return builder.ToString();
+            }
+            catch
+            {
+                // If parsing fails, return generic sanitized string
+                return connectionString.Contains("Password=", StringComparison.OrdinalIgnoreCase)
+                    ? System.Text.RegularExpressions.Regex.Replace(connectionString, 
+                        @"Password=[^;]*", "Password=****", 
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+                    : connectionString;
+            }
         }
 
         /// <summary>
@@ -76,20 +100,95 @@ namespace mbulava.PostgreSql.Dac.Extract
         }
 
         /// <summary>
+        /// Validates that the specified database exists in the PostgreSQL instance.
+        /// </summary>
+        /// <param name="databaseName">Name of the database to validate</param>
+        /// <exception cref="InvalidOperationException">Thrown when database doesn't exist</exception>
+        private async Task ValidateDatabaseExistsAsync(string databaseName)
+        {
+            try
+            {
+                // Build a connection string to the 'postgres' database to check if target database exists
+                var builder = new NpgsqlConnectionStringBuilder(_conn);
+                var targetDatabase = builder.Database;
+
+                // If no database specified in connection string, use the parameter
+                if (string.IsNullOrEmpty(targetDatabase))
+                {
+                    targetDatabase = databaseName;
+                }
+
+                // Connect to 'postgres' database to query pg_database
+                builder.Database = "postgres";
+                var postgresConnString = builder.ToString();
+
+                await using var conn = new NpgsqlConnection(postgresConnString);
+                await conn.OpenAsync();
+
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT 1 FROM pg_database WHERE datname = @dbname;";
+                cmd.Parameters.AddWithValue("dbname", targetDatabase);
+
+                var result = await cmd.ExecuteScalarAsync();
+                if (result == null)
+                {
+                    throw new InvalidOperationException(
+                        $"Database '{targetDatabase}' does not exist in the PostgreSQL instance. " +
+                        $"Please verify the database name or create the database before extraction.");
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // Re-throw our validation exception
+                throw;
+            }
+            catch (NpgsqlException ex)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to validate database existence: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
         /// Extracts PostgreSQL database project with version validation
         /// </summary>
         /// <param name="databaseName">Name of the database to extract</param>
         /// <returns>Complete PgProject with all database objects</returns>
         /// <exception cref="NotSupportedException">Thrown when PostgreSQL version is below 16</exception>
+        /// <exception cref="InvalidOperationException">Thrown when database doesn't exist</exception>
         public async Task<PgProject> ExtractPgProject(string databaseName)
         {
-            // Validate version first - will throw NotSupportedException if < 16
+            // Validate database exists first
+            await ValidateDatabaseExistsAsync(databaseName);
+
+            // Validate version - will throw NotSupportedException if < 16
             var postgresVersion = await DetectPostgresVersion();
-            
+
+            // Extract only major version (e.g., "16.12" -> "16")
+            var majorVersion = postgresVersion.Split('.')[0];
+
+            // Sanitize connection string for documentation (remove password)
+            var sourceConnection = SanitizeConnectionString(_conn);
+
+            // Extract username from connection string for default owner
+            var defaultOwner = "postgres"; // fallback
+            try
+            {
+                var connBuilder = new NpgsqlConnectionStringBuilder(_conn);
+                defaultOwner = connBuilder.Username ?? "postgres";
+            }
+            catch
+            {
+                // If parsing fails, use default
+            }
+
             var project = new PgProject
             {
                 DatabaseName = databaseName,
-                PostgresVersion = postgresVersion
+                PostgresVersion = majorVersion, // Only major version
+                SourceConnection = sourceConnection, // Sanitized connection string
+                DefaultOwner = defaultOwner, // Use connection user as default
+                DefaultTablespace = "pg_default"
             };
 
 
@@ -100,7 +199,8 @@ namespace mbulava.PostgreSql.Dac.Extract
                 var pgSchema = new PgSchema 
                 { 
                     Name = schema.Name, 
-                    Owner = schema.Owner, 
+                    Owner = schema.Owner,
+                    Definition = schema.Definition, // Copy the SQL definition
                     Ast = schema.Ast,
                     Privileges = schema.Privileges
                 };
@@ -140,6 +240,9 @@ namespace mbulava.PostgreSql.Dac.Extract
                 var name = reader.GetString(0);
                 var owner = reader.GetString(1);
 
+                if (_verbose)
+                    Console.WriteLine($"   🔍 Found schema: {name} (owner: {owner})");
+
                 // Build CREATE SCHEMA SQL
                 var sql = $"CREATE SCHEMA {QuoteIdent(name)} AUTHORIZATION {QuoteIdent(owner)};";
 
@@ -148,10 +251,17 @@ namespace mbulava.PostgreSql.Dac.Extract
                 var result = parser.Parse(sql);
 
                 if (!result.IsSuccess)
-                    throw new InvalidOperationException($"Invalid SQL for schema {name}: {result.Error}");
+                {
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"   ⚠️ Warning: Failed to parse CREATE SCHEMA for '{name}': {result.Error}");
+                        Console.WriteLine($"   Continuing extraction without AST for this schema...");
+                    }
+                    // Continue without AST instead of throwing
+                }
 
                 CreateSchemaStmt? ast = null;
-                if (result.ParseTree != null)
+                if (result.IsSuccess && result.ParseTree != null)
                 {
                     var astJson = result.ParseTree.RootElement.GetRawText();
                     ast = JsonSerializer.Deserialize<CreateSchemaStmt>(astJson);
@@ -164,10 +274,14 @@ namespace mbulava.PostgreSql.Dac.Extract
                 {
                     Name = name,
                     Owner = owner,
+                    Definition = sql, // Store the original SQL definition
                     Ast = ast,
                     Privileges = await ExtractPrivilegesAsync(privilegesSql, "schema", name)
                 });
             }
+
+            if (_verbose)
+                Console.WriteLine($"   ✅ Total schemas found: {schemas.Count}");
 
             return schemas;
         }
@@ -359,6 +473,25 @@ namespace mbulava.PostgreSql.Dac.Extract
                     BypassRLS = reader.GetBoolean(5),
                 };
 
+                // Build CREATE ROLE SQL definition
+                var attributes = new List<string>();
+                if (role.IsSuperUser) attributes.Add("SUPERUSER");
+                else attributes.Add("NOSUPERUSER");
+
+                if (role.CanLogin) attributes.Add("LOGIN");
+                else attributes.Add("NOLOGIN");
+
+                if (role.Inherit) attributes.Add("INHERIT");
+                else attributes.Add("NOINHERIT");
+
+                if (role.Replication) attributes.Add("REPLICATION");
+                else attributes.Add("NOREPLICATION");
+
+                if (role.BypassRLS) attributes.Add("BYPASSRLS");
+                else attributes.Add("NOBYPASSRLS");
+
+                role.Definition = $"CREATE ROLE {QuoteIdent(roleName)} WITH {string.Join(" ", attributes)};";
+
                 roles[role.Name] = role;
                 reader.Close();
 
@@ -473,7 +606,7 @@ namespace mbulava.PostgreSql.Dac.Extract
         private async Task<string> BuildCreateTableSqlAsync(UInt32 oid, string schema, string name)
         {
             var sb = new StringBuilder();
-            sb.AppendLine($"CREATE TABLE {schema}.{name} (");
+            sb.AppendLine($"CREATE TABLE {QuoteIdent(schema)}.{QuoteIdent(name)} (");
 
             await using var conn = await CreateConnectionAsync();
             await using var colCmd = conn.CreateCommand();
@@ -492,7 +625,8 @@ namespace mbulava.PostgreSql.Dac.Extract
             var cols = new List<string>();
             while (colReader.Read())
             {
-                var colDef = $"{colReader.GetString(0)} {colReader.GetString(1)}";
+                var colName = QuoteIdent(colReader.GetString(0));
+                var colDef = $"{colName} {colReader.GetString(1)}";
                 if (colReader.GetBoolean(2)) colDef += " NOT NULL";
                 if (!colReader.IsDBNull(3)) colDef += $" DEFAULT {colReader.GetString(3)}";
                 cols.Add(colDef);
@@ -515,7 +649,8 @@ namespace mbulava.PostgreSql.Dac.Extract
         SELECT a.attname,
                pg_catalog.format_type(a.atttypid, a.atttypmod),
                a.attnotnull,
-               pg_get_expr(d.adbin, d.adrelid)
+               pg_get_expr(d.adbin, d.adrelid),
+               col_description(a.attrelid, a.attnum)
         FROM pg_attribute a
         LEFT JOIN pg_attrdef d ON a.attrelid = d.adrelid AND a.attnum = d.adnum
         WHERE a.attrelid = @oid AND a.attnum > 0 AND NOT a.attisdropped;";
@@ -530,7 +665,8 @@ namespace mbulava.PostgreSql.Dac.Extract
                     Name = reader.GetString(0),
                     DataType = reader.GetString(1),
                     IsNotNull = reader.GetBoolean(2),
-                    DefaultExpression = reader.IsDBNull(3) ? null : reader.GetString(3)
+                    DefaultExpression = reader.IsDBNull(3) ? null : reader.GetString(3),
+                    Comment = reader.IsDBNull(4) ? null : reader.GetString(4)
                 });
             }
             await reader.CloseAsync();
@@ -898,8 +1034,15 @@ namespace mbulava.PostgreSql.Dac.Extract
                 if (!string.IsNullOrEmpty(definition))
                 {
                     var parseResult = new Parser().Parse(definition);
-                    ast = JsonSerializer.Deserialize<CreateSeqStmt>(parseResult.ParseTree!.RootElement.GetRawText());
-                    astJson = parseResult.ParseTree?.RootElement.GetRawText();
+                    if (parseResult.IsSuccess && parseResult.ParseTree != null)
+                    {
+                        ast = JsonSerializer.Deserialize<CreateSeqStmt>(parseResult.ParseTree.RootElement.GetRawText());
+                        astJson = parseResult.ParseTree.RootElement.GetRawText();
+                    }
+                    else if (_verbose)
+                    {
+                        Console.WriteLine($"   ⚠️  Warning: Failed to parse sequence definition for '{name}': {parseResult.Error}");
+                    }
                 }
 
                 sequences.Add(new PgSequence
@@ -1012,6 +1155,7 @@ namespace mbulava.PostgreSql.Dac.Extract
         JOIN pg_namespace n ON n.oid = p.pronamespace
         JOIN pg_roles r ON r.oid = p.proowner
         WHERE n.nspname = @schema
+          AND p.prokind IN ('f', 'p')  -- Only functions and procedures, exclude aggregates ('a') and window functions ('w')
         ORDER BY p.proname;
     ";
 

@@ -29,12 +29,12 @@ internal class Program
     }
 
     /// <summary>
-    /// Extract: Creates a schema file (.pgproj.json) from a live PostgreSQL database
+    /// Extract: Creates a schema file (.pgproj.json) or SDK-style project (.csproj) from a live PostgreSQL database
     /// Similar to: sqlpackage /Action:Extract
     /// </summary>
     static Command CreateExtractCommand()
     {
-        var command = new Command("extract", "Extract database schema to a .pgproj.json file");
+        var command = new Command("extract", "Extract database schema to .pgproj.json or SDK-style .csproj project");
 
         var sourceConnectionOption = new Option<string>(
             name: "--source-connection-string",
@@ -46,7 +46,7 @@ internal class Program
 
         var targetFileOption = new Option<string>(
             name: "--target-file",
-            description: "Path to output .pgproj.json file")
+            description: "Path to output file (.pgproj.json for JSON, .csproj for SDK-style project)")
         {
             IsRequired = true
         };
@@ -60,14 +60,21 @@ internal class Program
         };
         databaseNameOption.AddAlias("-dn");
 
+        var verboseOption = new Option<bool>(
+            name: "--verbose",
+            description: "Show detailed extraction progress",
+            getDefaultValue: () => false);
+        verboseOption.AddAlias("-v");
+
         command.AddOption(sourceConnectionOption);
         command.AddOption(targetFileOption);
         command.AddOption(databaseNameOption);
+        command.AddOption(verboseOption);
 
-        command.SetHandler(async (sourceConnection, targetFile, databaseName) =>
+        command.SetHandler(async (sourceConnection, targetFile, databaseName, verbose) =>
         {
-            await ExtractAction(sourceConnection, targetFile, databaseName);
-        }, sourceConnectionOption, targetFileOption, databaseNameOption);
+            await ExtractAction(sourceConnection, targetFile, databaseName, verbose);
+        }, sourceConnectionOption, targetFileOption, databaseNameOption, verboseOption);
 
         return command;
     }
@@ -285,7 +292,7 @@ internal class Program
     // Action Implementations
     // ========================================================================
 
-    static async Task ExtractAction(string sourceConnection, string targetFile, string? databaseName)
+    static async Task ExtractAction(string sourceConnection, string targetFile, string? databaseName, bool verbose = false)
     {
         Console.WriteLine("╔════════════════════════════════════════════════════════════╗");
         Console.WriteLine("║  PostgreSQL Schema Extraction                              ║");
@@ -298,7 +305,7 @@ internal class Program
             Console.WriteLine($"💾 Target: {targetFile}");
             Console.WriteLine();
 
-            var extractor = new PgProjectExtractor(sourceConnection);
+            var extractor = new PgProjectExtractor(sourceConnection, verbose);
             var dbName = databaseName ?? GetDatabaseFromConnection(sourceConnection);
 
             Console.WriteLine($"🔍 Extracting schema from database '{dbName}'...");
@@ -332,6 +339,9 @@ internal class Program
                 Console.WriteLine($"   📄 Types: {stats.Types}");
                 Console.WriteLine($"   📄 Sequences: {stats.Sequences}");
                 Console.WriteLine($"   📄 Triggers: {stats.Triggers}");
+                Console.WriteLine($"   📄 Indexes: {stats.Indexes}");
+                Console.WriteLine($"   👤 Roles: {stats.Roles}");
+                Console.WriteLine($"   🔐 Permission files: {stats.PermissionFiles}");
                 Console.WriteLine($"   📝 Total SQL files: {stats.TotalFiles}");
                 Console.WriteLine();
                 Console.WriteLine($"💡 Open {targetFile} in Visual Studio to edit!");
@@ -351,6 +361,21 @@ internal class Program
         {
             Console.WriteLine();
             Console.WriteLine($"❌ Error: {ex.Message}");
+
+            if (verbose)
+            {
+                Console.WriteLine();
+                Console.WriteLine("Stack trace:");
+                Console.WriteLine(ex.StackTrace);
+
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine();
+                    Console.WriteLine($"Inner exception: {ex.InnerException.Message}");
+                    Console.WriteLine(ex.InnerException.StackTrace);
+                }
+            }
+
             Environment.Exit(1);
         }
     }

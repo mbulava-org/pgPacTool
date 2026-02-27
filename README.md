@@ -34,8 +34,17 @@ pgPacTool brings **SQL Server-style database project workflow** to PostgreSQL. I
 - ✅ Incremental build support
 - ✅ Visual Studio compatible (when packaged)
 
+#### **SDK-Style Project Extraction** ⭐ NEW!
+- ✅ Extract databases directly to `.csproj` format
+- ✅ Automatic folder structure generation by object type
+- ✅ Individual SQL files per database object
+- ✅ Version control friendly (one object = one file)
+- ✅ Visual Studio integration ready
+- ✅ Convention-based organization
+- ✅ Supports simple to complex databases (1-145+ files)
+
 #### **CLI Tool (postgresPacTools)**
-- ✅ `extract` - Export schema from live database
+- ✅ `extract` - Export schema from live database to `.pgproj.json` or `.csproj`
 - ✅ `compile` - Validate and build projects (.csproj → .pgpac)
 - ✅ `publish` - Deploy changes to target database
 - ✅ `script` - Generate deployment SQL without executing
@@ -43,6 +52,7 @@ pgPacTool brings **SQL Server-style database project workflow** to PostgreSQL. I
 
 #### **Core DAC Library**
 - ✅ Schema extraction with Npgquery AST parsing
+- ✅ SDK-style project generation (CsprojProjectGenerator)
 - ✅ Dependency analysis and topological sorting
 - ✅ Circular reference detection
 - ✅ Migration script generation
@@ -59,8 +69,10 @@ pgPacTool brings **SQL Server-style database project workflow** to PostgreSQL. I
 - ✅ Sequences
 - ✅ Triggers
 - ✅ Schemas
+- ✅ Roles and permissions
 - ✅ Extensions
 - ⚠️ Multi-schema (limited - improvements planned)
+- ❌ Aggregate functions (excluded from extraction by design)
 
 #### **Quality & Testing**
 - ✅ **201 tests passing** (100% success rate)
@@ -68,12 +80,64 @@ pgPacTool brings **SQL Server-style database project workflow** to PostgreSQL. I
   - 18 integration tests
   - CLI integration tests
   - Round-trip validation tests
+- ✅ Tested with real databases:
+  - world_happiness (9 SQL files)
+  - dvdrental (107 SQL files)
+  - pagila (145 SQL files)
 
 ---
 
 ## 🚀 Quick Start
 
-### Option 1: MSBuild SDK (Recommended for Projects)
+### Option 1: Extract Existing Database to SDK-Style Project ⭐ RECOMMENDED
+
+**For existing databases, instantly create a version-controllable project:**
+
+```bash
+# Build the CLI from source
+git clone https://github.com/mbulava-org/pgPacTool.git
+cd pgPacTool
+dotnet build
+
+# Extract your database to SDK-style .csproj
+dotnet run --project src/postgresPacTools/postgresPacTools.csproj -- extract \
+  --source-connection-string "Host=localhost;Database=mydb;Username=postgres;Password=***" \
+  --target-file output/mydb/mydb.csproj \
+  --verbose
+
+# Result: Complete project with individual SQL files!
+# output/mydb/
+#   ├── mydb.csproj
+#   ├── public/
+#   │   ├── Tables/
+#   │   ├── Views/
+#   │   ├── Functions/
+#   │   └── ...
+#   └── Security/
+```
+
+**What you get:**
+- ✅ One SQL file per database object
+- ✅ Organized by schema and object type
+- ✅ Ready for version control (git-friendly)
+- ✅ Editable in Visual Studio
+- ✅ Compilable with `dotnet build` (once SDK is published)
+
+**Real Examples:**
+```bash
+# Simple database (1 table) → 9 files
+extract -scs "..." -tf world_happiness/world_happiness.csproj
+
+# Medium database (15 tables, 7 views) → 107 files
+extract -scs "..." -tf dvdrental/dvdrental.csproj
+
+# Complex database (21 tables, 54 indexes) → 145 files
+extract -scs "..." -tf pagila/pagila.csproj
+```
+
+---
+
+### Option 2: MSBuild SDK (For New Projects)
 
 **Coming Soon!** Once published to NuGet.org:
 
@@ -104,7 +168,9 @@ dotnet build
 # Output: bin/Debug/net10.0/MyDatabase.pgpac ✅
 ```
 
-### Option 2: CLI Tool (For Ad-Hoc Operations)
+---
+
+### Option 3: CLI Tool (For Ad-Hoc Operations)
 
 **Coming Soon!** Once published:
 
@@ -112,8 +178,11 @@ dotnet build
 # Install globally
 dotnet tool install --global postgresPacTools
 
-# Extract schema
+# Extract schema to JSON
 pgpac extract -scs "Host=localhost;Database=mydb;..." -tf mydb.pgproj.json
+
+# Extract schema to SDK project
+pgpac extract -scs "Host=localhost;Database=mydb;..." -tf mydb/mydb.csproj
 
 # Compile project
 pgpac compile -sf MyDatabase.csproj
@@ -122,7 +191,9 @@ pgpac compile -sf MyDatabase.csproj
 pgpac publish -sf MyDatabase.pgpac -tcs "Host=prod;..."
 ```
 
-### Option 3: Core Library (For Custom Tools)
+---
+
+### Option 4: Core Library (For Custom Tools)
 
 **Coming Soon!** Once published:
 
@@ -138,7 +209,11 @@ using mbulava.PostgreSql.Dac.Compile;
 var extractor = new PgProjectExtractor(connectionString);
 var project = await extractor.ExtractPgProject("mydb");
 
-// Compile and validate
+// Generate SDK-style project
+var generator = new CsprojProjectGenerator("output/mydb/mydb.csproj");
+await generator.GenerateProjectAsync(project);
+
+// Or compile and validate
 var compiler = new ProjectCompiler();
 var result = compiler.Compile(project);
 
@@ -304,17 +379,39 @@ docker rm pgpac-test
 
 | Document | Description |
 |----------|-------------|
-| [CLI Reference](docs/CLI_REFERENCE.md) | Complete CLI command reference |
-| [SDK Guide](docs/SDK_PROJECT_GUIDE.md) | MSBuild SDK usage guide |
+| [CLI Reference](docs/CLI_REFERENCE.md) | Complete CLI command reference with SDK extraction examples |
+| [User Guide](docs/USER_GUIDE.md) | Getting started, SDK-style projects, troubleshooting |
+| [SDK Guide](docs/SDK_PROJECT_GUIDE.md) | MSBuild SDK usage and project structure guide |
 | [Publishing Plan](docs/NUGET_PUBLISHING_PLAN.md) | NuGet publication roadmap |
-| [Milestone 3](docs/milestone-3/) | Schema comparison & migration |
-| [API Documentation](docs/) | Core library API docs |
+| [API Documentation](docs/API_REFERENCE.md) | Core library API documentation |
 
 ---
 
 ## 🗺️ Roadmap & Next Steps
 
-### 📦 Publishing (In Progress)
+### ✅ Recently Completed
+
+**SDK-Style Project Extraction** (Completed January 2025)
+- ✅ Extract databases directly to `.csproj` format
+- ✅ Automatic folder structure generation
+- ✅ Individual SQL files per object
+- ✅ CLI help menus updated
+- ✅ Comprehensive documentation added
+- ✅ Tested with 3 production-like databases (9-145 files)
+- ✅ Fixed null reference bugs in sequence extraction
+- ✅ Fixed aggregate function handling in function extraction
+- ✅ Added graceful error handling for missing databases
+
+**Bug Fixes & Improvements:**
+- ✅ Null safety in `ExtractSequencesAsync` (parse result validation)
+- ✅ Aggregate functions excluded from extraction (prevent errors)
+- ✅ Database existence validation with clear error messages
+- ✅ Enhanced exception handling with verbose stack traces
+- ✅ PostgreSQL version checker with better error context
+
+---
+
+### 📦 Publishing (Next Priority)
 
 **Branch:** `feature/msbuild-sdk-integration`
 
@@ -344,6 +441,8 @@ docker rm pgpac-test
 **Timeline:** 2-3 weeks  
 **See:** [docs/NUGET_PUBLISHING_PLAN.md](docs/NUGET_PUBLISHING_PLAN.md)
 
+---
+
 ### 🎯 v1.1.0 Features (Planned)
 
 #### **Multi-Schema Improvements**
@@ -368,6 +467,8 @@ docker rm pgpac-test
 - [ ] Parallel extraction
 - [ ] Incremental comparison
 - [ ] Memory optimization
+
+---
 
 ### 🚀 v2.0.0 Ideas (Future)
 
@@ -501,22 +602,25 @@ else
 
 ---
 
-## Features
+## Features Summary
 
 ### Milestone 1: Extraction ✅
-| Object Type | Extraction | AST Parsing | Privileges |
-|-------------|------------|-------------|------------|
-| **Schemas** | ✅ | ✅ | ✅ |
-| **Tables** | ✅ | ✅ | ✅ |
-| **Views** | ✅ | ✅ | ✅ |
-| **Functions** | ✅ | ✅ | ✅ |
-| **Procedures** | ✅ | ✅ | ✅ |
-| **Triggers** | ✅ | ✅ | ❌ |
-| **Sequences** | ✅ | ✅ | ✅ |
-| **Types** | ✅ | ✅ | ✅ |
-| **Roles** | ✅ | N/A | N/A |
-| **Constraints** | ✅ | ✅ | N/A |
-| **Indexes** | ✅ | ✅ | N/A |
+| Object Type | Extraction | AST Parsing | Privileges | SDK Export |
+|-------------|------------|-------------|------------|------------|
+| **Schemas** | ✅ | ✅ | ✅ | ✅ |
+| **Tables** | ✅ | ✅ | ✅ | ✅ |
+| **Views** | ✅ | ✅ | ✅ | ✅ |
+| **Functions** | ✅ | ✅ | ✅ | ✅ |
+| **Procedures** | ✅ | ✅ | ✅ | ✅ |
+| **Triggers** | ✅ | ✅ | ❌ | ✅ |
+| **Sequences** | ✅ | ✅ | ✅ | ✅ |
+| **Types** | ✅ | ✅ | ✅ | ✅ |
+| **Roles** | ✅ | N/A | N/A | ✅ |
+| **Constraints** | ✅ | ✅ | N/A | ✅ |
+| **Indexes** | ✅ | ✅ | N/A | ✅ |
+| **Permissions** | ✅ | N/A | ✅ | ✅ |
+
+**SDK Export:** Individual SQL files organized by schema and object type (`.csproj` format)
 
 ### Milestone 2: Compilation ✅
 | Feature | Status | Description |
@@ -527,6 +631,7 @@ else
 | **Parallel Deployment** | ✅ | Groups objects by deployment level |
 | **Error Reporting** | ✅ | Clear, actionable error messages |
 | **Validation** | ✅ | Comprehensive project validation |
+| **SDK Compilation** | ✅ | Compile .csproj to .pgpac |
 
 ### Milestone 3: Schema Comparison & Migration ✅
 | Feature | Status | Description |
@@ -546,7 +651,10 @@ else
 | Document | Description |
 |----------|-------------|
 | **[📚 Documentation Hub](docs/README.md)** | Complete documentation index |
-| **[📖 User Guide](docs/USER_GUIDE.md)** | Getting started, examples, troubleshooting |
+| **[📖 User Guide](docs/USER_GUIDE.md)** | Getting started, SDK projects, troubleshooting |
+| **[🔧 CLI Reference](docs/CLI_REFERENCE.md)** | Complete CLI command reference with SDK extraction |
+| **[📦 SDK Guide](docs/SDK_PROJECT_GUIDE.md)** | MSBuild SDK and project structure guide |
+| **[🔌 API Reference](docs/API_REFERENCE.md)** | Core library API documentation |
 | **[🔧 API Reference](docs/API_REFERENCE.md)** | Complete API with code examples |
 | **[⚙️ Workflows](docs/WORKFLOWS.md)** | CI/CD, testing, code coverage |
 

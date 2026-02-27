@@ -97,12 +97,12 @@ Console.WriteLine($"Extracted {project.Schemas.Count} schemas");
 
 ### Understanding the Output
 
-The `.pgpac` file is a JSON document containing:
+The `.pgpac` file (or `.pgproj.json`) is a JSON document containing:
 
 ```json
 {
   "DatabaseName": "mydb",
-  "PostgresVersion": "16.1",
+  "PostgresVersion": "16",
   "Schemas": [
     {
       "Name": "public",
@@ -123,6 +123,151 @@ Each object includes:
 - **Original SQL definition**
 - **Parsed AST (Abstract Syntax Tree)**
 - **Metadata** (owner, privileges, etc.)
+
+### SDK-Style Project Extraction (.csproj)
+
+**NEW:** You can now extract databases directly to an SDK-style `.csproj` project with individual SQL files!
+
+```bash
+# Using CLI
+postgresPacTools extract \
+  -scs "Host=localhost;Database=mydb;Username=postgres;Password=***" \
+  -tf output/mydb/mydb.csproj
+```
+
+Or programmatically:
+
+```csharp
+using mbulava.PostgreSql.Dac.Extract;
+
+var connectionString = "Host=localhost;Database=mydb;Username=postgres;Password=secret";
+var extractor = new PgProjectExtractor(connectionString);
+
+// Extract to in-memory model
+var project = await extractor.ExtractPgProject("mydb");
+
+// Generate SDK-style project on disk
+var generator = new CsprojProjectGenerator("output/mydb/mydb.csproj");
+await generator.GenerateProjectAsync(project);
+```
+
+**Generated Structure:**
+
+```
+mydb/
+├── mydb.csproj                    # SDK-style project file
+├── public/                        # One folder per schema
+│   ├── _schema.sql                # CREATE SCHEMA statement
+│   ├── _owners.sql                # ALTER OWNER statements
+│   ├── Tables/
+│   │   ├── users.sql              # One file per table
+│   │   ├── orders.sql
+│   │   └── products.sql
+│   ├── Views/
+│   │   ├── active_users.sql
+│   │   └── order_summary.sql
+│   ├── Functions/
+│   │   ├── calculate_total.sql
+│   │   └── validate_email.sql
+│   ├── Types/
+│   │   ├── order_status.sql       # ENUM or COMPOSITE types
+│   │   └── address_type.sql
+│   ├── Sequences/
+│   │   └── user_id_seq.sql
+│   ├── Indexes/
+│   │   ├── idx_users_email.sql
+│   │   └── idx_orders_date.sql
+│   └── Triggers/
+│       └── update_timestamp.sql
+└── Security/                      # Security objects
+    ├── Roles/
+    │   ├── app_user.sql
+    │   └── app_admin.sql
+    └── Permissions/
+        └── public.sql             # GRANT statements
+```
+
+**Benefits of SDK-Style Projects:**
+
+✅ **Version Control Friendly**
+   - Each object in its own file
+   - Clean git diffs
+   - Easy to review changes
+   - Merge conflicts are rare
+
+✅ **IDE Integration**
+   - Open in Visual Studio
+   - Syntax highlighting
+   - IntelliSense support
+   - Easy navigation
+
+✅ **Team Collaboration**
+   - Multiple developers can work on different objects
+   - Clear ownership per file
+   - Standard .NET project structure
+
+✅ **Compilable & Validated**
+   - Use `postgresPacTools compile` to validate
+   - Dependency checking
+   - Generates deployable `.pgpac` file
+
+✅ **Convention-Based**
+   - No explicit file includes needed
+   - All `.sql` files automatically discovered
+   - Organize by folder structure
+
+**Example .csproj File:**
+
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <IsPackable>false</IsPackable>
+
+    <!-- Database Properties -->
+    <DatabaseName>mydb</DatabaseName>
+    <PostgresVersion>16</PostgresVersion>
+    <DefaultOwner>postgres</DefaultOwner>
+    <DefaultTablespace>pg_default</DefaultTablespace>
+  </PropertyGroup>
+
+  <!-- Convention: All .sql files automatically included -->
+
+  <!-- Optional: Pre/Post deployment scripts -->
+  <ItemGroup>
+    <!-- <PreDeploy Include="Scripts\PreDeployment\*.sql" /> -->
+    <!-- <PostDeploy Include="Scripts\PostDeployment\*.sql" /> -->
+  </ItemGroup>
+</Project>
+```
+
+**Compiling the Project:**
+
+```bash
+# Compile and validate
+postgresPacTools compile --source-file mydb/mydb.csproj
+
+# Output: mydb/bin/Debug/net10.0/mydb.pgpac
+```
+
+**Real-World Examples:**
+
+| Database | Objects | SQL Files | Use Case |
+|----------|---------|-----------|----------|
+| **world_happiness** | Simple (1 table) | 9 files | Learning/Testing |
+| **dvdrental** | Medium (15 tables, 7 views) | 107 files | Sample app database |
+| **pagila** | Complex (21 tables, 54 indexes) | 145 files | Production-scale schema |
+
+**Workflow:**
+
+1. **Extract** database to `.csproj`
+2. **Edit** SQL files in Visual Studio
+3. **Compile** to validate changes
+4. **Deploy** using `publish` command
+5. **Commit** to version control
+
+This approach brings the benefits of SQL Server Data Tools (SSDT) to PostgreSQL! 🎉
 
 ---
 

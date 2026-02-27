@@ -7,6 +7,7 @@ pgPacTool supports SDK-style `.csproj` projects, similar to [MSBuild.Sdk.SqlProj
 ## 📋 Overview
 
 With SDK-style projects, you can:
+- ✅ **Extract existing databases** to SDK-style projects automatically
 - ✅ Organize SQL files in a standard .NET project structure
 - ✅ Version control your database schema alongside your application
 - ✅ Use standard .NET build tools and CI/CD pipelines
@@ -15,7 +16,111 @@ With SDK-style projects, you can:
 
 ---
 
-## 🚀 Quick Start
+## 🎯 Two Ways to Create Projects
+
+### Option 1: Extract from Existing Database (Recommended)
+
+**Instantly convert any PostgreSQL database to an SDK-style project:**
+
+```bash
+# Using CLI (easiest)
+postgresPacTools extract \
+  --source-connection-string "Host=localhost;Database=mydb;Username=postgres;Password=***" \
+  --target-file output/mydb/mydb.csproj
+```
+
+Or programmatically:
+
+```csharp
+using mbulava.PostgreSql.Dac.Extract;
+
+var connectionString = "Host=localhost;Database=mydb;Username=postgres;Password=secret";
+var extractor = new PgProjectExtractor(connectionString);
+
+// Extract database schema
+var project = await extractor.ExtractPgProject("mydb");
+
+// Generate SDK-style project
+var generator = new CsprojProjectGenerator("output/mydb/mydb.csproj");
+await generator.GenerateProjectAsync(project);
+```
+
+**What gets extracted:**
+- ✅ All tables with columns, constraints, indexes
+- ✅ All views with their definitions
+- ✅ All functions and procedures
+- ✅ All custom types (ENUMs, COMPOSITEs, DOMAINs)
+- ✅ All sequences
+- ✅ All triggers
+- ✅ All roles and permissions
+- ✅ Proper folder structure by object type
+- ✅ Ready-to-compile .csproj file
+
+**Real Examples:**
+
+```bash
+# Simple database → 9 SQL files
+postgresPacTools extract \
+  -scs "Host=localhost;Database=world_happiness;Username=postgres;Password=***" \
+  -tf output/world_happiness/world_happiness.csproj
+
+# Medium complexity → 107 SQL files
+postgresPacTools extract \
+  -scs "Host=localhost;Database=dvdrental;Username=postgres;Password=***" \
+  -tf output/dvdrental/dvdrental.csproj
+
+# Large database → 145 SQL files
+postgresPacTools extract \
+  -scs "Host=localhost;Database=pagila;Username=postgres;Password=***" \
+  -tf output/pagila/pagila.csproj --verbose
+```
+
+**Generated Folder Structure:**
+
+```
+mydb/
+├── mydb.csproj                    # SDK-style project file
+├── public/                        # Schema folder
+│   ├── _schema.sql                # CREATE SCHEMA statement
+│   ├── _owners.sql                # Ownership statements (if needed)
+│   ├── Tables/
+│   │   ├── users.sql
+│   │   └── orders.sql
+│   ├── Views/
+│   │   └── active_orders.sql
+│   ├── Functions/
+│   │   └── calculate_total.sql
+│   ├── Types/
+│   │   └── order_status.sql
+│   ├── Sequences/
+│   │   └── user_id_seq.sql
+│   ├── Indexes/
+│   │   └── idx_users_email.sql
+│   └── Triggers/
+│       └── update_timestamp.sql
+└── Security/                      # Security objects
+    ├── Roles/
+    │   └── app_user.sql
+    └── Permissions/
+        └── public.sql
+```
+
+**Benefits:**
+- 🚀 Instant migration to version control
+- 📝 Each object in its own editable file
+- ✅ Validated and ready to compile
+- 🔄 Perfect for starting database DevOps
+- 👥 Team-friendly structure
+
+---
+
+### Option 2: Create from Scratch (Manual)
+
+For new databases or when you want full control, you can create the project structure manually.
+
+---
+
+## 🚀 Quick Start (Manual Creation)
 
 ### 1. Create Project Structure
 

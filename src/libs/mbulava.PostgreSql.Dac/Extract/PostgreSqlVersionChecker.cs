@@ -24,37 +24,50 @@ namespace mbulava.PostgreSql.Dac.Extract
         /// <exception cref="NotSupportedException">Thrown when PostgreSQL version is below 16</exception>
         public static async Task<string> ValidateAndGetVersionAsync(string connectionString)
         {
-            await using var connection = new NpgsqlConnection(connectionString);
-            await connection.OpenAsync();
-            
-            await using var command = new NpgsqlCommand("SHOW server_version;", connection);
-            var versionString = (string)await command.ExecuteScalarAsync() 
-                ?? throw new InvalidOperationException("Could not determine PostgreSQL version");
-            
-            // Parse version (format: "16.1 (Debian 16.1-1.pgdg120+1)" or just "16.1")
-            var versionPart = versionString.Split(' ')[0];
-            var versionNumbers = versionPart.Split('.');
-            
-            if (versionNumbers.Length == 0 || !int.TryParse(versionNumbers[0], out int majorVersion))
+            try
             {
-                throw new InvalidOperationException($"Could not parse PostgreSQL version: {versionString}");
+                await using var connection = new NpgsqlConnection(connectionString);
+                await connection.OpenAsync();
+
+                await using var command = new NpgsqlCommand("SHOW server_version;", connection);
+                var versionString = (string?)await command.ExecuteScalarAsync() 
+                    ?? throw new InvalidOperationException("Could not determine PostgreSQL version");
+
+                // Parse version (format: "16.1 (Debian 16.1-1.pgdg120+1)" or just "16.1")
+                var versionPart = versionString.Split(' ')[0];
+                var versionNumbers = versionPart.Split('.');
+
+                if (versionNumbers.Length == 0 || !int.TryParse(versionNumbers[0], out int majorVersion))
+                {
+                    throw new InvalidOperationException($"Could not parse PostgreSQL version: {versionString}");
+                }
+
+                // Enforce minimum version
+                if (majorVersion < MinimumSupportedVersion)
+                {
+                    throw new NotSupportedException(
+                        $"PostgreSQL {majorVersion} is not supported. pgPacTool requires PostgreSQL {MinimumSupportedVersion} or higher.\n\n" +
+                        $"Your PostgreSQL version: {versionString}\n" +
+                        $"Minimum required version: {MinimumSupportedVersion}.0\n\n" +
+                        "To upgrade your PostgreSQL instance:\n" +
+                        "1. Backup your data: pg_dump mydb > backup.sql\n" +
+                        "2. Install PostgreSQL 16: https://www.postgresql.org/download/\n" +
+                        "3. Restore your data: psql -d mydb < backup.sql\n\n" +
+                        "For help: https://github.com/mbulava-org/pgPacTool/wiki/postgresql-upgrade");
+                }
+
+                return versionPart;
             }
-            
-            // Enforce minimum version
-            if (majorVersion < MinimumSupportedVersion)
+            catch (NpgsqlException ex)
             {
-                throw new NotSupportedException(
-                    $"PostgreSQL {majorVersion} is not supported. pgPacTool requires PostgreSQL {MinimumSupportedVersion} or higher.\n\n" +
-                    $"Your PostgreSQL version: {versionString}\n" +
-                    $"Minimum required version: {MinimumSupportedVersion}.0\n\n" +
-                    "To upgrade your PostgreSQL instance:\n" +
-                    "1. Backup your data: pg_dump mydb > backup.sql\n" +
-                    "2. Install PostgreSQL 16: https://www.postgresql.org/download/\n" +
-                    "3. Restore your data: psql -d mydb < backup.sql\n\n" +
-                    "For help: https://github.com/mbulava-org/pgPacTool/wiki/postgresql-upgrade");
+                // Provide more context for connection failures
+                var builder = new NpgsqlConnectionStringBuilder(connectionString);
+                var database = builder.Database ?? "default";
+
+                throw new InvalidOperationException(
+                    $"Failed to connect to PostgreSQL database '{database}': {ex.Message}\n" +
+                    $"Please verify that the database exists and connection details are correct.", ex);
             }
-            
-            return versionPart;
         }
         
         /// <summary>

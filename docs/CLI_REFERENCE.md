@@ -72,32 +72,47 @@ postgresPacTools extract [options]
 | `--source-connection-string` | `-scs` | ✅ | Source PostgreSQL database connection string |
 | `--target-file` | `-tf` | ✅ | Path to output file (`.pgproj.json` or `.csproj`) |
 | `--database-name` | `-dn` | ❌ | Database name (overrides connection string) |
+| `--verbose` | `-v` | ❌ | Show detailed extraction progress (default: `false`) |
 
 **Output Formats:**
-- **`.pgproj.json`** - Single JSON file (traditional)
-- **`.csproj`** - SDK-style project with folder structure (Visual Studio editable)
+- **`.pgproj.json`** - Single JSON file containing complete PgProject model
+- **`.csproj`** - SDK-style project with folder structure (editable in Visual Studio)
+
+The output format is automatically determined by the file extension of `--target-file`.
 
 #### Examples
 
+**Example 1: Extract to JSON file (traditional format)**
 ```bash
-# Extract to JSON file
 postgresPacTools extract \
   -scs "Host=localhost;Database=myapp;Username=postgres;Password=pass123" \
   -tf myapp.pgproj.json
+```
 
-# Extract to SDK-style project (folder structure)
+**Example 2: Extract to SDK-style .csproj project**
+```bash
 postgresPacTools extract \
-  -scs "Host=localhost;Database=myapp;Username=postgres;Password=pass123" \
-  -tf MyApp.Database/MyApp.Database.csproj
+  -scs "Host=localhost;Database=dvdrental;Username=postgres;Password=pass123" \
+  -tf output/dvdrental/dvdrental.csproj
+```
 
-# Extract with explicit database name
+**Example 3: Extract with verbose output**
+```bash
+postgresPacTools extract \
+  -scs "Host=localhost;Database=pagila;Username=postgres;Password=pass123" \
+  -tf output/pagila/pagila.csproj \
+  --verbose
+```
+
+**Example 4: Extract with explicit database name**
+```bash
 postgresPacTools extract \
   -scs "Host=localhost;Username=postgres;Password=pass123" \
   -tf myapp.pgproj.json \
   -dn myapp
 ```
 
-#### Output (JSON Format)
+#### Output Example (JSON Format)
 ```
 ╔════════════════════════════════════════════════════════════╗
 ║  PostgreSQL Schema Extraction                              ║
@@ -116,62 +131,141 @@ postgresPacTools extract \
 ✅ Extraction completed successfully!
 ```
 
-#### Output (SDK-Style .csproj)
+#### Output Example (SDK-Style .csproj)
 ```
 ╔════════════════════════════════════════════════════════════╗
 ║  PostgreSQL Schema Extraction                              ║
 ╚════════════════════════════════════════════════════════════╝
 
-📋 Source: Host=localhost;Database=myapp;Username=postgres;Password=****
-💾 Target: MyApp.Database/MyApp.Database.csproj
+📋 Source: Host=localhost;Database=dvdrental;Username=postgres;Password=****
+💾 Target: output/dvdrental/dvdrental.csproj
 
-🔍 Extracting schema from database 'myapp'...
-✅ Extracted 2 schema(s)
-   📁 public: 15 tables, 3 views, 8 functions, 2 types
-   📁 auth: 5 tables, 1 views, 2 functions, 0 types
+🔍 Extracting schema from database 'dvdrental'...
+   🔍 Found schema: public (owner: pg_database_owner)
+   ✅ Total schemas found: 1
+✅ Extracted 1 schema(s)
+   📁 public: 15 tables, 7 views, 9 functions, 24 types
 
 📦 Generating SDK-style project...
-✅ Generated SDK-style project in: MyApp.Database
-   📁 Schemas: 2
+✅ Generated SDK-style project in: output\dvdrental
+   📁 Schemas: 1
+   👤 Roles: 2
    📄 SQL files created
-   📦 Project file: MyApp.Database.csproj
+   📦 Project file: dvdrental.csproj
 
 📊 Project structure:
-   📁 Schemas: 2
-   📄 Tables: 20
-   📄 Views: 4
-   📄 Functions: 10
-   📄 Types: 2
-   📄 Sequences: 3
-   📄 Triggers: 1
-   📝 Total SQL files: 40
+   📁 Schemas: 1
+   📄 Tables: 15
+   📄 Views: 7
+   📄 Functions: 9
+   📄 Types: 24
+   📄 Sequences: 13
+   📄 Triggers: 15
+   📄 Indexes: 32
+   👤 Roles: 2
+   🔐 Permission files: 1
+   📝 Total SQL files: 107
 
-💡 Open MyApp.Database/MyApp.Database.csproj in Visual Studio to edit!
+💡 Open output/dvdrental/dvdrental.csproj in Visual Studio to edit!
 
 ✅ Extraction completed successfully!
 ```
 
-**Folder Structure Created:**
+#### Generated SDK-Style Project Structure
+
+When extracting to `.csproj`, the following folder structure is created:
+
 ```
-MyApp.Database/
-├── MyApp.Database.csproj
-├── public/
+{DatabaseName}/
+├── {DatabaseName}.csproj           # SDK-style project file
+├── {schema}/                       # One folder per schema
+│   ├── _schema.sql                 # CREATE SCHEMA statement
+│   ├── _owners.sql                 # ALTER OWNER statements (if needed)
 │   ├── Tables/
 │   │   ├── users.sql
 │   │   ├── orders.sql
-│   │   └── ...
+│   │   └── products.sql
 │   ├── Views/
 │   │   ├── active_users.sql
-│   │   └── ...
+│   │   └── order_summary.sql
 │   ├── Functions/
-│   │   └── calculate_total.sql
-│   └── Types/
-│       └── order_status.sql
-└── auth/
-    ├── Tables/
-    │   └── sessions.sql
-    └── Functions/
-        └── validate_token.sql
+│   │   ├── calculate_total.sql
+│   │   └── get_user_stats.sql
+│   ├── Types/
+│   │   ├── order_status.sql       # ENUM types
+│   │   └── address.sql            # COMPOSITE types
+│   ├── Sequences/
+│   │   └── user_id_seq.sql
+│   ├── Indexes/
+│   │   ├── idx_users_email.sql
+│   │   └── idx_orders_date.sql
+│   └── Triggers/
+│       └── update_timestamp.sql
+└── Security/                       # Security objects
+    ├── Roles/
+    │   ├── app_user.sql
+    │   └── app_admin.sql
+    └── Permissions/
+        └── {schema}.sql            # GRANT statements per schema
+```
+
+**Key Features of SDK-Style Projects:**
+- ✅ **Convention-based**: All `.sql` files are automatically included
+- ✅ **Version control friendly**: Each object in its own file
+- ✅ **Visual Studio integration**: Edit in familiar IDE
+- ✅ **Compilable**: Use `compile` command to validate and generate `.pgpac`
+- ✅ **Dependency ordering**: Automatically determined during compilation
+- ✅ **Merge-friendly**: Reduces git conflicts
+
+**Generated .csproj File:**
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <IsPackable>false</IsPackable>
+    <DatabaseName>dvdrental</DatabaseName>
+    <PostgresVersion>16</PostgresVersion>
+    <DefaultOwner>postgres</DefaultOwner>
+    <DefaultTablespace>pg_default</DefaultTablespace>
+  </PropertyGroup>
+
+  <!-- All .sql files automatically included -->
+  <!-- Pre/Post deployment scripts can be added here -->
+  <ItemGroup>
+    <!-- <PreDeploy Include="Scripts\PreDeployment\*.sql" /> -->
+    <!-- <PostDeploy Include="Scripts\PostDeployment\*.sql" /> -->
+  </ItemGroup>
+</Project>
+```
+
+#### Real-World Examples
+
+**Small Database (world_happiness):**
+```bash
+postgresPacTools extract \
+  -scs "Host=localhost;Database=world_happiness;Username=postgres;Password=***" \
+  -tf output/world_happiness/world_happiness.csproj
+
+# Result: 9 SQL files (1 table, 1 type, 1 sequence, 1 index, 2 roles)
+```
+
+**Medium Database (dvdrental):**
+```bash
+postgresPacTools extract \
+  -scs "Host=localhost;Database=dvdrental;Username=postgres;Password=***" \
+  -tf output/dvdrental/dvdrental.csproj
+
+# Result: 107 SQL files (15 tables, 7 views, 9 functions, 24 types, 32 indexes)
+```
+
+**Large Database (pagila):**
+```bash
+postgresPacTools extract \
+  -scs "Host=localhost;Database=pagila;Username=postgres;Password=***" \
+  -tf output/pagila/pagila.csproj --verbose
+
+# Result: 145 SQL files (21 tables, 8 views, 9 functions, 33 types, 54 indexes)
 ```
 
 ---

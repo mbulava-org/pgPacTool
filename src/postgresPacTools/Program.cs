@@ -29,12 +29,12 @@ internal class Program
     }
 
     /// <summary>
-    /// Extract: Creates a schema file (.pgproj.json) from a live PostgreSQL database
+    /// Extract: Creates a schema file (.pgproj.json) or SDK-style project (.csproj) from a live PostgreSQL database
     /// Similar to: sqlpackage /Action:Extract
     /// </summary>
     static Command CreateExtractCommand()
     {
-        var command = new Command("extract", "Extract database schema to a .pgproj.json file");
+        var command = new Command("extract", "Extract database schema to .pgproj.json or SDK-style .csproj project");
 
         var sourceConnectionOption = new Option<string>(
             name: "--source-connection-string",
@@ -46,7 +46,7 @@ internal class Program
 
         var targetFileOption = new Option<string>(
             name: "--target-file",
-            description: "Path to output .pgproj.json file")
+            description: "Path to output file (.pgproj.json for JSON, .csproj for SDK-style project)")
         {
             IsRequired = true
         };

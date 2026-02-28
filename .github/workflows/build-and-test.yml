@@ -12,6 +12,10 @@ env:
   CONFIGURATION: Release
   POSTGRES_VERSION: '16'
 
+permissions:
+  issues: write
+  contents: read
+
 jobs:
   build-and-test:
     name: Build and Test (.NET 10)
@@ -53,6 +57,7 @@ jobs:
       run: dotnet build --no-restore --configuration ${{ env.CONFIGURATION }}
 
     - name: Run tests with code coverage
+      id: run-tests
       continue-on-error: true
       run: |
         dotnet test --no-build --configuration ${{ env.CONFIGURATION }} \
@@ -64,6 +69,48 @@ jobs:
           DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Exclude="[Npgquery]*,[*]Npgquery.*,[*]PgQuery.*"
       env:
         ConnectionStrings__TestDatabase: "Host=localhost;Port=5432;Database=testdb;Username=postgres;Password=testpassword"
+
+    - name: Create GitHub Issue on test failure
+      uses: actions/github-script@v7
+      if: steps.run-tests.outcome == 'failure'
+      with:
+        script: |
+          const title = `Test failures in CI – ${context.ref} (run #${context.runNumber})`;
+          const body = `
+          ## ❌ Tests Failed
+
+          Tests failed during the CI run triggered by **${context.eventName}** on \`${context.ref}\`.
+
+          - **Workflow run:** [View run](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
+          - **Commit:** ${context.sha}
+          - **Branch/ref:** \`${context.ref}\`
+          - **Triggered by:** @${context.actor}
+
+          Please review the [test results artifact](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) for details.
+          `.trim();
+
+          // Avoid duplicate issues for the same run
+          const existing = await github.rest.issues.listForRepo({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            state: 'open',
+            labels: 'test-failure',
+            per_page: 50
+          });
+          const duplicate = existing.data.find(i => i.title === title);
+          if (duplicate) {
+            console.log(`Issue already exists: #${duplicate.number}`);
+            return;
+          }
+
+          const issue = await github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title,
+            body,
+            labels: ['test-failure']
+          });
+          console.log(`Created issue #${issue.data.number}: ${issue.data.html_url}`);
 
     - name: Generate coverage report
       uses: danielpalme/ReportGenerator-GitHub-Action@5.2.0

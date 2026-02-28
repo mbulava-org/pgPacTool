@@ -1,0 +1,830 @@
+name: Create Pending GitHub Issues
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (list issues that would be created without creating them)'
+        required: false
+        default: 'false'
+        type: boolean
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  create-issues:
+    name: Create Pending Issues
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Create Labels
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        create_label() {
+          local name="$1"
+          local color="$2"
+          local description="$3"
+          gh label create "$name" --color "$color" --description "$description" --force 2>/dev/null || true
+        }
+
+        create_label "enhancement"       "a2eeef" "New feature or request"
+        create_label "comparison"        "0075ca" "Schema comparison functionality"
+        create_label "deployment"        "e4e669" "Deployment and publishing functionality"
+        create_label "packaging"         "d93f0b" "DacPackage and NuGet packaging"
+        create_label "compilation"       "7057ff" "Compilation and validation"
+        create_label "extraction"        "008672" "Database extraction functionality"
+        create_label "sdk"               "e99695" "MSBuild SDK and tooling"
+        create_label "templates"         "f9d0c4" "Project and item templates"
+        create_label "cli"               "fef2c0" "CLI commands and tooling"
+        create_label "container"         "bfd4f2" "Container image support"
+        create_label "documentation"     "0075ca" "Documentation improvements"
+        create_label "high-priority"     "b60205" "High priority item"
+        create_label "medium-priority"   "e4e669" "Medium priority item"
+        create_label "low-priority"      "cfd3d7" "Low priority item"
+        create_label "milestone-3"       "0e8a16" "Milestone 3: Schema Comparison"
+        create_label "milestone-4"       "0e8a16" "Milestone 4: Deployment & Publishing"
+        create_label "milestone-5"       "0e8a16" "Milestone 5: Packaging & References"
+        create_label "milestone-6"       "0e8a16" "Milestone 6: MSBuild SDK"
+        create_label "milestone-7"       "0e8a16" "Milestone 7: Production Ready"
+        create_label "good-first-issue"  "7057ff" "Good for newcomers"
+
+    - name: Create Pending Issues
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        DRY_RUN: ${{ inputs.dry_run }}
+        REPO: ${{ github.repository }}
+      run: |
+        create_issue() {
+          local title="$1"
+          local body="$2"
+          local labels="$3"
+
+          # Check if issue already exists
+          existing=$(gh issue list --repo "$REPO" --search "\"$title\" in:title" --json number,title --jq ".[] | select(.title == \"$title\") | .number" 2>/dev/null | head -1)
+
+          if [ -n "$existing" ]; then
+            echo "  ⏭  Issue already exists: #$existing - $title"
+            return
+          fi
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "  [DRY RUN] Would create: $title (labels: $labels)"
+            return
+          fi
+
+          number=$(gh issue create \
+            --repo "$REPO" \
+            --title "$title" \
+            --body "$body" \
+            --label "$labels" \
+            2>/dev/null | grep -oP '(?<=issues/)\d+' || echo "unknown")
+
+          echo "  ✅ Created issue #$number - $title"
+        }
+
+        echo "=== Creating Milestone 3: Schema Comparison Issues ==="
+
+        create_issue \
+          "Complete PgSchemaComparer Implementation" \
+          "## Description
+
+Complete the implementation of \`PgSchemaComparer\` to detect all differences between source and target schemas across all object types.
+
+## Acceptance Criteria
+
+- [ ] Complete table comparison implementation (currently incomplete)
+- [ ] Implement view comparison
+- [ ] Implement function/procedure comparison
+- [ ] Implement trigger comparison
+- [ ] Implement index comparison
+- [ ] Implement constraint comparison
+- [ ] Implement role comparison
+- [ ] Complete sequence comparison with all options
+- [ ] Generate detailed diff objects for each change type
+- [ ] Include before/after states in diffs
+- [ ] Handle renames vs drop+create scenarios
+- [ ] Support comparison options (ignore case, ignore comments, etc.)
+- [ ] Add unit tests for each comparison type
+- [ ] Add integration tests with real databases
+
+## Milestone
+
+v0.3.0 - Schema Comparison
+
+## Story Points
+
+13" \
+          "enhancement,comparison,medium-priority,milestone-3"
+
+        create_issue \
+          "Implement PublishScriptGenerator" \
+          "## Description
+
+Implement script generation that converts schema differences into executable SQL deployment scripts with proper dependency ordering and safety features.
+
+## Acceptance Criteria
+
+### Script Generation
+- [ ] Generate CREATE scripts for new objects
+- [ ] Generate DROP scripts for removed objects
+- [ ] Generate ALTER scripts for modified objects
+- [ ] Implement topological sort for dependency ordering
+
+### Object-Specific Scripts
+- [ ] Handle schema changes (CREATE/ALTER SCHEMA)
+- [ ] Handle table alterations (add/drop/modify columns, rename)
+- [ ] Handle index changes (DROP/CREATE indexes)
+- [ ] Handle constraint changes
+- [ ] Handle function/procedure changes (CREATE OR REPLACE)
+- [ ] Handle view changes (CREATE OR REPLACE)
+- [ ] Handle trigger changes (DROP/CREATE)
+
+### Safety Features
+- [ ] Wrap in transaction where appropriate (BEGIN/COMMIT/ROLLBACK)
+- [ ] Generate rollback scripts
+- [ ] Detect data-lossy changes and add warnings
+- [ ] Support IF EXISTS / IF NOT EXISTS clauses
+- [ ] Add script header with metadata (source, target, date)
+
+## Example Output
+
+\`\`\`sql
+-- Deployment script generated by pgPacTool
+-- Source: MyDatabase v1.0.0
+-- Target: production_server
+-- Date: 2026-01-31 10:00:00
+
+BEGIN;
+ALTER TABLE customers ADD COLUMN email VARCHAR(255);
+CREATE INDEX idx_customers_email ON customers(email);
+COMMIT;
+\`\`\`
+
+## Dependencies
+
+- Depends on: Complete PgSchemaComparer Implementation
+- Blocks: Implement CLI Commands (publish command)
+
+## Milestone
+
+v0.3.0 - Deployment & Publishing
+
+## Story Points
+
+13" \
+          "enhancement,deployment,medium-priority,milestone-4"
+
+        create_issue \
+          "Complete Attribute Comparer for Column Differences" \
+          "## Description
+
+Complete \`PgAttributeComparer\` to detect all differences between columns including type changes, nullability, defaults, collations, and identity properties.
+
+## Acceptance Criteria
+
+- [ ] Compare data types (including length, precision, scale)
+- [ ] Detect type compatibility and data-lossy type changes
+- [ ] Compare nullability (NULL vs NOT NULL)
+- [ ] Compare default values
+- [ ] Compare collations
+- [ ] Compare identity column properties
+- [ ] Compare generated/computed columns
+- [ ] Compare column order/position
+- [ ] Compare column comments
+- [ ] Generate appropriate ALTER COLUMN statements
+- [ ] Support type casting expressions when needed
+- [ ] Test with all PostgreSQL data types
+
+## Dependencies
+
+- Related to: Complete PgSchemaComparer Implementation
+- Related to: Implement PublishScriptGenerator
+
+## Milestone
+
+v0.3.0 - Schema Comparison
+
+## Story Points
+
+5" \
+          "enhancement,comparison,medium-priority,milestone-3"
+
+        echo ""
+        echo "=== Creating Milestone 4: Deployment Issues ==="
+
+        create_issue \
+          "Support Pre/Post Deployment Scripts in DacPackage" \
+          "## Description
+
+Implement support for pre-deployment and post-deployment scripts that run before/after model deployment, similar to SQL Server SSDT.
+
+## Acceptance Criteria
+
+- [ ] Support \`<PreDeploy>\` item in project file
+- [ ] Support \`<PostDeploy>\` item in project file
+- [ ] Include scripts in \`.pgpac\` package
+- [ ] Execute pre-deployment script before model changes
+- [ ] Execute post-deployment script after model changes
+- [ ] Support \`:r\` include syntax for script composition
+- [ ] Support SQLCMD variables in scripts
+- [ ] Handle script execution errors appropriately
+- [ ] Support \`RunScriptsFromReferences\` property
+- [ ] Log script execution with timestamps
+- [ ] Add script validation during build
+
+## Example Project File
+
+\`\`\`xml
+<Project Sdk=\"MSBuild.Sdk.PgProj/1.0.0\">
+  <ItemGroup>
+    <PreDeploy Include=\"Pre-Deployment\\Script.PreDeployment.sql\" />
+    <PostDeploy Include=\"Post-Deployment\\Script.PostDeployment.sql\" />
+  </ItemGroup>
+</Project>
+\`\`\`
+
+## Dependencies
+
+- Related to: Implement SQLCMD Variable Support
+- Related to: Implement DacPackage Creation and Loading
+
+## Milestone
+
+v0.4.0 - Deployment & Publishing
+
+## Story Points
+
+8" \
+          "enhancement,deployment,packaging,medium-priority,milestone-4"
+
+        create_issue \
+          "Implement SQLCMD Variable Support" \
+          "## Description
+
+Implement SQLCMD-style variable support for parameterizing deployment scripts and SQL files, enabling environment-specific deployments.
+
+## Acceptance Criteria
+
+- [ ] Support \`<SqlCmdVariable>\` items in project file with default values
+- [ ] Override variables at deployment time via CLI
+- [ ] Substitute variables in SQL scripts using \`\$(VariableName)\` syntax
+- [ ] Validate all variable references at compile time
+- [ ] Report undefined variable usage as compiler errors
+- [ ] Support variables in pre/post deployment scripts
+- [ ] Store variable definitions in \`.pgpac\` metadata
+- [ ] CLI flag for passing variable values at deploy time
+
+## Example
+
+\`\`\`xml
+<ItemGroup>
+  <SqlCmdVariable Include=\"TargetEnvironment\">
+    <DefaultValue>Development</DefaultValue>
+  </SqlCmdVariable>
+</ItemGroup>
+\`\`\`
+
+\`\`\`sql
+-- Usage in script
+COMMENT ON DATABASE mydb IS 'Environment: \$(TargetEnvironment)';
+\`\`\`
+
+## Note
+
+SQLCMD variable replacement currently performs direct string substitution. Input validation/escaping of variable values should be added to prevent SQL injection via variable values.
+
+## Dependencies
+
+- Related to: Support Pre/Post Deployment Scripts
+- Related to: Implement CLI Commands
+
+## Milestone
+
+v0.4.0 - Deployment & Publishing
+
+## Story Points
+
+5" \
+          "enhancement,deployment,medium-priority,milestone-4"
+
+        echo ""
+        echo "=== Creating Milestone 5: Packaging Issues ==="
+
+        create_issue \
+          "Implement Package and Project References" \
+          "## Description
+
+Implement support for referencing other \`.pgpac\` packages via NuGet packages and project references, enabling modular database development.
+
+## Acceptance Criteria
+
+### PackageReference Support
+- [ ] Support \`<PackageReference>\` for NuGet packages containing \`.pgpac\`
+- [ ] Assume \`.pgpac\` is in \`tools/\` folder with same name as package
+- [ ] Support \`DacpacName\` attribute for custom naming
+- [ ] Support \`DatabaseVariableLiteralValue\` for different database references
+- [ ] Support \`DatabaseSqlCmdVariable\` and \`ServerSqlCmdVariable\`
+- [ ] Support \`SuppressMissingDependenciesErrors\` for optional references
+
+### ProjectReference Support
+- [ ] Support \`<ProjectReference>\` to other \`.pgproj\` projects
+- [ ] Build referenced projects first (dependency ordering)
+- [ ] Include referenced packages in compilation
+- [ ] Support same metadata as PackageReference
+
+### Implementation
+- [ ] Resolve transitive dependencies
+- [ ] Handle version conflicts
+- [ ] Include reference metadata in build output
+
+## Example
+
+\`\`\`xml
+<ItemGroup>
+  <PackageReference Include=\"MySharedDb\" Version=\"1.0.0\"
+                    DatabaseVariableLiteralValue=\"SharedDatabase\" />
+  <ProjectReference Include=\"../CoreDb/CoreDb.pgproj\"
+                    DatabaseSqlCmdVariable=\"CoreDb\" />
+</ItemGroup>
+\`\`\`
+
+## Milestone
+
+v0.5.0 - Packaging & References
+
+## Story Points
+
+13" \
+          "enhancement,packaging,medium-priority,milestone-5"
+
+        create_issue \
+          "Reference Master/System Database Packages" \
+          "## Description
+
+Create NuGet packages for PostgreSQL system databases (like \`postgres\`) and support referencing them to suppress warnings when using system objects.
+
+## Acceptance Criteria
+
+- [ ] Create \`.pgpac\` for \`postgres\` system database
+- [ ] Create \`.pgpac\` for \`template1\` database
+- [ ] Package system databases as NuGet packages
+- [ ] Support versioning by PostgreSQL version (16, 17)
+- [ ] Document how to reference system databases in project files
+- [ ] Publish packages to NuGet.org (or private feed)
+
+## Example
+
+\`\`\`xml
+<ItemGroup>
+  <PackageReference Include=\"PostgreSQL.SystemDb.Postgres\"
+                    Version=\"16.0.0\"
+                    DacpacName=\"postgres\"
+                    DatabaseVariableLiteralValue=\"postgres\" />
+</ItemGroup>
+\`\`\`
+
+## Dependencies
+
+- Depends on: Implement Package and Project References
+
+## Milestone
+
+v0.5.0 - Packaging & References
+
+## Story Points
+
+8" \
+          "enhancement,packaging,medium-priority,milestone-5"
+
+        create_issue \
+          "Implement DacPackage Creation and Loading" \
+          "## Description
+
+Complete the \`DacPackage\` class to create and load \`.pgpac\` files (ZIP format) containing the compiled model, scripts, and metadata.
+
+## Acceptance Criteria
+
+- [ ] Create \`.pgpac\` ZIP archive with standardized structure
+- [ ] Include \`content.json\` (compiled PgProject model) in package
+- [ ] Include pre/post deployment scripts in package
+- [ ] Include SQLCMD variable definitions in package metadata
+- [ ] Implement \`DacPackage.Load(string path)\` to open \`.pgpac\` files
+- [ ] Implement \`DacPackage.Save(string path)\` to write \`.pgpac\` files
+- [ ] Validate package integrity on load
+- [ ] Support package versioning metadata
+- [ ] Unit tests for create and load roundtrip
+
+## Milestone
+
+v0.5.0 - Packaging & References
+
+## Story Points
+
+8" \
+          "enhancement,packaging,low-priority,milestone-5"
+
+        create_issue \
+          "Add NuGet Packaging Support" \
+          "## Description
+
+Enable \`dotnet pack\` to create NuGet packages containing \`.pgpac\` files for distribution and reuse as package references.
+
+## Acceptance Criteria
+
+- [ ] Configure project to include \`.pgpac\` in NuGet package \`tools/\` folder
+- [ ] Set correct NuGet metadata (description, tags, icon, license)
+- [ ] Support \`dotnet pack\` workflow for creating packages
+- [ ] CI/CD pipeline for automated publishing to NuGet.org
+- [ ] Document NuGet publishing process
+- [ ] Test package consumption as PackageReference
+
+## Milestone
+
+v0.5.0 - Packaging & References
+
+## Story Points
+
+5" \
+          "enhancement,packaging,low-priority,milestone-5"
+
+        echo ""
+        echo "=== Creating Milestone 6: MSBuild SDK Issues ==="
+
+        create_issue \
+          "Create MSBuild SDK Package (MSBuild.Sdk.PgProj)" \
+          "## Description
+
+Create an MSBuild SDK package that provides the same project experience as MSBuild.Sdk.SqlProj but for PostgreSQL, enabling seamless integration with Visual Studio and the .NET build system.
+
+## Acceptance Criteria
+
+- [ ] Create \`MSBuild.Sdk.PgProj\` NuGet package
+- [ ] Implement SDK targets: Build, Clean, Publish, Extract
+- [ ] Support \`<Project Sdk=\"MSBuild.Sdk.PgProj/1.0.0\">\` project format
+- [ ] Include default item globs for \`.sql\` files
+- [ ] Provide \`DatabaseName\` and \`PostgresVersion\` properties
+- [ ] Integrate with \`dotnet build\` and \`dotnet publish\`
+- [ ] Support multi-targeting (different PostgreSQL versions)
+- [ ] Visual Studio project system integration
+
+## Milestone
+
+v1.0.0 - MSBuild SDK
+
+## Story Points
+
+21" \
+          "enhancement,sdk,low-priority,milestone-6"
+
+        create_issue \
+          "Create Project and Item Templates" \
+          "## Description
+
+Create \`dotnet new\` templates for quickly scaffolding new PostgreSQL database projects and adding individual database objects.
+
+## Acceptance Criteria
+
+### Project Templates
+- [ ] \`dotnet new pgproj\` creates a new PostgreSQL database project
+- [ ] Template includes sample \`.csproj\`, README, and example SQL files
+- [ ] Support options: DatabaseName, PostgresVersion
+
+### Item Templates
+- [ ] \`dotnet new pgtable\` creates a new table SQL file
+- [ ] \`dotnet new pgview\` creates a new view SQL file
+- [ ] \`dotnet new pgfunction\` creates a new function SQL file
+- [ ] \`dotnet new pgprocedure\` creates a new procedure SQL file
+
+### Distribution
+- [ ] Package templates as NuGet template package
+- [ ] Publish to NuGet.org
+- [ ] Document template usage
+
+## Milestone
+
+v1.0.0 - MSBuild SDK
+
+## Story Points
+
+8" \
+          "enhancement,templates,sdk,low-priority,milestone-6"
+
+        echo ""
+        echo "=== Creating Milestone 4: CLI Issues ==="
+
+        create_issue \
+          "Implement Complete CLI Commands (extract, build, publish, compare, script)" \
+          "## Description
+
+Complete the \`postgresPacTools\` CLI with all essential commands covering the full database development lifecycle.
+
+## Commands to Implement
+
+### \`extract\`
+- [ ] Extract from a PostgreSQL database to \`.csproj\` project or JSON
+- [ ] Support \`--connection-string\`, \`--target-file\`, \`--database-name\` flags
+- [ ] Support \`--schema\` filter to extract specific schemas only
+- [ ] Progress reporting with object counts
+
+### \`build\` (compile)
+- [ ] Compile \`.csproj\` project into \`.pgpac\` package
+- [ ] Report compiler errors with file/line references
+- [ ] Output build artifacts to \`obj/\` folder
+
+### \`publish\`
+- [ ] Deploy \`.pgpac\` to a target database
+- [ ] Support SQLCMD variable overrides (\`-v VAR=value\`)
+- [ ] Support \`--script-only\` to generate SQL without deploying
+- [ ] Support \`--dry-run\` to preview changes without applying
+
+### \`compare\` / \`script\`
+- [ ] Compare source \`.pgpac\` to target database
+- [ ] Generate deployment SQL script from comparison
+- [ ] Output human-readable diff report
+
+### Global Options
+- [ ] \`--verbose\` / \`--quiet\` logging levels
+- [ ] \`--output-format\` (text, json, xml)
+- [ ] \`--config\` for configuration file support
+
+## Milestone
+
+v0.4.0 - Deployment & Publishing
+
+## Story Points
+
+21" \
+          "enhancement,cli,low-priority,milestone-4"
+
+        echo ""
+        echo "=== Creating Milestone 7: Production Ready Issues ==="
+
+        create_issue \
+          "Implement Container Image Publishing" \
+          "## Description
+
+Implement container image publishing that includes both the compiled \`.pgpac\` file and deployment tooling, enabling containerized deployments.
+
+## Acceptance Criteria
+
+- [ ] Create Dockerfile for building/deploying pgpac packages
+- [ ] Publish container image to GitHub Container Registry (ghcr.io)
+- [ ] Support both AMD64 and ARM64 architectures
+- [ ] Include \`postgresPacTools\` CLI in the image
+- [ ] Document container-based deployment workflow
+- [ ] GitHub Actions workflow for automated image publishing on release
+
+## Example Usage
+
+\`\`\`bash
+docker run ghcr.io/mbulava-org/pgpac-tools:latest publish \\
+  --source /workspace/MyDb.pgpac \\
+  --target-connection-string \"Host=db;Database=mydb;Username=admin\"
+\`\`\`
+
+## Milestone
+
+v1.0.0 - Production Ready
+
+## Story Points
+
+8" \
+          "enhancement,deployment,container,low-priority,milestone-7"
+
+        create_issue \
+          "Create Comprehensive Documentation" \
+          "## Description
+
+Create comprehensive documentation covering all aspects of pgPacTool including getting started guides, CLI reference, API documentation, and best practices.
+
+## Acceptance Criteria
+
+### Getting Started
+- [ ] Quick start guide (extract → build → publish in 5 minutes)
+- [ ] Installation instructions (CLI tool, NuGet package)
+- [ ] Prerequisites and supported PostgreSQL versions
+
+### Reference Documentation
+- [ ] CLI command reference with all flags and examples
+- [ ] Project file (\`.csproj\`) property and item reference
+- [ ] Compiler error code reference with remediation steps
+- [ ] SQLCMD variable documentation
+
+### Guides
+- [ ] Migrating from SQL Server SSDT to pgPacTool
+- [ ] CI/CD integration guide (GitHub Actions, Azure DevOps)
+- [ ] Working with pre/post deployment scripts
+- [ ] Managing database references and dependencies
+
+### API Documentation
+- [ ] XML documentation comments on all public types
+- [ ] NuGet package README
+
+## Milestone
+
+v1.0.0 - Production Ready
+
+## Story Points
+
+21" \
+          "documentation,low-priority,milestone-7"
+
+        echo ""
+        echo "=== Creating Advanced Extraction Feature Issues ==="
+
+        create_issue \
+          "Extract Table Metadata: Row Level Security, Tablespace, FillFactor" \
+          "## Description
+
+Extend the database extraction to capture advanced table metadata that is currently not extracted: Row Level Security (RLS) policies, tablespace assignments, and storage parameters like fillfactor.
+
+## Current State
+
+The \`EXTRACTION_COMPLETENESS_AUDIT.md\` identifies these as TODO items. The \`PgTable\` model has placeholder properties but extraction is not implemented.
+
+## Acceptance Criteria
+
+### Row Level Security
+- [ ] Extract \`RowLevelSecurity\` flag from \`pg_class.relrowsecurity\`
+- [ ] Extract \`ForceRowLevelSecurity\` flag from \`pg_class.relforcerowsecurity\`
+- [ ] Extract RLS policies from \`pg_policy\`
+- [ ] Generate \`ALTER TABLE ... ENABLE ROW LEVEL SECURITY\` statements
+- [ ] Generate \`CREATE POLICY\` statements in SQL output
+
+### Tablespace
+- [ ] Extract tablespace from \`pg_class\` → \`pg_tablespace\`
+- [ ] Generate \`ALTER TABLE ... SET TABLESPACE ...\` statements
+
+### Storage Parameters (FillFactor)
+- [ ] Extract \`FillFactor\` from \`pg_class.reloptions\`
+- [ ] Generate \`ALTER TABLE ... SET (fillfactor = N)\` statements
+
+### File Generation
+- [ ] Add metadata statements to \`{schema}/Tables/{table}.sql\` or separate \`_alter.sql\`
+- [ ] Round-trip: extract → generate → compile works correctly
+
+## Milestone
+
+v0.1.0 - Core Extraction (enhancement)
+
+## Story Points
+
+5" \
+          "enhancement,extraction,medium-priority"
+
+        create_issue \
+          "Extract Table Inheritance (INHERITS clause)" \
+          "## Description
+
+Extend database extraction to capture table inheritance relationships (\`INHERITS\` clause), enabling complete round-trip extraction for databases using PostgreSQL table inheritance.
+
+## Current State
+
+The \`PgTable\` model has an \`InheritedFrom[]\` property but extraction is not implemented. This is tracked as a TODO in \`EXTRACTION_COMPLETENESS_AUDIT.md\`.
+
+## Acceptance Criteria
+
+- [ ] Extract parent table(s) from \`pg_inherits\` system catalog
+- [ ] Populate \`PgTable.InheritedFrom\` list with parent table names
+- [ ] Generate \`INHERITS (parent_table)\` clause in \`CREATE TABLE\` output
+- [ ] Handle multi-level inheritance chains
+- [ ] Handle multiple parent tables
+- [ ] Integration tests with inherited table schemas
+
+## Milestone
+
+v0.1.0 - Core Extraction (enhancement)
+
+## Story Points
+
+3" \
+          "enhancement,extraction,medium-priority"
+
+        create_issue \
+          "Extract Table Partitioning (PARTITION BY)" \
+          "## Description
+
+Extend database extraction to capture table partitioning definitions (\`PARTITION BY\` clause and partition definitions), enabling complete round-trip extraction for partitioned tables.
+
+## Current State
+
+The \`PgTable\` model has \`PartitionStrategy\` and \`PartitionExpression\` properties but extraction is not implemented. This is tracked as a TODO in \`EXTRACTION_COMPLETENESS_AUDIT.md\`.
+
+## Acceptance Criteria
+
+- [ ] Extract partition strategy (RANGE, LIST, HASH) from \`pg_partitioned_table\`
+- [ ] Extract partition key expression(s)
+- [ ] Populate \`PgTable.PartitionStrategy\` and \`PgTable.PartitionExpression\`
+- [ ] Generate \`PARTITION BY RANGE/LIST/HASH (...)\` clause in \`CREATE TABLE\`
+- [ ] Extract and generate child partition definitions
+- [ ] Handle default partition (\`PARTITION OF ... DEFAULT\`)
+- [ ] Integration tests with partitioned table schemas
+
+## Milestone
+
+v0.1.0 - Core Extraction (enhancement)
+
+## Story Points
+
+5" \
+          "enhancement,extraction,medium-priority"
+
+        echo ""
+        echo "=== Creating Milestone 2 Remaining Issues ==="
+
+        create_issue \
+          "Implement Compiler Validation Subsystem (Reference, Type, Privilege, Schema Validators)" \
+          "## Description
+
+Implement the four validator classes for Phase 4 of Milestone 2 compilation validation. These validators check object references, type usage, privilege consistency, and schema-level correctness after dependency analysis and topological sorting.
+
+## Background
+
+Phase 4 (Validation) from the Milestone 2 implementation plan is currently NOT STARTED. The dependency graph, circular detection, and topological sorter are complete (Phases 1-3), but the validators that use them are not yet implemented.
+
+## Acceptance Criteria
+
+### ReferenceValidator
+- [ ] Validate all table/view references in function bodies exist in the project
+- [ ] Validate all FK references point to existing tables and columns
+- [ ] Validate trigger functions exist and have correct signatures
+- [ ] Report clear errors with file name and object name
+
+### TypeValidator
+- [ ] Validate all custom type references exist in the project
+- [ ] Validate function parameter and return types
+- [ ] Validate column data type references for custom types
+- [ ] Detect use of types before they are defined (ordering issue)
+
+### PrivilegeValidator
+- [ ] Validate all grantee roles exist in the project's role definitions
+- [ ] Validate object names in GRANT statements match defined objects
+- [ ] Warn on GRANT to non-existent objects
+
+### SchemaValidator
+- [ ] Validate all object schema references exist as defined schemas
+- [ ] Detect objects placed in undefined schemas
+- [ ] Validate schema ownership references
+
+### Integration
+- [ ] Integrate all validators into \`ProjectCompiler\`
+- [ ] Collect all validation errors into \`CompilerResult\`
+- [ ] Validators run after topological sort succeeds
+
+## Milestone
+
+v0.2.0 - Compilation & Validation (Phase 4)
+
+## Story Points
+
+13" \
+          "enhancement,compilation,medium-priority,milestone-3"
+
+        create_issue \
+          "Implement DeploymentOrderer and Build Artifact Generation" \
+          "## Description
+
+Complete Phase 3 (Task 3.2) and Phase 5 (Task 5.3) of the Milestone 2 implementation: the \`DeploymentOrderer\` class for grouping objects into deployment levels, and build artifact generation that outputs deployment-ready SQL scripts.
+
+## Background
+
+\`TopologicalSorter\` is implemented (Task 3.1) but \`DeploymentOrderer\` (Task 3.2) and Build Artifacts Generation (Task 5.3) remain as NOT STARTED in the Milestone 2 progress tracker.
+
+## Acceptance Criteria
+
+### DeploymentOrderer
+- [ ] Group topologically-sorted objects into deployment levels/waves
+- [ ] Objects in the same level can be deployed in parallel
+- [ ] Follow PostgreSQL deployment order: schemas → roles → types → sequences → tables → indexes → views → functions → triggers → permissions → comments
+- [ ] Output \`DeploymentPlan\` with ordered waves
+
+### Build Artifact Generation
+- [ ] Generate combined deployment SQL script from ordered objects
+- [ ] Output to \`obj/{DatabaseName}.deploy.sql\`
+- [ ] Include transaction wrapper (BEGIN/COMMIT)
+- [ ] Add section headers for each deployment wave
+- [ ] Support \`--script-only\` mode in CLI
+
+### Tests
+- [ ] Unit tests for \`DeploymentOrderer\` level grouping
+- [ ] Integration test: compile project → verify deployment script order
+- [ ] Verify script is valid SQL that can be executed
+
+## Milestone
+
+v0.2.0 - Compilation & Validation (Phase 3 & 5)
+
+## Story Points
+
+8" \
+          "enhancement,compilation,deployment,medium-priority,milestone-3"
+
+        echo ""
+        echo "=== Done! ==="
+        echo "All pending issues have been processed."

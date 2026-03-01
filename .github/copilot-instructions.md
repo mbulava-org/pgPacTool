@@ -12,6 +12,93 @@ pgPacTool is a PostgreSQL Data-Tier Application tool that brings SQL Server-styl
 
 ---
 
+## External Source Code References
+
+⚠️ **CRITICAL**: When working on this project, you should examine these external repositories for context, implementation details, and understanding:
+
+### 1. libpg_query (PRIMARY REFERENCE)
+**Repository**: https://github.com/pganalyze/libpg_query
+
+**Purpose**: 
+- PostgreSQL query parser wrapped as a C library
+- Source of native libraries we build and integrate
+- Contains protobuf definitions for parse trees
+- **MUST CHECK** when adding PostgreSQL versions or analyzing breaking changes
+
+**When to Examine**:
+- ✅ Before adding any new PostgreSQL version
+- ✅ When analyzing version differences (breaking changes)
+- ✅ When troubleshooting parsing issues
+- ✅ When understanding protobuf schema changes
+- ✅ When building native libraries
+- ✅ When investigating API changes between versions
+
+**Key Files to Check**:
+- `protobuf/pg_query.proto` - Protobuf schema definitions
+- `pg_query.h` - C API signatures
+- `src/postgres/include/nodes/` - Node type definitions
+- `CHANGELOG.md` - Version change history
+- `{version}-latest` branches - Version-specific code
+
+**Commands to Analyze**:
+```bash
+# Compare versions
+git diff 16-latest..17-latest -- protobuf/
+git diff 16-latest..17-latest -- pg_query.h
+git diff 16-latest..17-latest -- src/postgres/include/nodes/
+```
+
+### 2. Npgquery (Original C# Wrapper)
+**Repository**: https://github.com/JaredMSFT/Npgquery
+
+**Purpose**:
+- Original C# wrapper for libpg_query
+- Reference implementation for interop
+- Understanding .NET integration patterns
+
+**When to Examine**:
+- ✅ When understanding C# interop patterns
+- ✅ When adding new native function wrappers
+- ✅ When troubleshooting marshalling issues
+- ✅ When implementing new features based on libpg_query APIs
+- ✅ For P/Invoke signature reference
+
+**Key Areas**:
+- Native method declarations
+- Marshalling strategies
+- Memory management patterns
+- Error handling approaches
+
+### 3. Using External References
+
+**Before Any Major Change**:
+1. **Check libpg_query** for the specific PostgreSQL version branch
+2. **Review CHANGELOG.md** for known breaking changes
+3. **Compare protobuf schemas** between versions
+4. **Check C API signatures** for new/removed functions
+5. **Look at Npgquery** for existing implementation patterns
+
+**Analysis Pattern**:
+```
+Question → Check libpg_query → Understand changes → Update our code → Document
+```
+
+**Example Workflow**:
+```
+Task: Add PostgreSQL 18 support
+
+1. Visit https://github.com/pganalyze/libpg_query
+2. Check if 18-latest branch exists
+3. Compare: git diff 17-latest..18-latest
+4. Review protobuf schema changes
+5. Document breaking changes in docs/version-differences/PG18_CHANGES.md
+6. Update our models and compatibility layers
+7. Build native libraries
+8. Test
+```
+
+---
+
 ## Documentation Requirements
 
 ### 1. PostgreSQL Version Support

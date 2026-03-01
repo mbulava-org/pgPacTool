@@ -43,7 +43,10 @@ public static class AstSqlGenerator
     /// <returns>Generated SQL statement</returns>
     public static string Generate(JsonElement astElement)
     {
-        ArgumentNullException.ThrowIfNull(astElement);
+        if (astElement.ValueKind == JsonValueKind.Undefined)
+        {
+            throw new ArgumentException("AST element must not be an undefined JsonElement.", nameof(astElement));
+        }
 
         // Wrap in JsonDocument structure if not already wrapped
         var json = astElement.GetRawText();

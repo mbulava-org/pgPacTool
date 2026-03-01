@@ -9,6 +9,7 @@ namespace mbulava.PostgreSql.Dac.Tests.Compile.Ast;
 /// Tests for AST-based SQL generation using Npgquery deparse.
 /// </summary>
 [TestFixture]
+[Category("Unit")]
 [Category("AstSqlGeneration")]
 public class AstSqlGeneratorTests
 {

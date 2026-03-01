@@ -19,33 +19,24 @@ public static class AstSqlGenerator
     {
         ArgumentNullException.ThrowIfNull(ast);
 
-        // Due to issues with protobuf JSON serialization and deparse reliability,
-        // we use direct JSON-to-SQL conversion as the primary path
-        // and fall back to protobuf deparse only if JSON extraction fails
+        // CRITICAL: Due to protobuf serialization issues, we MUST use JSON extraction
+        // The protobuf deparse path is unreliable and produces corrupted output on Linux
 
-        // Try JSON extraction first (most reliable)
+        // Try JSON extraction first (REQUIRED for reliability)
         var extractedSql = TryExtractSqlFromAstJson(ast);
         if (extractedSql != null)
         {
             return extractedSql;
         }
 
-        // Fall back to protobuf deparse if JSON extraction doesn't support this statement type
-        using var parser = new Parser();
-        var result = parser.Deparse(ast);
+        // If JSON extraction failed, provide detailed error instead of falling back to broken protobuf
+        var astJson = ast.RootElement.ToString();
+        var preview = astJson.Length > 500 ? astJson.Substring(0, 500) + "..." : astJson;
 
-        if (result.IsSuccess && !string.IsNullOrWhiteSpace(result.Query))
-        {
-            // Check if the query looks like garbage (contains control characters)
-            if (!ContainsGarbageCharacters(result.Query))
-            {
-                return result.Query;
-            }
-        }
-
-        // If all else fails, throw an exception
-        var errorMsg = result.Error ?? "Unknown deparse error - statement type not supported by JSON extractor";
-        throw new InvalidOperationException($"Failed to generate SQL from AST: {errorMsg}");
+        throw new InvalidOperationException(
+            $"JSON-to-SQL extraction failed. This statement type is not yet supported by the JSON extractor.\n" +
+            $"Protobuf deparse is disabled due to reliability issues.\n" +
+            $"AST structure:\n{preview}");
     }
 
     /// <summary>
@@ -67,14 +58,23 @@ public static class AstSqlGenerator
         try
         {
             var root = ast.RootElement;
-            if (!root.TryGetProperty("stmts", out var stmts) || stmts.GetArrayLength() == 0)
+            if (!root.TryGetProperty("stmts", out var stmts))
             {
+                // Debug: Log why we're failing
+                System.Diagnostics.Debug.WriteLine("TryExtractSqlFromAstJson: No 'stmts' property in root");
+                return null;
+            }
+
+            if (stmts.GetArrayLength() == 0)
+            {
+                System.Diagnostics.Debug.WriteLine("TryExtractSqlFromAstJson: Empty stmts array");
                 return null;
             }
 
             var firstStmt = stmts[0];
             if (!firstStmt.TryGetProperty("stmt", out var stmtElement))
             {
+                System.Diagnostics.Debug.WriteLine("TryExtractSqlFromAstJson: No 'stmt' property in first statement");
                 return null;
             }
 
@@ -83,19 +83,25 @@ public static class AstSqlGenerator
 
             if (stmtElement.TryGetProperty("AlterTableStmt", out var alterTable))
             {
-                return GenerateSqlFromAlterTable(alterTable);
+                var sql = GenerateSqlFromAlterTable(alterTable);
+                System.Diagnostics.Debug.WriteLine($"TryExtractSqlFromAstJson: AlterTableStmt generated: {sql ?? "NULL"}");
+                return sql;
             }
 
             if (stmtElement.TryGetProperty("DropStmt", out var dropStmt))
             {
-                return GenerateSqlFromDropStmt(dropStmt);
+                var sql = GenerateSqlFromDropStmt(dropStmt);
+                System.Diagnostics.Debug.WriteLine($"TryExtractSqlFromAstJson: DropStmt generated: {sql ?? "NULL"}");
+                return sql;
             }
 
             // Add more statement types as needed
+            System.Diagnostics.Debug.WriteLine($"TryExtractSqlFromAstJson: Unknown statement type in: {stmtElement.ToString().Substring(0, Math.Min(100, stmtElement.ToString().Length))}");
             return null;
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"TryExtractSqlFromAstJson: Exception: {ex.Message}");
             return null;
         }
     }

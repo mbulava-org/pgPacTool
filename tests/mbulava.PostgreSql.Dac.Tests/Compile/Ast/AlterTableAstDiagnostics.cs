@@ -146,6 +146,42 @@ public class AlterTableAstDiagnostics
     }
 
     [Test]
+    public void Debug_Grant_Structure()
+    {
+        var sql = "GRANT SELECT, INSERT ON TABLE public.users TO app_user;";
+
+        using var parser = new Parser();
+        var result = parser.Parse(sql);
+
+        TestContext.WriteLine("=== GRANT AST ===");
+        TestContext.WriteLine(result.ParseTree!.RootElement.GetRawText());
+    }
+
+    [Test]
+    public void Debug_Revoke_Structure()
+    {
+        var sql = "REVOKE DELETE ON TABLE public.users FROM app_user;";
+
+        using var parser = new Parser();
+        var result = parser.Parse(sql);
+
+        TestContext.WriteLine("=== REVOKE AST ===");
+        TestContext.WriteLine(result.ParseTree!.RootElement.GetRawText());
+    }
+
+    [Test]
+    public void Debug_CommentOn_Structure()
+    {
+        var sql = "COMMENT ON TABLE public.users IS 'User accounts';";
+
+        using var parser = new Parser();
+        var result = parser.Parse(sql);
+
+        TestContext.WriteLine("=== COMMENT ON AST ===");
+        TestContext.WriteLine(result.ParseTree!.RootElement.GetRawText());
+    }
+
+    [Test]
     public void Debug_AlterTable_Owner_Structure()
     {
         var sql = "ALTER TABLE public.users OWNER TO new_owner;";

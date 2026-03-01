@@ -761,28 +761,170 @@ public static class AstBuilder
 
     /// <summary>
     /// Creates a GRANT statement AST.
-    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement Grant(string privileges, string objectType, string schema, string objectName, string grantee)
     {
-        // Temporary: Use parse-then-return
-        var sql = $"GRANT {privileges} ON {objectType} {QuoteIdentifier(schema)}.{QuoteIdentifier(objectName)} TO {QuoteIdentifier(grantee)};";
+        // Parse privileges (e.g., "SELECT, INSERT" -> ["select", "insert"])
+        var privList = privileges.Split(',')
+            .Select(p => p.Trim().ToLower())
+            .Where(p => !string.IsNullOrEmpty(p))
+            .Select(p => new
+            {
+                AccessPriv = new
+                {
+                    priv_name = p
+                }
+            })
+            .ToArray();
 
-        using var doc = AstSqlGenerator.ParseToAst(sql);
-        return doc.RootElement.Clone();
+        // Map objectType string to OBJECT_* enum
+        var objTypeEnum = MapObjectType(objectType);
+
+        var stmt = new
+        {
+            GrantStmt = new
+            {
+                is_grant = true,
+                targtype = "ACL_TARGET_OBJECT",
+                objtype = objTypeEnum,
+                objects = new[]
+                {
+                    new
+                    {
+                        RangeVar = new
+                        {
+                            schemaname = schema,
+                            relname = objectName,
+                            inh = true,
+                            relpersistence = "p"
+                        }
+                    }
+                },
+                privileges = privList,
+                grantees = new[]
+                {
+                    new
+                    {
+                        RoleSpec = new
+                        {
+                            roletype = "ROLESPEC_CSTRING",
+                            rolename = grantee
+                        }
+                    }
+                },
+                behavior = "DROP_RESTRICT"
+            }
+        };
+
+        return WrapStatement(stmt);
     }
 
     /// <summary>
     /// Creates a REVOKE statement AST.
-    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement Revoke(string privileges, string objectType, string schema, string objectName, string grantee)
     {
-        // Temporary: Use parse-then-return
-        var sql = $"REVOKE {privileges} ON {objectType} {QuoteIdentifier(schema)}.{QuoteIdentifier(objectName)} FROM {QuoteIdentifier(grantee)};";
+        // Parse privileges
+        var privList = privileges.Split(',')
+            .Select(p => p.Trim().ToLower())
+            .Where(p => !string.IsNullOrEmpty(p))
+            .Select(p => new
+            {
+                AccessPriv = new
+                {
+                    priv_name = p
+                }
+            })
+            .ToArray();
 
-        using var doc = AstSqlGenerator.ParseToAst(sql);
-        return doc.RootElement.Clone();
+        // Map objectType string to OBJECT_* enum
+        var objTypeEnum = MapObjectType(objectType);
+
+        var stmt = new
+        {
+            GrantStmt = new  // Note: REVOKE also uses GrantStmt, but without is_grant flag
+            {
+                // is_grant omitted (defaults to false)
+                targtype = "ACL_TARGET_OBJECT",
+                objtype = objTypeEnum,
+                objects = new[]
+                {
+                    new
+                    {
+                        RangeVar = new
+                        {
+                            schemaname = schema,
+                            relname = objectName,
+                            inh = true,
+                            relpersistence = "p"
+                        }
+                    }
+                },
+                privileges = privList,
+                grantees = new[]
+                {
+                    new
+                    {
+                        RoleSpec = new
+                        {
+                            roletype = "ROLESPEC_CSTRING",
+                            rolename = grantee
+                        }
+                    }
+                },
+                behavior = "DROP_RESTRICT"
+            }
+        };
+
+        return WrapStatement(stmt);
+    }
+
+    /// <summary>
+    /// Creates a COMMENT ON statement AST.
+    /// </summary>
+    public static JsonElement CommentOn(string objectType, string schema, string objectName, string comment)
+    {
+        // Map objectType string to OBJECT_* enum
+        var objTypeEnum = MapObjectType(objectType);
+
+        var stmt = new
+        {
+            CommentStmt = new
+            {
+                objtype = objTypeEnum,
+                @object = new  // Note: 'object' is a C# keyword, use @object
+                {
+                    List = new
+                    {
+                        items = new[]
+                        {
+                            new { String = new { sval = schema } },
+                            new { String = new { sval = objectName } }
+                        }
+                    }
+                },
+                comment = comment
+            }
+        };
+
+        return WrapStatement(stmt);
+    }
+
+    /// <summary>
+    /// Maps object type string to ObjectType enum value.
+    /// </summary>
+    private static string MapObjectType(string objectType)
+    {
+        return objectType.ToUpper() switch
+        {
+            "TABLE" => "OBJECT_TABLE",
+            "VIEW" => "OBJECT_VIEW",
+            "SEQUENCE" => "OBJECT_SEQUENCE",
+            "FUNCTION" => "OBJECT_FUNCTION",
+            "TRIGGER" => "OBJECT_TRIGGER",
+            "INDEX" => "OBJECT_INDEX",
+            _ => $"OBJECT_{objectType.ToUpper()}"
+        };
     }
 
     /// <summary>
@@ -818,20 +960,6 @@ public static class AstBuilder
         };
 
         return WrapStatement(stmt);
-    }
-
-    /// <summary>
-    /// Creates a COMMENT ON statement AST.
-    /// TODO: Implement as pure AST builder.
-    /// </summary>
-    public static JsonElement CommentOn(string objectType, string schema, string objectName, string comment)
-    {
-        // Temporary: Use parse-then-return
-        var escapedComment = comment.Replace("'", "''");
-        var sql = $"COMMENT ON {objectType} {QuoteIdentifier(schema)}.{QuoteIdentifier(objectName)} IS '{escapedComment}';";
-
-        using var doc = AstSqlGenerator.ParseToAst(sql);
-        return doc.RootElement.Clone();
     }
 
     /// <summary>

@@ -27,9 +27,10 @@ namespace ProjectExtract_Tests.Integration
 
             // Assert
             Assert.That(project, Is.Not.Null);
-            Assert.That(project.PostgresVersion, Does.StartWith("16."));
+            // PostgreSQL version can be "16" or "16.x" depending on how it's reported
+            Assert.That(project.PostgresVersion, Does.StartWith("16"), "Should be PostgreSQL 16.x");
             Assert.That(project.Schemas, Is.Not.Empty);
-            
+
             TestContext.WriteLine($"✓ Extracted project from PostgreSQL {project.PostgresVersion}");
         }
 

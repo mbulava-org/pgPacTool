@@ -264,12 +264,7 @@ public sealed record EnhancedScanResult : ScanResult
 public sealed record ProtobufParseResult : QueryResultBase
 {
     /// <summary>
-    /// The protobuf parse tree (for internal use)
+    /// The protobuf data as a byte array (copied from native memory)
     /// </summary>
-    internal PgQueryProtobuf? ParseTree { get; init; }
-    
-    /// <summary>
-    /// The native result (for cleanup)
-    /// </summary>
-    internal PgQueryProtobufParseResult? NativeResult { get; init; }
+    internal byte[]? ProtobufData { get; init; }
 }

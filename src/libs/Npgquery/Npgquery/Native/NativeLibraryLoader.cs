@@ -61,25 +61,30 @@ internal static class NativeLibraryLoader
             return null;
 
         var rid = GetRuntimeIdentifier();
-        var nativeLibName = GetNativeLibraryName();
 
-        // Try runtimes/{rid}/native/{lib} structure in assembly directory
-        var runtimePath = Path.Combine(assemblyDir, "runtimes", rid, "native", nativeLibName);
-        if (File.Exists(runtimePath))
-            return runtimePath;
+        // Try both naming conventions for the native library
+        var nativeLibNames = GetNativeLibraryNames();
 
-        // Try output root directory (for development/testing)
-        var rootPath = Path.Combine(assemblyDir, nativeLibName);
-        if (File.Exists(rootPath))
-            return rootPath;
+        foreach (var nativeLibName in nativeLibNames)
+        {
+            // Try runtimes/{rid}/native/{lib} structure in assembly directory
+            var runtimePath = Path.Combine(assemblyDir, "runtimes", rid, "native", nativeLibName);
+            if (File.Exists(runtimePath))
+                return runtimePath;
 
-        // For test projects, check if we need to look in the bin directory where Npgquery.dll is located
-        // This handles the case where the test assembly and Npgquery.dll are in the same directory
-        // but the runtimes folder might be next to Npgquery.dll
-        var npgqueryDir = assemblyDir; // Same directory in this case
-        var testRuntimePath = Path.Combine(npgqueryDir, "runtimes", rid, "native", nativeLibName);
-        if (File.Exists(testRuntimePath))
-            return testRuntimePath;
+            // Try output root directory (for development/testing)
+            var rootPath = Path.Combine(assemblyDir, nativeLibName);
+            if (File.Exists(rootPath))
+                return rootPath;
+
+            // For test projects, check if we need to look in the bin directory where Npgquery.dll is located
+            // This handles the case where the test assembly and Npgquery.dll are in the same directory
+            // but the runtimes folder might be next to Npgquery.dll
+            var npgqueryDir = assemblyDir; // Same directory in this case
+            var testRuntimePath = Path.Combine(npgqueryDir, "runtimes", rid, "native", nativeLibName);
+            if (File.Exists(testRuntimePath))
+                return testRuntimePath;
+        }
 
         return null;
     }
@@ -131,5 +136,22 @@ internal static class NativeLibraryLoader
             return "libpg_query.dylib";
 
         return "pg_query";
+    }
+
+    /// <summary>
+    /// Get all possible native library names to try (handles different naming conventions)
+    /// </summary>
+    private static string[] GetNativeLibraryNames()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            return new[] { "pg_query.dll" };
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            return new[] { "libpg_query.so", "pg_query.so" }; // Try both naming conventions
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            return new[] { "libpg_query.dylib", "pg_query.dylib" }; // Try both naming conventions
+
+        return new[] { "pg_query" };
     }
 }

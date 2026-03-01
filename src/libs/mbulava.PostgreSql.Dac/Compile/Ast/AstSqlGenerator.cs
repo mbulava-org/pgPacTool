@@ -19,14 +19,21 @@ public static class AstSqlGenerator
     {
         ArgumentNullException.ThrowIfNull(ast);
 
-        // WORKAROUND: Due to protobuf serialization issues on Linux,
-        // we use a direct JSON-to-SQL conversion instead of the protobuf deparse path
-        // For now, we'll try the deparse method first, and fall back to JSON extraction if it fails
+        // Due to issues with protobuf JSON serialization and deparse reliability,
+        // we use direct JSON-to-SQL conversion as the primary path
+        // and fall back to protobuf deparse only if JSON extraction fails
 
+        // Try JSON extraction first (most reliable)
+        var extractedSql = TryExtractSqlFromAstJson(ast);
+        if (extractedSql != null)
+        {
+            return extractedSql;
+        }
+
+        // Fall back to protobuf deparse if JSON extraction doesn't support this statement type
         using var parser = new Parser();
         var result = parser.Deparse(ast);
 
-        // If deparse succeeds and returns valid SQL, use it
         if (result.IsSuccess && !string.IsNullOrWhiteSpace(result.Query))
         {
             // Check if the query looks like garbage (contains control characters)
@@ -36,16 +43,8 @@ public static class AstSqlGenerator
             }
         }
 
-        // Fall back to extracting SQL from AST JSON if deparse failed or returned garbage
-        // This is a temporary workaround until proper cross-platform protobuf handling is implemented
-        var extractedSql = TryExtractSqlFromAstJson(ast);
-        if (extractedSql != null)
-        {
-            return extractedSql;
-        }
-
         // If all else fails, throw an exception
-        var errorMsg = result.Error ?? "Unknown deparse error - possible protobuf serialization issue";
+        var errorMsg = result.Error ?? "Unknown deparse error - statement type not supported by JSON extractor";
         throw new InvalidOperationException($"Failed to generate SQL from AST: {errorMsg}");
     }
 

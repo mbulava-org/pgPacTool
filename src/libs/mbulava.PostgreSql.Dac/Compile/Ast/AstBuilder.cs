@@ -367,6 +367,48 @@ public static class AstBuilder
     /// </summary>
     public static JsonElement AlterTableAlterColumnType(string schema, string tableName, string columnName, string newDataType)
     {
+        // Parse a simple ALTER statement to extract the exact TypeName structure
+        // This ensures we get PostgreSQL's internal type representation correctly
+        var tempSql = $"ALTER TABLE temp.temp ALTER COLUMN temp TYPE {newDataType};";
+
+        using var parser = new Npgquery.Parser();
+        var parseResult = parser.Parse(tempSql);
+
+        if (!parseResult.IsSuccess || parseResult.ParseTree == null)
+        {
+            throw new InvalidOperationException($"Failed to parse type definition: {newDataType}");
+        }
+
+        // Extract the TypeName from the parsed statement
+        var root = parseResult.ParseTree.RootElement;
+        JsonElement typeNameElement = default;
+
+        if (root.TryGetProperty("stmts", out var stmts) && stmts.GetArrayLength() > 0)
+        {
+            var stmtItem = stmts[0];
+            if (stmtItem.TryGetProperty("stmt", out var stmtObj) &&
+                stmtObj.TryGetProperty("AlterTableStmt", out var alterStmt) &&
+                alterStmt.TryGetProperty("cmds", out var cmds) && cmds.GetArrayLength() > 0)
+            {
+                var cmd = cmds[0];
+                if (cmd.TryGetProperty("AlterTableCmd", out var alterCmd) &&
+                    alterCmd.TryGetProperty("def", out var def) &&
+                    def.TryGetProperty("ColumnDef", out var colDef) &&
+                    colDef.TryGetProperty("typeName", out var typeName))
+                {
+                    typeNameElement = typeName;
+                }
+            }
+        }
+
+        if (typeNameElement.ValueKind == System.Text.Json.JsonValueKind.Undefined)
+        {
+            throw new InvalidOperationException($"Could not extract TypeName from parsed SQL for type: {newDataType}");
+        }
+
+        // Now build our AST with the extracted TypeName (without location fields)
+        var typeNameObj = CleanLocationFields(typeNameElement);
+
         var stmt = new
         {
             AlterTableStmt = new
@@ -390,9 +432,7 @@ public static class AstBuilder
                             {
                                 ColumnDef = new
                                 {
-                                    colname = columnName,
-                                    typeName = BuildTypeName(newDataType),
-                                    is_local = true
+                                    typeName = typeNameObj
                                 }
                             },
                             behavior = "DROP_RESTRICT"
@@ -404,6 +444,45 @@ public static class AstBuilder
         };
 
         return WrapStatement(stmt);
+    }
+
+    /// <summary>
+    /// Removes location fields from a JsonElement for cleaner AST.
+    /// Location fields are only used for error reporting in the parser.
+    /// </summary>
+    private static object CleanLocationFields(JsonElement element)
+    {
+        if (element.ValueKind == System.Text.Json.JsonValueKind.Object)
+        {
+            var dict = new Dictionary<string, object>();
+            foreach (var prop in element.EnumerateObject())
+            {
+                // Skip location fields
+                if (prop.Name == "location")
+                    continue;
+
+                if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Object)
+                {
+                    dict[prop.Name] = CleanLocationFields(prop.Value);
+                }
+                else if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    var items = prop.Value.EnumerateArray()
+                        .Select(item => item.ValueKind == System.Text.Json.JsonValueKind.Object 
+                            ? CleanLocationFields(item) 
+                            : JsonSerializer.Deserialize<object>(item.GetRawText())!)
+                        .ToArray();
+                    dict[prop.Name] = items;
+                }
+                else
+                {
+                    dict[prop.Name] = JsonSerializer.Deserialize<object>(prop.Value.GetRawText())!;
+                }
+            }
+            return dict;
+        }
+
+        return JsonSerializer.Deserialize<object>(element.GetRawText())!;
     }
 
     /// <summary>

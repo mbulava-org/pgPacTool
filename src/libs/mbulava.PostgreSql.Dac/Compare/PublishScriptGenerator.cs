@@ -302,9 +302,9 @@ public static class PublishScriptGenerator
                     // Column changed - ALTER
                     if (colDiff.SourceDataType != colDiff.TargetDataType)
                     {
-                        // TODO: AST builder for ALTER COLUMN TYPE needs better type handling
-                        // Using string template for now until BuildTypeName is improved
-                        sb.AppendLine($"ALTER TABLE {QuoteIdentifier(diff.TableName)} ALTER COLUMN {QuoteIdentifier(colDiff.ColumnName)} TYPE {colDiff.SourceDataType};");
+                        // ✅ Using AST builder with parse-extract pattern for TypeName
+                        var ast = AstBuilder.AlterTableAlterColumnType(schema, tableName, colDiff.ColumnName, colDiff.SourceDataType!);
+                        AppendAstSql(sb, ast);
                     }
                     if (colDiff.SourceIsNotNull != colDiff.TargetIsNotNull)
                     {

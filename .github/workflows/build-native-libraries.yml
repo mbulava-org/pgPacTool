@@ -5,22 +5,23 @@ on:
   workflow_dispatch:
     inputs:
       pg_versions:
-        description: 'PostgreSQL versions to build (comma-separated, e.g., "16,17" or "14,15,16,17")'
+        description: 'PostgreSQL versions to build (comma-separated, e.g., "16,17")'
         required: true
         default: '16,17'
       force_rebuild:
         description: 'Force rebuild even if files exist'
         type: boolean
         default: false
-  
-  # Automatic trigger when this workflow file changes
-  push:
-    paths:
-      - '.github/workflows/build-native-libraries.yml'
-      - 'scripts/organize-native-libs.ps1'
+
+  # Automatic trigger when this workflow file changes - but DON'T build, just validate
+  # push:
+  #   paths:
+  #     - '.github/workflows/build-native-libraries.yml'
 
 env:
   NPGQUERY_PROJECT_PATH: src/libs/Npgquery/Npgquery
+  # Default versions for non-workflow_dispatch triggers
+  DEFAULT_PG_VERSIONS: '16,17'
 
 jobs:
   build-matrix:
@@ -31,35 +32,47 @@ jobs:
         os: 
           - windows-latest
           - ubuntu-latest
-          - macos-13      # Intel Mac
-          - macos-14      # ARM Mac (M1/M2)
+          - macos-latest  # Changed from macos-13 - uses latest stable
         pg_version: ${{ fromJson(format('[{0}]', github.event.inputs.pg_versions || '16,17')) }}
-    
+
     runs-on: ${{ matrix.os }}
-    
+
     steps:
       - name: Checkout Npgquery repository
         uses: actions/checkout@v4
         with:
           path: npgquery
-      
+
       - name: Checkout libpg_query
         uses: actions/checkout@v4
         with:
           repository: pganalyze/libpg_query
           ref: ${{ matrix.pg_version }}-latest
           path: libpg_query
-      
+
       - name: Set up build environment (Windows)
         if: runner.os == 'Windows'
         uses: microsoft/setup-msbuild@v2
-      
+
+      - name: Install build tools (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: Install build tools (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          # Xcode command line tools should be pre-installed, but ensure make is available
+          which make || xcode-select --install
+
       - name: Build libpg_query (Windows)
         if: runner.os == 'Windows'
         working-directory: libpg_query
+        shell: cmd
         run: |
           nmake /F Makefile.msvc
-          
+
       - name: Build libpg_query (Unix)
         if: runner.os != 'Windows'
         working-directory: libpg_query

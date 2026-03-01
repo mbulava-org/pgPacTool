@@ -1,0 +1,256 @@
+name: Build Native libpg_query Libraries
+
+on:
+  # Manual trigger with version selection
+  workflow_dispatch:
+    inputs:
+      pg_versions:
+        description: 'PostgreSQL versions to build (comma-separated, e.g., "16,17" or "14,15,16,17")'
+        required: true
+        default: '16,17'
+      force_rebuild:
+        description: 'Force rebuild even if files exist'
+        type: boolean
+        default: false
+  
+  # Automatic trigger when this workflow file changes
+  push:
+    paths:
+      - '.github/workflows/build-native-libraries.yml'
+      - 'scripts/organize-native-libs.ps1'
+
+env:
+  NPGQUERY_PROJECT_PATH: src/libs/Npgquery/Npgquery
+
+jobs:
+  build-matrix:
+    name: Build libpg_query
+    strategy:
+      fail-fast: false
+      matrix:
+        os: 
+          - windows-latest
+          - ubuntu-latest
+          - macos-13      # Intel Mac
+          - macos-14      # ARM Mac (M1/M2)
+        pg_version: ${{ fromJson(format('[{0}]', github.event.inputs.pg_versions || '16,17')) }}
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout Npgquery repository
+        uses: actions/checkout@v4
+        with:
+          path: npgquery
+      
+      - name: Checkout libpg_query
+        uses: actions/checkout@v4
+        with:
+          repository: pganalyze/libpg_query
+          ref: ${{ matrix.pg_version }}-latest
+          path: libpg_query
+      
+      - name: Set up build environment (Windows)
+        if: runner.os == 'Windows'
+        uses: microsoft/setup-msbuild@v2
+      
+      - name: Build libpg_query (Windows)
+        if: runner.os == 'Windows'
+        working-directory: libpg_query
+        run: |
+          nmake /F Makefile.msvc
+          
+      - name: Build libpg_query (Unix)
+        if: runner.os != 'Windows'
+        working-directory: libpg_query
+        run: |
+          make
+      
+      - name: Determine output filename and runtime identifier
+        id: get-info
+        shell: bash
+        run: |
+          # Determine platform and architecture
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            RID="win-x64"
+            SRC_FILE="libpg_query/pg_query.dll"
+            DEST_FILE="pg_query_${{ matrix.pg_version }}.dll"
+          elif [ "${{ runner.os }}" == "Linux" ]; then
+            RID="linux-x64"
+            SRC_FILE="libpg_query/libpg_query.so"
+            DEST_FILE="libpg_query_${{ matrix.pg_version }}.so"
+          elif [ "${{ runner.os }}" == "macOS" ]; then
+            # Detect ARM vs Intel Mac
+            if [ "$(uname -m)" == "arm64" ]; then
+              RID="osx-arm64"
+            else
+              RID="osx-x64"
+            fi
+            SRC_FILE="libpg_query/libpg_query.dylib"
+            DEST_FILE="libpg_query_${{ matrix.pg_version }}.dylib"
+          fi
+          
+          echo "rid=$RID" >> $GITHUB_OUTPUT
+          echo "src_file=$SRC_FILE" >> $GITHUB_OUTPUT
+          echo "dest_file=$DEST_FILE" >> $GITHUB_OUTPUT
+          
+          # Create target directory
+          TARGET_DIR="npgquery/${{ env.NPGQUERY_PROJECT_PATH }}/runtimes/$RID/native"
+          mkdir -p "$TARGET_DIR"
+          echo "target_dir=$TARGET_DIR" >> $GITHUB_OUTPUT
+      
+      - name: Copy and rename library
+        shell: bash
+        run: |
+          cp "${{ steps.get-info.outputs.src_file }}" \
+             "${{ steps.get-info.outputs.target_dir }}/${{ steps.get-info.outputs.dest_file }}"
+          
+          echo "✓ Built ${{ steps.get-info.outputs.dest_file }} for ${{ steps.get-info.outputs.rid }}"
+          ls -lh "${{ steps.get-info.outputs.target_dir }}/${{ steps.get-info.outputs.dest_file }}"
+      
+      - name: Verify library architecture (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          FILE_PATH="${{ steps.get-info.outputs.target_dir }}/${{ steps.get-info.outputs.dest_file }}"
+          echo "File information:"
+          file "$FILE_PATH" || true
+          
+          if [ "${{ runner.os }}" == "macOS" ]; then
+            echo "Architecture information:"
+            lipo -info "$FILE_PATH" || true
+          fi
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libpg_query-${{ steps.get-info.outputs.rid }}-pg${{ matrix.pg_version }}
+          path: ${{ steps.get-info.outputs.target_dir }}/${{ steps.get-info.outputs.dest_file }}
+          if-no-files-found: error
+          retention-days: 7
+
+  collect-and-commit:
+    name: Collect libraries and create PR
+    needs: build-matrix
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      
+      - name: Organize native libraries
+        shell: bash
+        run: |
+          # Create base directory
+          BASE_DIR="${{ env.NPGQUERY_PROJECT_PATH }}/runtimes"
+          mkdir -p "$BASE_DIR"
+          
+          # Process each artifact
+          for artifact_dir in artifacts/libpg_query-*; do
+            if [ -d "$artifact_dir" ]; then
+              # Extract RID and version from artifact name
+              artifact_name=$(basename "$artifact_dir")
+              
+              # Parse artifact name: libpg_query-{rid}-pg{version}
+              rid=$(echo "$artifact_name" | sed -E 's/libpg_query-([^-]+(-[^-]+)?)-pg[0-9]+/\1/')
+              
+              # Create target directory
+              target_dir="$BASE_DIR/$rid/native"
+              mkdir -p "$target_dir"
+              
+              # Copy files
+              cp "$artifact_dir"/* "$target_dir/" || true
+              
+              echo "✓ Copied libraries to $target_dir"
+              ls -lh "$target_dir"
+            fi
+          done
+          
+          echo ""
+          echo "=== Final directory structure ==="
+          tree "$BASE_DIR" || find "$BASE_DIR" -type f
+      
+      - name: Check for changes
+        id: check-changes
+        run: |
+          git add ${{ env.NPGQUERY_PROJECT_PATH }}/runtimes/
+          
+          if git diff --staged --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No changes to commit"
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "Changes detected:"
+            git diff --staged --name-only
+          fi
+      
+      - name: Create Pull Request
+        if: steps.check-changes.outputs.has_changes == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore: Update native libpg_query libraries (PG ${{ github.event.inputs.pg_versions || ''16,17'' }})'
+          title: 'Update native libpg_query libraries'
+          body: |
+            ## 🔄 Native Library Update
+            
+            This PR updates the native libpg_query libraries.
+            
+            **PostgreSQL Versions**: ${{ github.event.inputs.pg_versions || '16,17' }}
+            
+            ### Changes
+            - Built libraries for Windows x64, Linux x64, macOS x64, and macOS ARM64
+            - Organized in runtime-specific directories
+            - Ready for multi-version PostgreSQL support
+            
+            ### Verification
+            - [ ] Libraries exist for all platforms
+            - [ ] File sizes are reasonable (typically 2-5 MB per library)
+            - [ ] Build logs show no errors
+            
+            ### Testing
+            After merge, verify with:
+            ```csharp
+            using var parser = new Parser(PostgreSqlVersion.Postgres16);
+            Console.WriteLine(parser.Parse("SELECT 1").IsSuccess);
+            
+            using var parser17 = new Parser(PostgreSqlVersion.Postgres17);
+            Console.WriteLine(parser17.Parse("SELECT 1").IsSuccess);
+            ```
+            
+            ---
+            *Generated by build-native-libraries workflow*
+          branch: update-native-libraries-${{ github.run_number }}
+          delete-branch: true
+      
+      - name: Summary
+        if: steps.check-changes.outputs.has_changes == 'true'
+        run: |
+          echo "## ✅ Build Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Successfully built libpg_query for PostgreSQL versions: ${{ github.event.inputs.pg_versions || '16,17' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Platforms" >> $GITHUB_STEP_SUMMARY
+          echo "- Windows x64" >> $GITHUB_STEP_SUMMARY
+          echo "- Linux x64" >> $GITHUB_STEP_SUMMARY
+          echo "- macOS x64 (Intel)" >> $GITHUB_STEP_SUMMARY
+          echo "- macOS ARM64 (Apple Silicon)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "A pull request has been created with the updated libraries." >> $GITHUB_STEP_SUMMARY
+      
+      - name: No changes
+        if: steps.check-changes.outputs.has_changes == 'false'
+        run: |
+          echo "## ℹ️ No Changes" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Libraries are already up to date." >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,183 @@
+name: Check libpg_query Version Differences
+
+on:
+  # Run weekly to check for updates - Nah, let's do it manually for now until we have a better process in place
+  #schedule:
+  #  - cron: '0 0 * * 0'  # Every Sunday at midnight UTC
+  
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      base_version:
+        description: 'Base PostgreSQL version'
+        required: true
+        default: '16'
+      compare_version:
+        description: 'Version to compare'
+        required: true
+        default: '17'
+
+jobs:
+  analyze-differences:
+    name: Analyze Version Differences
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    
+    steps:
+      - name: Checkout Npgquery repository
+        uses: actions/checkout@v4
+      
+      - name: Set up PowerShell
+        shell: pwsh
+        run: |
+          $PSVersionTable
+      
+      - name: Run difference analysis
+        id: analyze
+        shell: pwsh
+        run: |
+          $baseVer = "${{ github.event.inputs.base_version || '16' }}"
+          $compareVer = "${{ github.event.inputs.compare_version || '17' }}"
+          
+          Write-Host "Analyzing PG $baseVer → $compareVer"
+          
+          .\scripts\Analyze-VersionDifferences.ps1 `
+            -BaseVersion $baseVer `
+            -CompareVersion $compareVer `
+            -Detailed
+      
+      - name: Upload analysis reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: version-difference-report
+          path: docs/version-differences/
+          retention-days: 30
+      
+      - name: Check for changes
+        id: check-changes
+        run: |
+          git add docs/version-differences/
+          
+          if git diff --staged --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Create Pull Request with findings
+        if: steps.check-changes.outputs.has_changes == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'docs: Add version difference analysis (PG ${{ github.event.inputs.compare_version || ''17'' }})'
+          title: '📊 Version Difference Analysis: PostgreSQL ${{ github.event.inputs.base_version || ''16'' }} → ${{ github.event.inputs.compare_version || ''17'' }}'
+          body: |
+            ## 🔍 Version Difference Analysis
+            
+            Automated analysis comparing PostgreSQL **${{ github.event.inputs.base_version || '16' }}** → **${{ github.event.inputs.compare_version || '17' }}**
+            
+            ### Reports Generated
+            - Version change summary
+            - Protobuf schema differences
+            - C API changes
+            - Node type modifications
+            
+            ### Action Required
+            
+            **If breaking changes detected**:
+            1. ⚠️ Review the analysis report carefully
+            2. 📝 Update version-specific models if needed
+            3. 🔧 Add compatibility layer for API changes
+            4. ✅ Create version-specific tests
+            5. 📚 Update documentation
+            
+            **If no breaking changes**:
+            1. ✅ Review report for confirmation
+            2. 🧪 Run integration tests with new version
+            3. 📝 Update supported versions documentation
+            
+            ### Files Changed
+            See the `docs/version-differences/` directory for:
+            - `PG${{ github.event.inputs.compare_version || '17' }}_CHANGES.md` - Summary report
+            - `PG${{ github.event.inputs.compare_version || '17' }}_*_diff.txt` - Detailed diffs
+            
+            ### Next Steps
+            1. Review this analysis
+            2. If breaking changes exist, update code before adding version ${{ github.event.inputs.compare_version || '17' }}
+            3. Merge this PR to keep analysis in repo
+            4. Run the native library build workflow to get binaries
+            
+            ---
+            *Generated automatically by version-difference-check workflow*
+          branch: version-analysis-pg${{ github.event.inputs.compare_version || '17' }}
+          delete-branch: true
+      
+      - name: Create issue if breaking changes detected
+        if: steps.analyze.outputs.has_changes == 'true'
+        uses: actions/create-github-issue@v1
+        with:
+          title: '⚠️ Breaking Changes in PostgreSQL ${{ github.event.inputs.compare_version || ''17'' }}'
+          labels: 'breaking-change,version-compatibility'
+          body: |
+            ## ⚠️ Breaking Changes Detected
+            
+            The automated version difference analysis has detected breaking changes between:
+            - **Base**: PostgreSQL ${{ github.event.inputs.base_version || '16' }}
+            - **Compare**: PostgreSQL ${{ github.event.inputs.compare_version || '17' }}
+            
+            ### Impact
+            
+            These changes may require:
+            - Updates to parse tree models
+            - Changes to compatibility layer
+            - Version-specific handling
+            - Additional tests
+            
+            ### Action Items
+            
+            - [ ] Review difference analysis report (see PR)
+            - [ ] Update version-specific models
+            - [ ] Add compatibility adapters
+            - [ ] Create version-specific tests
+            - [ ] Update documentation
+            - [ ] Verify postgresqlPacTool compatibility
+            
+            ### Reports
+            
+            See the automatically created PR for detailed analysis.
+            
+            ### Resources
+            
+            - [Analysis Report](https://github.com/${{ github.repository }}/blob/version-analysis-pg${{ github.event.inputs.compare_version || '17' }}/docs/version-differences/PG${{ github.event.inputs.compare_version || '17' }}_CHANGES.md)
+            - [libpg_query CHANGELOG](https://github.com/pganalyze/libpg_query/blob/master/CHANGELOG.md)
+            - [PostgreSQL Release Notes](https://www.postgresql.org/docs/${{ github.event.inputs.compare_version || '17' }}/release.html)
+            
+            ---
+            *This issue was created automatically by the version-difference-check workflow*
+      
+      - name: Summary
+        if: always()
+        run: |
+          echo "## 🔍 Version Difference Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Versions**: PostgreSQL ${{ github.event.inputs.base_version || '16' }} → ${{ github.event.inputs.compare_version || '17' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.analyze.outputs.has_changes }}" == "true" ]; then
+            echo "### ⚠️ Breaking Changes Detected" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Action required before adding version ${{ github.event.inputs.compare_version || '17' }} support." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- A Pull Request has been created with the analysis" >> $GITHUB_STEP_SUMMARY
+            echo "- An issue has been created to track required changes" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ✅ No Breaking Changes" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Version ${{ github.event.inputs.compare_version || '17' }} appears compatible with ${{ github.event.inputs.base_version || '16' }}." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- Review the analysis report to confirm" >> $GITHUB_STEP_SUMMARY
+            echo "- Test thoroughly before declaring full support" >> $GITHUB_STEP_SUMMARY
+          fi

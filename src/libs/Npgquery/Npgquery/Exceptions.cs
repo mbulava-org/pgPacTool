@@ -48,7 +48,7 @@ public sealed class ParseException : ParserException
 /// <summary>
 /// Exception thrown when the native libpg_query library cannot be loaded or accessed
 /// </summary>
-public sealed class NativeLibraryException : ParserException
+public class NativeLibraryException : ParserException
 {
     public NativeLibraryException(string message) : base(message)
     {
@@ -194,5 +194,42 @@ public sealed class PlpgsqlParseException : ParserException
         : base($"Failed to parse PL/pgSQL code: {plpgsqlParseError}", innerException, query)
     {
         PlpgsqlParseError = plpgsqlParseError;
+    }
+}
+
+/// <summary>
+/// Exception thrown when a requested PostgreSQL version is not available
+/// </summary>
+public sealed class PostgreSqlVersionNotAvailableException : NativeLibraryException
+{
+    /// <summary>
+    /// The PostgreSQL version that was requested
+    /// </summary>
+    public PostgreSqlVersion RequestedVersion { get; }
+
+    /// <summary>
+    /// The PostgreSQL versions that are available
+    /// </summary>
+    public IEnumerable<PostgreSqlVersion> AvailableVersions { get; }
+
+    public PostgreSqlVersionNotAvailableException(
+        PostgreSqlVersion requestedVersion,
+        IEnumerable<PostgreSqlVersion> availableVersions,
+        string message)
+        : base(message)
+    {
+        RequestedVersion = requestedVersion;
+        AvailableVersions = availableVersions ?? Enumerable.Empty<PostgreSqlVersion>();
+    }
+
+    public PostgreSqlVersionNotAvailableException(
+        PostgreSqlVersion requestedVersion,
+        IEnumerable<PostgreSqlVersion> availableVersions,
+        string message,
+        Exception innerException)
+        : base(message, innerException)
+    {
+        RequestedVersion = requestedVersion;
+        AvailableVersions = availableVersions ?? Enumerable.Empty<PostgreSqlVersion>();
     }
 }

@@ -74,10 +74,17 @@ public static class NativeLibraryLoader
         }
 
         var libraryName = GetLibraryName(version);
-        var available = NativeLibrary.TryLoad(libraryName, out var handle) || 
-                       TryLoadWithSearchPaths(libraryName, version) != IntPtr.Zero;
+        IntPtr handle;
 
-        if (available && handle != IntPtr.Zero)
+        if (!NativeLibrary.TryLoad(libraryName, out handle))
+        {
+            // Try with platform-specific search paths
+            handle = TryLoadWithSearchPaths(libraryName, version);
+        }
+
+        var available = handle != IntPtr.Zero;
+
+        if (available)
         {
             _loadedLibraries[version] = handle;
         }

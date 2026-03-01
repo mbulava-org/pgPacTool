@@ -318,27 +318,9 @@ public static class AstSqlGenerator
         var json = astElement.GetRawText();
         using var doc = JsonDocument.Parse(json);
 
-        // Use a more reliable deparse approach that avoids protobuf conversion issues
-        // Instead of Deparse(JsonDocument) which has cross-platform protobuf serialization issues,
-        // we convert the AST to SQL by using the AstToSql method if available,
-        // or falling back to Deparse for compatibility
-        using var parser = new Parser();
-
-        // Try using AstToSql first (from ProtobufHelper) which is more reliable
-        var result = parser.Deparse(doc);
-
-        if (!result.IsSuccess)
-        {
-            var errorMsg = result.Error ?? "Unknown deparse error";
-            throw new InvalidOperationException($"Failed to deparse AST: {errorMsg}");
-        }
-
-        if (string.IsNullOrWhiteSpace(result.Query))
-        {
-            throw new InvalidOperationException("Deparse returned empty query");
-        }
-
-        return result.Query;
+        // CRITICAL: Use the same JSON extraction approach as Generate(JsonDocument)
+        // The protobuf deparse path is unreliable and produces corrupted output on Linux
+        return Generate(doc);
     }
 
     /// <summary>

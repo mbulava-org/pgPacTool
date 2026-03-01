@@ -35,87 +35,81 @@ public class TriggerDependencyExtractor : AstDependencyExtractor
                 return dependencies;
             }
 
-            var astJson = trigStmtElement.GetRawText();
-            var triggerStmt = JsonSerializer.Deserialize<CreateTrigStmt>(astJson);
-
-            if (triggerStmt == null)
+            // Extract table dependency from relation
+            if (trigStmtElement.TryGetProperty("relation", out var relation))
             {
-                return dependencies;
+                var tableSchema = relation.TryGetProperty("schemaname", out var schemaEl)
+                    ? schemaEl.GetString() ?? schemaName
+                    : schemaName;
+                var tableName = relation.TryGetProperty("relname", out var nameEl)
+                    ? nameEl.GetString()
+                    : null;
+
+                if (!string.IsNullOrEmpty(tableName))
+                {
+                    dependencies.Add(CreateDependency(
+                        "TRIGGER",
+                        schemaName,
+                        objectName,
+                        "TABLE",
+                        tableSchema,
+                        tableName,
+                        "TRIGGER_TABLE"
+                    ));
+                }
             }
 
-            // Extract table dependency (trigger is always on a table)
-            dependencies.AddRange(ExtractTableDependency(triggerStmt, schemaName, objectName));
+            // Extract function dependency from funcname array
+            if (trigStmtElement.TryGetProperty("funcname", out var funcnameArray))
+            {
+                var funcNameParts = new List<string>();
+                foreach (var node in funcnameArray.EnumerateArray())
+                {
+                    if (node.TryGetProperty("String", out var stringNode))
+                    {
+                        if (stringNode.TryGetProperty("sval", out var sval))
+                        {
+                            var part = sval.GetString();
+                            if (!string.IsNullOrEmpty(part))
+                            {
+                                funcNameParts.Add(part);
+                            }
+                        }
+                    }
+                }
 
-            // Extract function dependency (EXECUTE FUNCTION/PROCEDURE)
-            dependencies.AddRange(ExtractFunctionDependency(triggerStmt, schemaName, objectName));
+                if (funcNameParts.Count > 0)
+                {
+                    string funcSchema, funcName;
+                    if (funcNameParts.Count == 1)
+                    {
+                        funcSchema = schemaName;
+                        funcName = funcNameParts[0];
+                    }
+                    else
+                    {
+                        funcSchema = funcNameParts[0];
+                        funcName = funcNameParts[1];
+                    }
+
+                    dependencies.Add(CreateDependency(
+                        "TRIGGER",
+                        schemaName,
+                        objectName,
+                        "FUNCTION",
+                        funcSchema,
+                        funcName,
+                        "TRIGGER_FUNCTION"
+                    ));
+                }
+            }
         }
         catch (JsonException)
         {
-            // Failed to deserialize - return empty list
-        }
-
-        return dependencies;
-    }
-
-    /// <summary>
-    /// Extracts the table that this trigger is attached to.
-    /// </summary>
-    private List<PgDependency> ExtractTableDependency(
-        CreateTrigStmt triggerStmt,
-        string schemaName,
-        string triggerName)
-    {
-        var dependencies = new List<PgDependency>();
-
-        if (triggerStmt.Relation != null)
-        {
-            var (tableSchema, tableName) = ExtractSchemaAndName(triggerStmt.Relation, schemaName);
-            
-            if (!string.IsNullOrEmpty(tableName))
-            {
-                dependencies.Add(CreateDependency(
-                    "TRIGGER",
-                    schemaName,
-                    triggerName,
-                    "TABLE",
-                    tableSchema,
-                    tableName,
-                    "TRIGGER_TABLE"
-                ));
-            }
-        }
-
-        return dependencies;
-    }
-
-    /// <summary>
-    /// Extracts the trigger function that executes when the trigger fires.
-    /// </summary>
-    private List<PgDependency> ExtractFunctionDependency(
-        CreateTrigStmt triggerStmt,
-        string schemaName,
-        string triggerName)
-    {
-        var dependencies = new List<PgDependency>();
-
-        if (triggerStmt.Funcname != null && triggerStmt.Funcname.Any())
-        {
-            var (funcSchema, funcName) = ExtractQualifiedName(triggerStmt.Funcname, schemaName);
-            
-            if (!string.IsNullOrEmpty(funcName))
-            {
-                dependencies.Add(CreateDependency(
-                    "TRIGGER",
-                    schemaName,
-                    triggerName,
-                    "FUNCTION",
-                    funcSchema,
-                    funcName,
-                    "TRIGGER_FUNCTION"
-                ));
-            }
+            // Failed to process - return what we have
         }
 
         return dependencies;
     }
 }
+

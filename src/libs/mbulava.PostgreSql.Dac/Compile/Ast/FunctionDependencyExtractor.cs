@@ -1,12 +1,11 @@
 using mbulava.PostgreSql.Dac.Models;
-using PgQuery;
 using System.Text.Json;
 
 namespace mbulava.PostgreSql.Dac.Compile.Ast;
 
 /// <summary>
 /// Extracts dependencies from function/procedure definitions using AST parsing.
-/// Handles table references, type dependencies from parameters/returns, and function calls.
+/// Handles parameter types and return types.
 /// </summary>
 public class FunctionDependencyExtractor : AstDependencyExtractor
 {
@@ -35,73 +34,74 @@ public class FunctionDependencyExtractor : AstDependencyExtractor
                 return dependencies;
             }
 
-            var astJson = funcStmtElement.GetRawText();
-            var funcStmt = JsonSerializer.Deserialize<CreateFunctionStmt>(astJson);
-
-            if (funcStmt == null)
-            {
-                return dependencies;
-            }
-
             // Extract type dependencies from parameters
-            dependencies.AddRange(ExtractParameterTypeDependencies(funcStmt, schemaName, objectName));
+            dependencies.AddRange(ExtractParameterTypeDependencies(funcStmtElement, schemaName, objectName));
 
             // Extract type dependencies from return type
-            dependencies.AddRange(ExtractReturnTypeDependencies(funcStmt, schemaName, objectName));
-
-            // Extract table and function references from function body
-            // Note: Function body is typically a string, so we'll need to parse it
-            dependencies.AddRange(ExtractBodyDependencies(funcStmt, schemaName, objectName));
+            dependencies.AddRange(ExtractReturnTypeDependencies(funcStmtElement, schemaName, objectName));
         }
         catch (JsonException)
         {
-            // Failed to deserialize - return empty list
+            // Failed to process - return what we have
         }
 
         return dependencies.DistinctBy(d => $"{d.DependsOnType}.{d.DependsOnSchema}.{d.DependsOnName}").ToList();
     }
 
     /// <summary>
-    /// Extracts type dependencies from function parameters.
+    /// Extracts parameter type dependencies.
     /// </summary>
     private List<PgDependency> ExtractParameterTypeDependencies(
-        CreateFunctionStmt funcStmt,
+        JsonElement funcStmt,
         string schemaName,
         string functionName)
     {
         var dependencies = new List<PgDependency>();
 
-        if (funcStmt.Parameters == null)
+        if (!funcStmt.TryGetProperty("parameters", out var parameters))
         {
             return dependencies;
         }
 
-        var processedTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var param in funcStmt.Parameters)
+        foreach (var param in parameters.EnumerateArray())
         {
-            if (param?.FunctionParameter?.ArgType != null)
+            if (param.TryGetProperty("FunctionParameter", out var funcParam))
             {
-                var typeName = param.FunctionParameter.ArgType;
-                var (typeSchema, type) = ExtractQualifiedName(typeName.Names, schemaName);
-
-                // Only add dependency for user-defined types (not built-in types)
-                if (!IsBuiltInType(type))
+                if (funcParam.TryGetProperty("argType", out var argType))
                 {
-                    var typeKey = $"{typeSchema}.{type}";
-                    if (!processedTypes.Contains(typeKey))
+                    // Extract type name from names array
+                    if (argType.TryGetProperty("names", out var names))
                     {
-                        processedTypes.Add(typeKey);
+                        var typeNameParts = ExtractStringArray(names);
                         
-                        dependencies.Add(CreateDependency(
-                            "FUNCTION",
-                            schemaName,
-                            functionName,
-                            "TYPE",
-                            typeSchema,
-                            type,
-                            "PARAMETER_TYPE"
-                        ));
+                        if (typeNameParts.Count > 0)
+                        {
+                            string typeSchema, typeName;
+                            if (typeNameParts.Count == 1)
+                            {
+                                typeSchema = schemaName;
+                                typeName = typeNameParts[0];
+                            }
+                            else
+                            {
+                                typeSchema = typeNameParts[0];
+                                typeName = typeNameParts[1];
+                            }
+
+                            // Only add dependency for user-defined types (not built-in types)
+                            if (!IsBuiltInType(typeName))
+                            {
+                                dependencies.Add(CreateDependency(
+                                    "FUNCTION",
+                                    schemaName,
+                                    functionName,
+                                    "TYPE",
+                                    typeSchema,
+                                    typeName,
+                                    "PARAMETER_TYPE"
+                                ));
+                            }
+                        }
                     }
                 }
             }
@@ -111,31 +111,53 @@ public class FunctionDependencyExtractor : AstDependencyExtractor
     }
 
     /// <summary>
-    /// Extracts type dependencies from return type.
+    /// Extracts return type dependencies.
     /// </summary>
     private List<PgDependency> ExtractReturnTypeDependencies(
-        CreateFunctionStmt funcStmt,
+        JsonElement funcStmt,
         string schemaName,
         string functionName)
     {
         var dependencies = new List<PgDependency>();
 
-        if (funcStmt.ReturnType != null)
+        if (!funcStmt.TryGetProperty("returnType", out var returnType))
         {
-            var (typeSchema, type) = ExtractQualifiedName(funcStmt.ReturnType.Names, schemaName);
+            return dependencies;
+        }
 
-            // Only add dependency for user-defined types
-            if (!IsBuiltInType(type) && !type.Equals("void", StringComparison.OrdinalIgnoreCase))
+        // Extract type name from names array
+        if (returnType.TryGetProperty("names", out var names))
+        {
+            var typeNameParts = ExtractStringArray(names);
+            
+            if (typeNameParts.Count > 0)
             {
-                dependencies.Add(CreateDependency(
-                    "FUNCTION",
-                    schemaName,
-                    functionName,
-                    "TYPE",
-                    typeSchema,
-                    type,
-                    "RETURN_TYPE"
-                ));
+                string typeSchema, typeName;
+                if (typeNameParts.Count == 1)
+                {
+                    typeSchema = schemaName;
+                    typeName = typeNameParts[0];
+                }
+                else
+                {
+                    typeSchema = typeNameParts[0];
+                    typeName = typeNameParts[1];
+                }
+
+                // Only add dependency for user-defined types (not built-in types)
+                // Skip 'void' return type
+                if (!typeName.Equals("void", StringComparison.OrdinalIgnoreCase) && !IsBuiltInType(typeName))
+                {
+                    dependencies.Add(CreateDependency(
+                        "FUNCTION",
+                        schemaName,
+                        functionName,
+                        "TYPE",
+                        typeSchema,
+                        typeName,
+                        "RETURN_TYPE"
+                    ));
+                }
             }
         }
 
@@ -143,26 +165,28 @@ public class FunctionDependencyExtractor : AstDependencyExtractor
     }
 
     /// <summary>
-    /// Extracts table and function references from function body.
-    /// This is a simplified approach that looks for common patterns.
-    /// A complete implementation would parse the function body SQL.
+    /// Extracts string array from names JSON structure.
     /// </summary>
-    private List<PgDependency> ExtractBodyDependencies(
-        CreateFunctionStmt funcStmt,
-        string schemaName,
-        string functionName)
+    private List<string> ExtractStringArray(JsonElement names)
     {
-        var dependencies = new List<PgDependency>();
-
-        // Function body is typically in Options (e.g., as_clause)
-        // For PL/pgSQL functions, the body is a string that would need separate parsing
-        // For SQL functions, we could potentially parse the body
-
-        // TODO: Implement comprehensive body parsing
-        // For now, we'll rely on the existing regex-based approach as a fallback
-        // or implement basic pattern matching
-
-        return dependencies;
+        var result = new List<string>();
+        
+        foreach (var node in names.EnumerateArray())
+        {
+            if (node.TryGetProperty("String", out var stringNode))
+            {
+                if (stringNode.TryGetProperty("sval", out var sval))
+                {
+                    var value = sval.GetString();
+                    if (!string.IsNullOrEmpty(value))
+                    {
+                        result.Add(value);
+                    }
+                }
+            }
+        }
+        
+        return result;
     }
 
     /// <summary>
@@ -219,12 +243,8 @@ public class FunctionDependencyExtractor : AstDependencyExtractor
             // Range types
             "int4range", "int8range", "numrange", "tsrange", "tstzrange", "daterange",
             
-            // Special types
-            "void", "record", "trigger", "event_trigger", "any", "anyelement",
-            "anyarray", "anynonarray", "anyenum", "anyrange",
-            
-            // System types
-            "oid", "regproc", "regprocedure", "regoper", "regoperator",
+            // Other
+            "void", "oid", "regproc", "regprocedure", "regoper", "regoperator",
             "regclass", "regtype", "regrole", "regnamespace", "regconfig",
             "regdictionary", "pg_lsn", "txid_snapshot", "pg_snapshot"
         };

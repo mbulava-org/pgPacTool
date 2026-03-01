@@ -3,51 +3,135 @@
 ## Branch
 `feature/AST_BASED_COMPILATION`
 
-## Overview
-Implemented AST-based dependency extraction for PostgreSQL database objects using the Npgquery parser. This replaces regex-based extraction with accurate parsing of SQL Abstract Syntax Trees.
+## 🎉 Current Achievement: 84% Complete!
 
-## ✅ Recent Progress
-
-### 🎯 MAJOR MILESTONE: View Extraction 100% Complete!
-**All 12 view tests passing!** ✅
-
-**Key Fixes**:
-1. **JSON property navigation**: Work directly with `JsonElement` instead of deserializing to protobuf
-2. **JOIN extraction**: Properly navigate `larg`/`rarg` which directly contain `RangeVar`
-3. **CTE filtering**: Collect CTE names first, skip references without schema that match CTE names
-
-### Test Results Summary
-**Total AST Tests**: **18/36 passing (50%)** 🎉
+### Test Results
+**32/38 tests passing (84%)** 🎉
 
 #### By Extractor:
 - ✅ **ViewDependencyExtractor**: 12/12 (100%) - **COMPLETE!**
-- ⚠️ **TableDependencyExtractor**: Some passing
-- ⚠️ **FunctionDependencyExtractor**: Some passing
-- ❌ **TriggerDependencyExtractor**: 0 dependencies extracted - needs same JsonElement fix
+- ✅ **TriggerDependencyExtractor**: 9/9 (100%) - **COMPLETE!**
+- ⚠️ **TableDependencyExtractor**: 8/9 (89%) - 1 sequence test remaining
+- ⚠️ **FunctionDependencyExtractor**: 3/8 (38%) - 5 type extraction tests remaining
 
-### Next Steps
-1. Apply JsonElement approach to TriggerDependencyExtractor
-2. Fix remaining Table and Function extractor issues
-3. Run full test suite
+## 🔬 Critical Discovery: Why Protobuf Deserialization Fails
 
-### 1. Base Infrastructure
-- **`AstDependencyExtractor.cs`**: Base class for all AST extractors
-  - `GetFirstStatement()`: Navigates AST structure (stmts[0].stmt)
-  - Common utilities for schema/name extraction
-  - Dependency creation helpers
-  - SQL keyword detection
+### Investigation Results
 
-- **`AstNavigationHelpers.cs`**: Extension methods for AST navigation
-  - String/int value extraction from nodes
-  - Qualified name resolution (schema.object)
-  - RangeVar extraction
-  - Type name extraction
-  - CTE handling utilities
+We conducted comprehensive diagnostics to understand why `JsonSerializer.Deserialize<ViewStmt>()` doesn't work. Here's what we found:
 
-### 2. Object-Specific Extractors
+#### Finding #1: No JSON Property Name Attributes ❌
+```csharp
+// All protobuf properties have:
+JsonPropertyName: None
 
-#### `TableDependencyExtractor.cs` ✅
-- **Foreign Key Dependencies**: Extracts FK references from constraints
+// This means C# property names don't match JSON:
+JSON: "fromClause", "schemaname", "funcname" (camelCase)
+C#:   FromClause,   Schemaname,   Funcname   (PascalCase)
+```
+
+#### Finding #2: Enum String Conversion Failure 🔴
+```csharp
+// JSON has string enums:
+"limitOption": "LIMIT_OPTION_DEFAULT"
+
+// C# expects enum type:
+public LimitOption LimitOption { get; set; }
+
+// JsonSerializer can't convert without [JsonConverter(typeof(JsonStringEnumConverter))]
+// Error: "The JSON value could not be converted to PgQuery.LimitOption"
+```
+
+#### Finding #3: Default Deserialization Returns Empty Objects ⚠️
+```csharp
+var viewStmt = JsonSerializer.Deserialize<ViewStmt>(json);
+// Success: True ✓
+// View: (empty) ✗
+// Query: (empty) ✗
+// All properties are null!
+```
+
+#### Finding #4: PropertyNameCaseInsensitive Doesn't Help
+```csharp
+var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+var viewStmt = JsonSerializer.Deserialize<ViewStmt>(json, options);
+// Still fails on nested enum conversion
+```
+
+### Root Cause Analysis
+
+The **Npgquery protobuf classes are NOT designed for JSON deserialization**. They would require:
+
+1. `[JsonPropertyName("camelCase")]` attributes on every property
+2. `[JsonConverter(typeof(JsonStringEnumConverter))]` on all enum properties
+3. Custom converters for polymorphic `Node` types
+4. Modifications to the protobuf generation process
+
+### Why JsonElement is the RIGHT Solution ✅
+
+Our JsonElement approach **correctly handles all these issues**:
+
+```csharp
+// ✅ Direct property access - no name mapping needed
+if (stmt.TryGetProperty("fromClause", out var fromClause))
+
+// ✅ Enum strings stay as strings - no conversion
+var constraintType = contype.GetString(); // "CONSTR_FOREIGN"
+
+// ✅ Polymorphic nodes handled naturally
+if (query.TryGetProperty("SelectStmt", out var selectStmt))
+
+// ✅ Reliable, explicit, performant
+```
+
+**Benefits:**
+- ✅ No reflection-based deserialization overhead
+- ✅ No hidden conversion failures
+- ✅ Explicit navigation = easier to debug
+- ✅ Works reliably with current Npgquery library
+- ✅ JSON format IS consistent - we just navigate it directly
+
+## 🏗️ Architecture Pattern
+
+### Established Pattern (Used Successfully)
+```csharp
+public override List<PgDependency> ExtractDependencies(string sql, ...)
+{
+    var stmt = GetFirstStatement(sql); // Navigate to stmts[0].stmt
+    if (stmt == null) return dependencies;
+
+    try
+    {
+        // Extract specific statement type
+        if (!stmt.Value.TryGetProperty("ViewStmt", out var viewStmt))
+            return dependencies;
+
+        // Navigate JSON directly using TryGetProperty
+        if (viewStmt.TryGetProperty("query", out var query))
+        {
+            if (query.TryGetProperty("SelectStmt", out var selectStmt))
+            {
+                // Process using JsonElement
+                if (selectStmt.TryGetProperty("fromClause", out var fromClause))
+                {
+                    foreach (var item in fromClause.EnumerateArray())
+                    {
+                        // Extract dependencies
+                    }
+                }
+            }
+        }
+    }
+    catch (JsonException)
+    {
+        // Return what we have
+    }
+
+    return dependencies;
+}
+```
+
+
 - **Inheritance Dependencies**: Extracts INHERITS relationships
 - **Sequence Dependencies**: Extracts DEFAULT nextval() references
 - **Type Dependencies**: Extracts user-defined column types

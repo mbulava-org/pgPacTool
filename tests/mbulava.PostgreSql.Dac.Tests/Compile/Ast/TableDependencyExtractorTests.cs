@@ -1,5 +1,7 @@
 using mbulava.PostgreSql.Dac.Compile.Ast;
 using NUnit.Framework;
+using Npgquery;
+using System.Text.Json;
 
 namespace mbulava.PostgreSql.Dac.Tests.Compile.Ast;
 
@@ -17,6 +19,62 @@ public class TableDependencyExtractorTests
     public void SetUp()
     {
         _extractor = new TableDependencyExtractor();
+    }
+
+    [Test]
+    [Category("Debug")]
+    public void Debug_Table_WithSequence_Structure()
+    {
+        var sql = @"
+            CREATE TABLE public.products (
+                id integer DEFAULT nextval('public.products_id_seq'::regclass),
+                name text
+            );";
+
+        using var parser = new Parser();
+        var result = parser.Parse(sql);
+
+        var root = result.ParseTree!.RootElement;
+        if (root.TryGetProperty("stmts", out var stmts))
+        {
+            var firstStmt = stmts[0];
+            if (firstStmt.TryGetProperty("stmt", out var stmt))
+            {
+                if (stmt.TryGetProperty("CreateStmt", out var createStmt))
+                {
+                    TestContext.WriteLine("\n=== CreateStmt (with Sequence) ===");
+                    TestContext.WriteLine(createStmt.GetRawText());
+                }
+            }
+        }
+    }
+
+    [Test]
+    [Category("Debug")]
+    public void Debug_Table_WithFK_Structure()
+    {
+        var sql = @"
+            CREATE TABLE public.orders (
+                id integer PRIMARY KEY,
+                customer_id integer REFERENCES public.customers(id)
+            );";
+
+        using var parser = new Parser();
+        var result = parser.Parse(sql);
+
+        var root = result.ParseTree!.RootElement;
+        if (root.TryGetProperty("stmts", out var stmts))
+        {
+            var firstStmt = stmts[0];
+            if (firstStmt.TryGetProperty("stmt", out var stmt))
+            {
+                if (stmt.TryGetProperty("CreateStmt", out var createStmt))
+                {
+                    TestContext.WriteLine("\n=== CreateStmt (with FK) ===");
+                    TestContext.WriteLine(createStmt.GetRawText());
+                }
+            }
+        }
     }
 
     [Test]

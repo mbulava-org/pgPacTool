@@ -1,5 +1,7 @@
 using mbulava.PostgreSql.Dac.Compile.Ast;
 using NUnit.Framework;
+using Npgquery;
+using System.Text.Json;
 
 namespace mbulava.PostgreSql.Dac.Tests.Compile.Ast;
 
@@ -17,6 +19,36 @@ public class FunctionDependencyExtractorTests
     public void SetUp()
     {
         _extractor = new FunctionDependencyExtractor();
+    }
+
+    [Test]
+    [Category("Debug")]
+    public void Debug_Function_Structure()
+    {
+        var sql = @"
+            CREATE FUNCTION public.process_address(addr public.address_type)
+            RETURNS public.result_type AS $$
+            BEGIN
+                -- function body
+            END;
+            $$ LANGUAGE plpgsql;";
+
+        using var parser = new Parser();
+        var result = parser.Parse(sql);
+
+        var root = result.ParseTree!.RootElement;
+        if (root.TryGetProperty("stmts", out var stmts))
+        {
+            var firstStmt = stmts[0];
+            if (firstStmt.TryGetProperty("stmt", out var stmt))
+            {
+                if (stmt.TryGetProperty("CreateFunctionStmt", out var funcStmt))
+                {
+                    TestContext.WriteLine("\n=== CreateFunctionStmt ===");
+                    TestContext.WriteLine(funcStmt.GetRawText());
+                }
+            }
+        }
     }
 
     [Test]

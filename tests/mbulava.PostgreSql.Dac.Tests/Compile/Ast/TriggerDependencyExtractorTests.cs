@@ -1,5 +1,7 @@
 using mbulava.PostgreSql.Dac.Compile.Ast;
 using NUnit.Framework;
+using Npgquery;
+using System.Text.Json;
 
 namespace mbulava.PostgreSql.Dac.Tests.Compile.Ast;
 
@@ -17,6 +19,38 @@ public class TriggerDependencyExtractorTests
     public void SetUp()
     {
         _extractor = new TriggerDependencyExtractor();
+    }
+
+    [Test]
+    [Category("Debug")]
+    public void Debug_Trigger_Structure()
+    {
+        // Arrange
+        var sql = @"
+            CREATE TRIGGER audit_trigger
+            AFTER INSERT OR UPDATE ON public.customers
+            FOR EACH ROW
+            EXECUTE FUNCTION public.audit_changes();";
+
+        using var parser = new Parser();
+        var result = parser.Parse(sql);
+
+        var root = result.ParseTree!.RootElement;
+        if (root.TryGetProperty("stmts", out var stmts))
+        {
+            var firstStmt = stmts[0];
+            if (firstStmt.TryGetProperty("stmt", out var stmt))
+            {
+                TestContext.WriteLine("\n=== Statement ===");
+                TestContext.WriteLine(stmt.GetRawText());
+
+                if (stmt.TryGetProperty("CreateTrigStmt", out var trigStmt))
+                {
+                    TestContext.WriteLine("\n=== CreateTrigStmt ===");
+                    TestContext.WriteLine(trigStmt.GetRawText());
+                }
+            }
+        }
     }
 
     [Test]

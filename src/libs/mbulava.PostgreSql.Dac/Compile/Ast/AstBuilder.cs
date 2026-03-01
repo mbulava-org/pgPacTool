@@ -581,42 +581,182 @@ public static class AstBuilder
 
     /// <summary>
     /// Creates an ALTER TABLE ADD CONSTRAINT statement AST.
-    /// TODO: Implement as pure AST builder.
+    /// Currently supports UNIQUE constraints. TODO: Add PRIMARY KEY, CHECK, FOREIGN KEY.
     /// </summary>
     public static JsonElement AlterTableAddConstraint(string schema, string tableName, string constraintName, string constraintDefinition)
     {
-        // Temporary: Use parse-then-return
-        var sql = $"ALTER TABLE {QuoteIdentifier(schema)}.{QuoteIdentifier(tableName)} ADD CONSTRAINT {QuoteIdentifier(constraintName)} {constraintDefinition};";
+        // Parse the constraint definition to determine type
+        // For now, handle UNIQUE constraints
+        // TODO: Expand to handle PRIMARY KEY, CHECK, FOREIGN KEY
 
-        using var doc = AstSqlGenerator.ParseToAst(sql);
-        return doc.RootElement.Clone();
+        var constraintDef = ParseConstraintDefinition(constraintName, constraintDefinition);
+
+        var stmt = new
+        {
+            AlterTableStmt = new
+            {
+                relation = new
+                {
+                    schemaname = schema,
+                    relname = tableName,
+                    inh = true,
+                    relpersistence = "p"
+                },
+                cmds = new[]
+                {
+                    new
+                    {
+                        AlterTableCmd = new
+                        {
+                            subtype = "AT_AddConstraint",
+                            def = new
+                            {
+                                Constraint = constraintDef
+                            },
+                            behavior = "DROP_RESTRICT"
+                        }
+                    }
+                },
+                objtype = "OBJECT_TABLE"
+            }
+        };
+
+        return WrapStatement(stmt);
     }
 
     /// <summary>
     /// Creates an ALTER TABLE DROP CONSTRAINT statement AST.
-    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement AlterTableDropConstraint(string schema, string tableName, string constraintName, bool ifExists = true)
     {
-        // Temporary: Use parse-then-return
-        var ifExistsClause = ifExists ? "IF EXISTS " : "";
-        var sql = $"ALTER TABLE {QuoteIdentifier(schema)}.{QuoteIdentifier(tableName)} DROP CONSTRAINT {ifExistsClause}{QuoteIdentifier(constraintName)};";
+        var stmt = new
+        {
+            AlterTableStmt = new
+            {
+                relation = new
+                {
+                    schemaname = schema,
+                    relname = tableName,
+                    inh = true,
+                    relpersistence = "p"
+                },
+                cmds = new[]
+                {
+                    new
+                    {
+                        AlterTableCmd = new
+                        {
+                            subtype = "AT_DropConstraint",
+                            name = constraintName,
+                            behavior = "DROP_RESTRICT",
+                            missing_ok = ifExists
+                        }
+                    }
+                },
+                objtype = "OBJECT_TABLE"
+            }
+        };
 
-        using var doc = AstSqlGenerator.ParseToAst(sql);
-        return doc.RootElement.Clone();
+        return WrapStatement(stmt);
     }
 
     /// <summary>
     /// Creates an ALTER TABLE OWNER TO statement AST.
-    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement AlterTableOwner(string schema, string tableName, string newOwner)
     {
-        // Temporary: Use parse-then-return
-        var sql = $"ALTER TABLE {QuoteIdentifier(schema)}.{QuoteIdentifier(tableName)} OWNER TO {QuoteIdentifier(newOwner)};";
+        var stmt = new
+        {
+            AlterTableStmt = new
+            {
+                relation = new
+                {
+                    schemaname = schema,
+                    relname = tableName,
+                    inh = true,
+                    relpersistence = "p"
+                },
+                cmds = new[]
+                {
+                    new
+                    {
+                        AlterTableCmd = new
+                        {
+                            subtype = "AT_ChangeOwner",
+                            newowner = new
+                            {
+                                roletype = "ROLESPEC_CSTRING",
+                                rolename = newOwner
+                            },
+                            behavior = "DROP_RESTRICT"
+                        }
+                    }
+                },
+                objtype = "OBJECT_TABLE"
+            }
+        };
 
-        using var doc = AstSqlGenerator.ParseToAst(sql);
-        return doc.RootElement.Clone();
+        return WrapStatement(stmt);
+    }
+
+    /// <summary>
+    /// Parses constraint definition string to build constraint object.
+    /// Currently handles UNIQUE constraints.
+    /// </summary>
+    private static object ParseConstraintDefinition(string constraintName, string definition)
+    {
+        // Simple parser for constraint definitions
+        // Format: "UNIQUE (col1, col2)" or "PRIMARY KEY (col1)" etc.
+
+        var defUpper = definition.ToUpper().Trim();
+
+        if (defUpper.StartsWith("UNIQUE"))
+        {
+            // Extract column names from UNIQUE (col1, col2)
+            var startParen = definition.IndexOf('(');
+            var endParen = definition.LastIndexOf(')');
+
+            if (startParen >= 0 && endParen > startParen)
+            {
+                var columnsPart = definition.Substring(startParen + 1, endParen - startParen - 1);
+                var columns = columnsPart.Split(',')
+                    .Select(c => c.Trim())
+                    .Where(c => !string.IsNullOrEmpty(c))
+                    .ToArray();
+
+                return new
+                {
+                    contype = "CONSTR_UNIQUE",
+                    conname = constraintName,
+                    keys = columns.Select(col => new { String = new { sval = col } }).ToArray()
+                };
+            }
+        }
+        else if (defUpper.StartsWith("PRIMARY KEY"))
+        {
+            var startParen = definition.IndexOf('(');
+            var endParen = definition.LastIndexOf(')');
+
+            if (startParen >= 0 && endParen > startParen)
+            {
+                var columnsPart = definition.Substring(startParen + 1, endParen - startParen - 1);
+                var columns = columnsPart.Split(',')
+                    .Select(c => c.Trim())
+                    .Where(c => !string.IsNullOrEmpty(c))
+                    .ToArray();
+
+                return new
+                {
+                    contype = "CONSTR_PRIMARY",
+                    conname = constraintName,
+                    keys = columns.Select(col => new { String = new { sval = col } }).ToArray()
+                };
+            }
+        }
+
+        // For complex constraints, fall back to parsing
+        // TODO: Implement CHECK, FOREIGN KEY parsing
+        throw new NotSupportedException($"Constraint definition '{definition}' is not yet supported for pure AST building. Use parse-then-return for now.");
     }
 
     /// <summary>
@@ -647,18 +787,37 @@ public static class AstBuilder
 
     /// <summary>
     /// Creates a CREATE INDEX statement AST.
-    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement CreateIndex(string indexName, string schema, string tableName, string[] columns, bool unique = false, bool ifNotExists = false)
     {
-        // Temporary: Use parse-then-return
-        var uniqueKeyword = unique ? "UNIQUE " : "";
-        var ifNotExistsKeyword = ifNotExists ? "IF NOT EXISTS " : "";
-        var columnList = string.Join(", ", columns.Select(QuoteIdentifier));
-        var sql = $"CREATE {uniqueKeyword}INDEX {ifNotExistsKeyword}{QuoteIdentifier(indexName)} ON {QuoteIdentifier(schema)}.{QuoteIdentifier(tableName)} ({columnList});";
+        var stmt = new
+        {
+            IndexStmt = new
+            {
+                idxname = indexName,
+                relation = new
+                {
+                    schemaname = schema,
+                    relname = tableName,
+                    inh = true,
+                    relpersistence = "p"
+                },
+                accessMethod = "btree",
+                indexParams = columns.Select(col => new
+                {
+                    IndexElem = new
+                    {
+                        name = col,
+                        ordering = "SORTBY_DEFAULT",
+                        nulls_ordering = "SORTBY_NULLS_DEFAULT"
+                    }
+                }).ToArray(),
+                unique = unique ? (object)true : null,  // Only include if true
+                if_not_exists = ifNotExists ? (object)true : null  // Only include if true
+            }
+        };
 
-        using var doc = AstSqlGenerator.ParseToAst(sql);
-        return doc.RootElement.Clone();
+        return WrapStatement(stmt);
     }
 
     /// <summary>

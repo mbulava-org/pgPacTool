@@ -122,6 +122,30 @@ public class AlterTableAstDiagnostics
     }
 
     [Test]
+    public void Debug_CreateIndex_Structure()
+    {
+        var sql = "CREATE INDEX idx_users_email ON public.users (email);";
+
+        using var parser = new Parser();
+        var result = parser.Parse(sql);
+
+        TestContext.WriteLine("=== CREATE INDEX AST ===");
+        TestContext.WriteLine(result.ParseTree!.RootElement.GetRawText());
+    }
+
+    [Test]
+    public void Debug_CreateUniqueIndex_Structure()
+    {
+        var sql = "CREATE UNIQUE INDEX uk_users_email ON public.users (email);";
+
+        using var parser = new Parser();
+        var result = parser.Parse(sql);
+
+        TestContext.WriteLine("=== CREATE UNIQUE INDEX AST ===");
+        TestContext.WriteLine(result.ParseTree!.RootElement.GetRawText());
+    }
+
+    [Test]
     public void Debug_AlterTable_Owner_Structure()
     {
         var sql = "ALTER TABLE public.users OWNER TO new_owner;";

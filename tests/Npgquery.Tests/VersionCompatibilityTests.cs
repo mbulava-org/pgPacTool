@@ -213,6 +213,10 @@ public class VersionCompatibilityTests
     {
         var isAvailable = NativeLibraryLoader.IsVersionAvailable(version);
 
+        // TODO: This test hard-fails when version-specific native libraries are not present.
+        // The test should skip (treat as inconclusive) instead of failing when binaries aren't built,
+        // to avoid blocking CI when the repo ships non-suffixed binaries (pg_query.dll/pg_query.so).
+        // See: https://github.com/mbulava-org/pgPacTool/issues
         // If this fails, the native library wasn't built
         Assert.True(isAvailable, 
             $"Version {version} is not available. Run: .\\scripts\\Build-NativeLibraries.ps1 -Versions \"{version.GetMajorVersion()}\"");

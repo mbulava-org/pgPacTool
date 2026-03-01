@@ -12,6 +12,24 @@ namespace mbulava.PostgreSql.Dac.Tests.Compile.Ast;
 public class AstBuilderTests
 {
     [Test]
+    [Category("Debug")]
+    public void Debug_DropTable_JSON_Structure()
+    {
+        // Generate AST using our builder
+        var builtAst = AstBuilder.DropTable("public", "users", ifExists: true, cascade: false);
+        TestContext.WriteLine("=== Built AST JSON ===");
+        TestContext.WriteLine(builtAst.GetRawText());
+
+        // Parse real SQL for comparison
+        var sql = "DROP TABLE IF EXISTS public.users;";
+        using var parser = new Parser();
+        var result = parser.Parse(sql);
+
+        TestContext.WriteLine("\n=== Real Parsed AST JSON ===");
+        TestContext.WriteLine(result.ParseTree!.RootElement.GetRawText());
+    }
+
+    [Test]
     public void DropTable_GeneratesValidSQL()
     {
         // Arrange

@@ -3,22 +3,67 @@ using System.Text.Json;
 namespace mbulava.PostgreSql.Dac.Compile.Ast;
 
 /// <summary>
-/// Fluent API for building PostgreSQL Abstract Syntax Trees programmatically.
-/// Uses SQL parsing to generate reliable AST structures.
+/// Builds PostgreSQL Abstract Syntax Trees programmatically using proper JSON AST structures.
+/// All methods construct JSON AST nodes directly without string SQL templates.
+/// See docs/architecture/AST_JSON_FORMAT.md for AST format documentation.
 /// </summary>
 public static class AstBuilder
 {
+    private const int PG_VERSION = 170004; // PostgreSQL 17.0.4
+
+    /// <summary>
+    /// Wraps a statement in the standard ParseResult structure.
+    /// </summary>
+    private static JsonElement WrapStatement(object stmtContent)
+    {
+        var wrapper = new
+        {
+            version = PG_VERSION,
+            stmts = new[]
+            {
+                new
+                {
+                    stmt = stmtContent,
+                    stmt_len = 0
+                }
+            }
+        };
+
+        var json = JsonSerializer.Serialize(wrapper);
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.Clone();
+    }
+
     /// <summary>
     /// Creates a DROP TABLE statement AST.
     /// </summary>
     public static JsonElement DropTable(string schema, string tableName, bool ifExists = true, bool cascade = false)
     {
-        var ifExistsClause = ifExists ? "IF EXISTS " : "";
-        var cascadeClause = cascade ? " CASCADE" : "";
-        var sql = $"DROP TABLE {ifExistsClause}{QuoteIdentifier(schema)}.{QuoteIdentifier(tableName)}{cascadeClause};";
+        var stmt = new
+        {
+            DropStmt = new
+            {
+                objects = new[]
+                {
+                    new
+                    {
+                        List = new
+                        {
+                            items = new object[]
+                            {
+                                new { String = new { sval = schema } },
+                                new { String = new { sval = tableName } }
+                            }
+                        }
+                    }
+                },
+                removeType = "OBJECT_TABLE",
+                behavior = cascade ? "DROP_CASCADE" : "DROP_RESTRICT",
+                missing_ok = ifExists
+            }
+        };
 
-        using var doc = AstSqlGenerator.ParseToAst(sql);
-        return doc.RootElement.Clone();
+        return WrapStatement(stmt);
     }
 
     /// <summary>
@@ -26,12 +71,31 @@ public static class AstBuilder
     /// </summary>
     public static JsonElement DropView(string schema, string viewName, bool ifExists = true, bool cascade = false)
     {
-        var ifExistsClause = ifExists ? "IF EXISTS " : "";
-        var cascadeClause = cascade ? " CASCADE" : "";
-        var sql = $"DROP VIEW {ifExistsClause}{QuoteIdentifier(schema)}.{QuoteIdentifier(viewName)}{cascadeClause};";
+        var stmt = new
+        {
+            DropStmt = new
+            {
+                objects = new[]
+                {
+                    new
+                    {
+                        List = new
+                        {
+                            items = new object[]
+                            {
+                                new { String = new { sval = schema } },
+                                new { String = new { sval = viewName } }
+                            }
+                        }
+                    }
+                },
+                removeType = "OBJECT_VIEW",
+                behavior = cascade ? "DROP_CASCADE" : "DROP_RESTRICT",
+                missing_ok = ifExists
+            }
+        };
 
-        using var doc = AstSqlGenerator.ParseToAst(sql);
-        return doc.RootElement.Clone();
+        return WrapStatement(stmt);
     }
 
     /// <summary>
@@ -39,12 +103,31 @@ public static class AstBuilder
     /// </summary>
     public static JsonElement DropSequence(string schema, string sequenceName, bool ifExists = true, bool cascade = false)
     {
-        var ifExistsClause = ifExists ? "IF EXISTS " : "";
-        var cascadeClause = cascade ? " CASCADE" : "";
-        var sql = $"DROP SEQUENCE {ifExistsClause}{QuoteIdentifier(schema)}.{QuoteIdentifier(sequenceName)}{cascadeClause};";
+        var stmt = new
+        {
+            DropStmt = new
+            {
+                objects = new[]
+                {
+                    new
+                    {
+                        List = new
+                        {
+                            items = new object[]
+                            {
+                                new { String = new { sval = schema } },
+                                new { String = new { sval = sequenceName } }
+                            }
+                        }
+                    }
+                },
+                removeType = "OBJECT_SEQUENCE",
+                behavior = cascade ? "DROP_CASCADE" : "DROP_RESTRICT",
+                missing_ok = ifExists
+            }
+        };
 
-        using var doc = AstSqlGenerator.ParseToAst(sql);
-        return doc.RootElement.Clone();
+        return WrapStatement(stmt);
     }
 
     /// <summary>
@@ -52,12 +135,31 @@ public static class AstBuilder
     /// </summary>
     public static JsonElement DropFunction(string schema, string functionName, bool ifExists = true, bool cascade = false)
     {
-        var ifExistsClause = ifExists ? "IF EXISTS " : "";
-        var cascadeClause = cascade ? " CASCADE" : "";
-        var sql = $"DROP FUNCTION {ifExistsClause}{QuoteIdentifier(schema)}.{QuoteIdentifier(functionName)}{cascadeClause};";
+        var stmt = new
+        {
+            DropStmt = new
+            {
+                objects = new[]
+                {
+                    new
+                    {
+                        List = new
+                        {
+                            items = new object[]
+                            {
+                                new { String = new { sval = schema } },
+                                new { String = new { sval = functionName } }
+                            }
+                        }
+                    }
+                },
+                removeType = "OBJECT_FUNCTION",
+                behavior = cascade ? "DROP_CASCADE" : "DROP_RESTRICT",
+                missing_ok = ifExists
+            }
+        };
 
-        using var doc = AstSqlGenerator.ParseToAst(sql);
-        return doc.RootElement.Clone();
+        return WrapStatement(stmt);
     }
 
     /// <summary>
@@ -65,18 +167,79 @@ public static class AstBuilder
     /// </summary>
     public static JsonElement DropTrigger(string triggerName, string schema, string tableName, bool ifExists = true)
     {
-        var ifExistsClause = ifExists ? "IF EXISTS " : "";
-        var sql = $"DROP TRIGGER {ifExistsClause}{QuoteIdentifier(triggerName)} ON {QuoteIdentifier(schema)}.{QuoteIdentifier(tableName)};";
+        var stmt = new
+        {
+            DropStmt = new
+            {
+                objects = new[]
+                {
+                    new
+                    {
+                        List = new
+                        {
+                            items = new object[]
+                            {
+                                new { String = new { sval = schema } },
+                                new { String = new { sval = tableName } },
+                                new { String = new { sval = triggerName } }
+                            }
+                        }
+                    }
+                },
+                removeType = "OBJECT_TRIGGER",
+                behavior = "DROP_RESTRICT",
+                missing_ok = ifExists
+            }
+        };
 
-        using var doc = AstSqlGenerator.ParseToAst(sql);
-        return doc.RootElement.Clone();
+        return WrapStatement(stmt);
     }
 
     /// <summary>
+    /// Creates a DROP INDEX statement AST.
+    /// </summary>
+    public static JsonElement DropIndex(string schema, string indexName, bool ifExists = true, bool cascade = false)
+    {
+        var stmt = new
+        {
+            DropStmt = new
+            {
+                objects = new[]
+                {
+                    new
+                    {
+                        List = new
+                        {
+                            items = new object[]
+                            {
+                                new { String = new { sval = schema } },
+                                new { String = new { sval = indexName } }
+                            }
+                        }
+                    }
+                },
+                removeType = "OBJECT_INDEX",
+                behavior = cascade ? "DROP_CASCADE" : "DROP_RESTRICT",
+                missing_ok = ifExists
+            }
+        };
+
+        return WrapStatement(stmt);
+    }
+
+    /// <summary>
+    /// For complex DDL operations not yet implemented as pure AST builders,
+    /// we use parse-then-return pattern as a temporary bridge.
+    /// TODO: Implement these as pure AST builders.
+    /// </summary>
+
+    /// <summary>
     /// Creates a simple CREATE TABLE statement AST.
+    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement CreateTableSimple(string schema, string tableName, params (string columnName, string dataType)[] columns)
     {
+        // Temporary: Use parse-then-return until we implement full CreateStmt builder
         var columnDefs = string.Join(", ", columns.Select(c => $"{QuoteIdentifier(c.columnName)} {c.dataType}"));
         var sql = $"CREATE TABLE {QuoteIdentifier(schema)}.{QuoteIdentifier(tableName)} ({columnDefs});";
 
@@ -86,9 +249,11 @@ public static class AstBuilder
 
     /// <summary>
     /// Creates an ALTER TABLE ADD COLUMN statement AST.
+    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement AlterTableAddColumn(string schema, string tableName, string columnName, string dataType, bool notNull = false, string? defaultValue = null)
     {
+        // Temporary: Use parse-then-return
         var sql = $"ALTER TABLE {QuoteIdentifier(schema)}.{QuoteIdentifier(tableName)} ADD COLUMN {QuoteIdentifier(columnName)} {dataType}";
         if (notNull) sql += " NOT NULL";
         if (defaultValue != null) sql += $" DEFAULT {defaultValue}";
@@ -100,9 +265,11 @@ public static class AstBuilder
 
     /// <summary>
     /// Creates an ALTER TABLE DROP COLUMN statement AST.
+    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement AlterTableDropColumn(string schema, string tableName, string columnName, bool ifExists = true)
     {
+        // Temporary: Use parse-then-return
         var ifExistsClause = ifExists ? "IF EXISTS " : "";
         var sql = $"ALTER TABLE {QuoteIdentifier(schema)}.{QuoteIdentifier(tableName)} DROP COLUMN {ifExistsClause}{QuoteIdentifier(columnName)};";
 
@@ -112,9 +279,11 @@ public static class AstBuilder
 
     /// <summary>
     /// Creates an ALTER TABLE ALTER COLUMN TYPE statement AST.
+    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement AlterTableAlterColumnType(string schema, string tableName, string columnName, string newDataType)
     {
+        // Temporary: Use parse-then-return
         var sql = $"ALTER TABLE {QuoteIdentifier(schema)}.{QuoteIdentifier(tableName)} ALTER COLUMN {QuoteIdentifier(columnName)} TYPE {newDataType};";
 
         using var doc = AstSqlGenerator.ParseToAst(sql);
@@ -123,9 +292,11 @@ public static class AstBuilder
 
     /// <summary>
     /// Creates an ALTER TABLE ALTER COLUMN SET NOT NULL statement AST.
+    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement AlterTableAlterColumnSetNotNull(string schema, string tableName, string columnName)
     {
+        // Temporary: Use parse-then-return
         var sql = $"ALTER TABLE {QuoteIdentifier(schema)}.{QuoteIdentifier(tableName)} ALTER COLUMN {QuoteIdentifier(columnName)} SET NOT NULL;";
 
         using var doc = AstSqlGenerator.ParseToAst(sql);
@@ -134,9 +305,11 @@ public static class AstBuilder
 
     /// <summary>
     /// Creates an ALTER TABLE ALTER COLUMN DROP NOT NULL statement AST.
+    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement AlterTableAlterColumnDropNotNull(string schema, string tableName, string columnName)
     {
+        // Temporary: Use parse-then-return
         var sql = $"ALTER TABLE {QuoteIdentifier(schema)}.{QuoteIdentifier(tableName)} ALTER COLUMN {QuoteIdentifier(columnName)} DROP NOT NULL;";
 
         using var doc = AstSqlGenerator.ParseToAst(sql);
@@ -145,9 +318,11 @@ public static class AstBuilder
 
     /// <summary>
     /// Creates an ALTER TABLE ALTER COLUMN SET DEFAULT statement AST.
+    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement AlterTableAlterColumnSetDefault(string schema, string tableName, string columnName, string defaultValue)
     {
+        // Temporary: Use parse-then-return
         var sql = $"ALTER TABLE {QuoteIdentifier(schema)}.{QuoteIdentifier(tableName)} ALTER COLUMN {QuoteIdentifier(columnName)} SET DEFAULT {defaultValue};";
 
         using var doc = AstSqlGenerator.ParseToAst(sql);
@@ -156,9 +331,11 @@ public static class AstBuilder
 
     /// <summary>
     /// Creates an ALTER TABLE ALTER COLUMN DROP DEFAULT statement AST.
+    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement AlterTableAlterColumnDropDefault(string schema, string tableName, string columnName)
     {
+        // Temporary: Use parse-then-return
         var sql = $"ALTER TABLE {QuoteIdentifier(schema)}.{QuoteIdentifier(tableName)} ALTER COLUMN {QuoteIdentifier(columnName)} DROP DEFAULT;";
 
         using var doc = AstSqlGenerator.ParseToAst(sql);
@@ -167,9 +344,11 @@ public static class AstBuilder
 
     /// <summary>
     /// Creates an ALTER TABLE ADD CONSTRAINT statement AST.
+    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement AlterTableAddConstraint(string schema, string tableName, string constraintName, string constraintDefinition)
     {
+        // Temporary: Use parse-then-return
         var sql = $"ALTER TABLE {QuoteIdentifier(schema)}.{QuoteIdentifier(tableName)} ADD CONSTRAINT {QuoteIdentifier(constraintName)} {constraintDefinition};";
 
         using var doc = AstSqlGenerator.ParseToAst(sql);
@@ -178,9 +357,11 @@ public static class AstBuilder
 
     /// <summary>
     /// Creates an ALTER TABLE DROP CONSTRAINT statement AST.
+    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement AlterTableDropConstraint(string schema, string tableName, string constraintName, bool ifExists = true)
     {
+        // Temporary: Use parse-then-return
         var ifExistsClause = ifExists ? "IF EXISTS " : "";
         var sql = $"ALTER TABLE {QuoteIdentifier(schema)}.{QuoteIdentifier(tableName)} DROP CONSTRAINT {ifExistsClause}{QuoteIdentifier(constraintName)};";
 
@@ -190,9 +371,11 @@ public static class AstBuilder
 
     /// <summary>
     /// Creates an ALTER TABLE OWNER TO statement AST.
+    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement AlterTableOwner(string schema, string tableName, string newOwner)
     {
+        // Temporary: Use parse-then-return
         var sql = $"ALTER TABLE {QuoteIdentifier(schema)}.{QuoteIdentifier(tableName)} OWNER TO {QuoteIdentifier(newOwner)};";
 
         using var doc = AstSqlGenerator.ParseToAst(sql);
@@ -201,9 +384,11 @@ public static class AstBuilder
 
     /// <summary>
     /// Creates a GRANT statement AST.
+    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement Grant(string privileges, string objectType, string schema, string objectName, string grantee)
     {
+        // Temporary: Use parse-then-return
         var sql = $"GRANT {privileges} ON {objectType} {QuoteIdentifier(schema)}.{QuoteIdentifier(objectName)} TO {QuoteIdentifier(grantee)};";
 
         using var doc = AstSqlGenerator.ParseToAst(sql);
@@ -212,9 +397,11 @@ public static class AstBuilder
 
     /// <summary>
     /// Creates a REVOKE statement AST.
+    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement Revoke(string privileges, string objectType, string schema, string objectName, string grantee)
     {
+        // Temporary: Use parse-then-return
         var sql = $"REVOKE {privileges} ON {objectType} {QuoteIdentifier(schema)}.{QuoteIdentifier(objectName)} FROM {QuoteIdentifier(grantee)};";
 
         using var doc = AstSqlGenerator.ParseToAst(sql);
@@ -223,9 +410,11 @@ public static class AstBuilder
 
     /// <summary>
     /// Creates a CREATE INDEX statement AST.
+    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement CreateIndex(string indexName, string schema, string tableName, string[] columns, bool unique = false, bool ifNotExists = false)
     {
+        // Temporary: Use parse-then-return
         var uniqueKeyword = unique ? "UNIQUE " : "";
         var ifNotExistsKeyword = ifNotExists ? "IF NOT EXISTS " : "";
         var columnList = string.Join(", ", columns.Select(QuoteIdentifier));
@@ -236,23 +425,12 @@ public static class AstBuilder
     }
 
     /// <summary>
-    /// Creates a DROP INDEX statement AST.
-    /// </summary>
-    public static JsonElement DropIndex(string schema, string indexName, bool ifExists = true, bool cascade = false)
-    {
-        var ifExistsClause = ifExists ? "IF EXISTS " : "";
-        var cascadeClause = cascade ? " CASCADE" : "";
-        var sql = $"DROP INDEX {ifExistsClause}{QuoteIdentifier(schema)}.{QuoteIdentifier(indexName)}{cascadeClause};";
-
-        using var doc = AstSqlGenerator.ParseToAst(sql);
-        return doc.RootElement.Clone();
-    }
-
-    /// <summary>
     /// Creates a COMMENT ON statement AST.
+    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement CommentOn(string objectType, string schema, string objectName, string comment)
     {
+        // Temporary: Use parse-then-return
         var escapedComment = comment.Replace("'", "''");
         var sql = $"COMMENT ON {objectType} {QuoteIdentifier(schema)}.{QuoteIdentifier(objectName)} IS '{escapedComment}';";
 

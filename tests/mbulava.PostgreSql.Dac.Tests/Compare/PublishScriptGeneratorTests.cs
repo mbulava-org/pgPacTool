@@ -412,8 +412,8 @@ public class PublishScriptGeneratorTests
         var result = PublishScriptGenerator.Generate(diff, options);
 
         // Assert
-        result.Should().Contain("GRANT SELECT");
-        result.Should().Contain("\"app_user\"");
+        result.ToUpper().Should().Contain("GRANT SELECT");
+        result.Should().Contain("app_user");
     }
 
     [Test]

@@ -340,24 +340,34 @@ public static class PublishScriptGenerator
             // Constraint changes
             foreach (var constDiff in diff.ConstraintDiffs)
             {
+                var (schema, tableName) = SplitQualifiedName(diff.TableName);
+
                 if (constDiff.SourceDefinition == null && constDiff.TargetDefinition != null)
                 {
                     // Constraint in target but not source - DROP if configured
                     if (options.DropObjectsNotInSource)
                     {
-                        sb.AppendLine($"ALTER TABLE {QuoteIdentifier(diff.TableName)} DROP CONSTRAINT IF EXISTS {QuoteIdentifier(constDiff.ConstraintName)};");
+                        // ✅ Using AST builder
+                        var ast = AstBuilder.AlterTableDropConstraint(schema, tableName, constDiff.ConstraintName, ifExists: true);
+                        AppendAstSql(sb, ast);
                     }
                 }
                 else if (constDiff.SourceDefinition != null && constDiff.TargetDefinition == null)
                 {
                     // Constraint missing in target - ADD
-                    sb.AppendLine($"ALTER TABLE {QuoteIdentifier(diff.TableName)} ADD CONSTRAINT {QuoteIdentifier(constDiff.ConstraintName)} {constDiff.SourceDefinition};");
+                    // ✅ Using AST builder
+                    var ast = AstBuilder.AlterTableAddConstraint(schema, tableName, constDiff.ConstraintName, constDiff.SourceDefinition!);
+                    AppendAstSql(sb, ast);
                 }
                 else if (constDiff.SourceDefinition != constDiff.TargetDefinition)
                 {
                     // Constraint changed - DROP and recreate
-                    sb.AppendLine($"ALTER TABLE {QuoteIdentifier(diff.TableName)} DROP CONSTRAINT IF EXISTS {QuoteIdentifier(constDiff.ConstraintName)};");
-                    sb.AppendLine($"ALTER TABLE {QuoteIdentifier(diff.TableName)} ADD CONSTRAINT {QuoteIdentifier(constDiff.ConstraintName)} {constDiff.SourceDefinition};");
+                    // ✅ Using AST builder (both operations)
+                    var dropAst = AstBuilder.AlterTableDropConstraint(schema, tableName, constDiff.ConstraintName, ifExists: true);
+                    AppendAstSql(sb, dropAst);
+
+                    var addAst = AstBuilder.AlterTableAddConstraint(schema, tableName, constDiff.ConstraintName, constDiff.SourceDefinition!);
+                    AppendAstSql(sb, addAst);
                 }
             }
 
@@ -388,7 +398,10 @@ public static class PublishScriptGenerator
             // Owner changes
             if (diff.OwnerChanged != null)
             {
-                sb.AppendLine($"ALTER TABLE {QuoteIdentifier(diff.TableName)} OWNER TO {QuoteIdentifier(diff.OwnerChanged.Value.SourceOwner)};");
+                var (schema, tableName) = SplitQualifiedName(diff.TableName);
+                // ✅ Using AST builder
+                var ast = AstBuilder.AlterTableOwner(schema, tableName, diff.OwnerChanged.Value.SourceOwner);
+                AppendAstSql(sb, ast);
             }
 
             // Privileges
@@ -410,13 +423,16 @@ public static class PublishScriptGenerator
 
         foreach (var diff in diffs)
         {
+            var (schema, viewName) = SplitQualifiedName(diff.ViewName);
+
             if (diff.SourceDefinition == null && diff.TargetDefinition != null)
             {
                 // View in target but not source - DROP if configured
                 if (options.DropObjectsNotInSource)
                 {
-                    var viewType = diff.TargetIsMaterialized == true ? "MATERIALIZED VIEW" : "VIEW";
-                    sb.AppendLine($"DROP {viewType} IF EXISTS {QuoteIdentifier(diff.ViewName)} CASCADE;");
+                    // ✅ Using AST builder
+                    var ast = AstBuilder.DropView(schema, viewName, ifExists: true, cascade: true);
+                    AppendAstSql(sb, ast);
                 }
             }
             else if (diff.SourceDefinition != null && diff.TargetDefinition == null)
@@ -429,7 +445,9 @@ public static class PublishScriptGenerator
                 // View changed - CREATE OR REPLACE (or DROP/CREATE for materialized views)
                 if (diff.SourceIsMaterialized == true)
                 {
-                    sb.AppendLine($"DROP MATERIALIZED VIEW IF EXISTS {QuoteIdentifier(diff.ViewName)} CASCADE;");
+                    // ✅ Using AST builder for DROP (CREATE still uses definition string)
+                    var ast = AstBuilder.DropView(schema, viewName, ifExists: true, cascade: true);
+                    AppendAstSql(sb, ast);
                     sb.AppendLine($"{diff.SourceDefinition};");
                 }
                 else
@@ -464,12 +482,16 @@ public static class PublishScriptGenerator
 
         foreach (var diff in diffs)
         {
+            var (schema, functionName) = SplitQualifiedName(diff.FunctionName);
+
             if (diff.SourceDefinition == null && diff.TargetDefinition != null)
             {
                 // Function in target but not source - DROP if configured
                 if (options.DropObjectsNotInSource)
                 {
-                    sb.AppendLine($"DROP FUNCTION IF EXISTS {QuoteIdentifier(diff.FunctionName)} CASCADE;");
+                    // ✅ Using AST builder
+                    var ast = AstBuilder.DropFunction(schema, functionName, ifExists: true, cascade: true);
+                    AppendAstSql(sb, ast);
                 }
             }
             else if (diff.SourceDefinition != null)
@@ -481,6 +503,8 @@ public static class PublishScriptGenerator
             // Owner changes
             if (diff.OwnerChanged != null)
             {
+                // Note: ALTER FUNCTION OWNER is not implemented in AstBuilder yet
+                // TODO: Add AstBuilder.AlterFunctionOwner()
                 sb.AppendLine($"ALTER FUNCTION {QuoteIdentifier(diff.FunctionName)} OWNER TO {QuoteIdentifier(diff.OwnerChanged.Value.SourceOwner)};");
             }
 
@@ -503,12 +527,16 @@ public static class PublishScriptGenerator
 
         foreach (var diff in diffs)
         {
+            var (schema, tableName) = SplitQualifiedName(diff.TableName);
+
             if (diff.SourceDefinition == null && diff.TargetDefinition != null)
             {
                 // Trigger in target but not source - DROP if configured
                 if (options.DropObjectsNotInSource)
                 {
-                    sb.AppendLine($"DROP TRIGGER IF EXISTS {QuoteIdentifier(diff.TriggerName)} ON {QuoteIdentifier(diff.TableName)};");
+                    // ✅ Using AST builder
+                    var ast = AstBuilder.DropTrigger(diff.TriggerName, schema, tableName, ifExists: true);
+                    AppendAstSql(sb, ast);
                 }
             }
             else if (diff.SourceDefinition != null && diff.TargetDefinition == null)
@@ -519,7 +547,9 @@ public static class PublishScriptGenerator
             else if (diff.DefinitionChanged)
             {
                 // Trigger changed - DROP and recreate
-                sb.AppendLine($"DROP TRIGGER IF EXISTS {QuoteIdentifier(diff.TriggerName)} ON {QuoteIdentifier(diff.TableName)};");
+                // ✅ Using AST builder for DROP
+                var ast = AstBuilder.DropTrigger(diff.TriggerName, schema, tableName, ifExists: true);
+                AppendAstSql(sb, ast);
                 sb.AppendLine($"{diff.SourceDefinition};");
             }
 
@@ -531,15 +561,21 @@ public static class PublishScriptGenerator
     {
         foreach (var privDiff in diffs)
         {
+            var (schema, name) = SplitQualifiedName(objectName);
+
             if (privDiff.ChangeType == PrivilegeChangeType.MissingInTarget)
             {
                 // Grant missing privilege
-                sb.AppendLine($"GRANT {privDiff.PrivilegeType} ON {objectType} {QuoteIdentifier(objectName)} TO {QuoteIdentifier(privDiff.Grantee)};");
+                // ✅ Using AST builder
+                var ast = AstBuilder.Grant(privDiff.PrivilegeType, objectType, schema, name, privDiff.Grantee);
+                AppendAstSql(sb, ast);
             }
             else if (privDiff.ChangeType == PrivilegeChangeType.ExtraInTarget)
             {
                 // Revoke extra privilege
-                sb.AppendLine($"REVOKE {privDiff.PrivilegeType} ON {objectType} {QuoteIdentifier(objectName)} FROM {QuoteIdentifier(privDiff.Grantee)};");
+                // ✅ Using AST builder
+                var ast = AstBuilder.Revoke(privDiff.PrivilegeType, objectType, schema, name, privDiff.Grantee);
+                AppendAstSql(sb, ast);
             }
         }
     }

@@ -247,15 +247,35 @@ public sealed class Parser : IDisposable
         try
         {
             var result = NativeMethods.pg_query_parse_protobuf(NativeMethods.StringToUtf8Bytes(query));
-            var error = ExtractError(result.error);
-            
-            return new ProtobufParseResult
+            try
             {
-                Query = query,
-                ParseTree = error == null ? result.parse_tree : null,
-                NativeResult = error == null ? result : null,
-                Error = error
-            };
+                var error = ExtractError(result.error);
+
+                if (error != null)
+                {
+                    return new ProtobufParseResult
+                    {
+                        Query = query,
+                        ProtobufData = null,
+                        Error = error
+                    };
+                }
+
+                // Copy the protobuf data from native memory immediately
+                var protobufData = ProtobufHelper.ExtractProtobufData(result.parse_tree);
+
+                return new ProtobufParseResult
+                {
+                    Query = query,
+                    ProtobufData = protobufData,
+                    Error = null
+                };
+            }
+            finally
+            {
+                // Free the native result immediately after copying data
+                NativeMethods.pg_query_free_protobuf_parse_result(result);
+            }
         }
         catch (Exception ex)
         {
@@ -275,30 +295,40 @@ public sealed class Parser : IDisposable
         if (_disposed) throw new ObjectDisposedException(nameof(Parser));
         if (parseResult is null) throw new ArgumentNullException(nameof(parseResult));
 
-        if (parseResult.IsError || parseResult.ParseTree == null)
+        if (parseResult.IsError || parseResult.ProtobufData == null || parseResult.ProtobufData.Length == 0)
         {
             return new DeparseResult
             {
                 Ast = "",
-                Error = "Cannot deparse an error result or null parse tree"
+                Error = parseResult.Error ?? "Cannot deparse an error result or null parse tree"
             };
         }
 
         try
         {
-            var deparseResult = NativeMethods.pg_query_deparse_protobuf(parseResult.ParseTree.Value);
+            // Allocate a new PgQueryProtobuf structure from our byte array
+            var protoStruct = NativeMethods.AllocPgQueryProtobuf(parseResult.ProtobufData);
             try
             {
-                return new DeparseResult
+                var deparseResult = NativeMethods.pg_query_deparse_protobuf(protoStruct);
+                try
                 {
-                    Ast = "",
-                    Query = NativeMethods.PtrToString(deparseResult.query),
-                    Error = ExtractError(deparseResult.error)
-                };
+                    return new DeparseResult
+                    {
+                        Ast = "",
+                        Query = NativeMethods.PtrToString(deparseResult.query),
+                        Error = ExtractError(deparseResult.error)
+                    };
+                }
+                finally
+                {
+                    NativeMethods.pg_query_free_deparse_result(deparseResult);
+                }
             }
             finally
             {
-                NativeMethods.pg_query_free_deparse_result(deparseResult);
+                // Free our allocated protobuf structure
+                NativeMethods.FreePgQueryProtobuf(protoStruct);
             }
         }
         catch (Exception ex)
@@ -308,13 +338,6 @@ public sealed class Parser : IDisposable
                 Ast = "",
                 Error = $"Native library error: {ex.Message}"
             };
-        }
-        finally
-        {
-            if (parseResult.NativeResult != null)
-            {
-                NativeMethods.pg_query_free_protobuf_parse_result(parseResult.NativeResult.Value);
-            }
         }
     }
 
@@ -364,9 +387,9 @@ public sealed class Parser : IDisposable
     private static string? ExtractError(IntPtr errorPtr)
     {
         if (errorPtr == IntPtr.Zero) return null;
-
+        
         var errorStruct = NativeMethods.MarshalError(errorPtr);
-        return errorStruct.HasValue && errorStruct.Value.message != IntPtr.Zero 
+        return errorStruct?.message != IntPtr.Zero 
             ? NativeMethods.PtrToString(errorStruct.Value.message) ?? "Unknown error"
             : "Unknown error";
     }

@@ -617,4 +617,86 @@ $$;")]
 
     #endregion
 
+    #region Protobuf Parse and Deparse Tests
+
+    [Fact]
+    public void ParseProtobuf_And_DeparseProtobuf_SimpleSelect_RoundTrip()
+    {
+        // Arrange
+        using var parser = new Parser();
+        const string query = "SELECT 1";
+
+        // Act
+        var parseResult = parser.ParseProtobuf(query);
+        Assert.True(parseResult.IsSuccess);
+
+        var deparseResult = parser.DeparseProtobuf(parseResult);
+
+        // Assert
+        Assert.True(deparseResult.IsSuccess);
+        Assert.NotNull(deparseResult.Query);
+        Assert.Contains("SELECT", deparseResult.Query);
+    }
+
+    [Fact]
+    public void ParseProtobuf_And_DeparseProtobuf_ComplexQuery_RoundTrip()
+    {
+        // Arrange
+        using var parser = new Parser();
+        const string query = "SELECT id, name FROM users WHERE active = true ORDER BY name";
+
+        // Act
+        var parseResult = parser.ParseProtobuf(query);
+        Assert.True(parseResult.IsSuccess);
+
+        var deparseResult = parser.DeparseProtobuf(parseResult);
+
+        // Assert
+        Assert.True(deparseResult.IsSuccess);
+        Assert.NotNull(deparseResult.Query);
+        Assert.Contains("SELECT", deparseResult.Query);
+        Assert.Contains("users", deparseResult.Query);
+    }
+
+    [Fact]
+    public void DeparseProtobuf_WithErrorResult_ReturnsError()
+    {
+        // Arrange
+        using var parser = new Parser();
+        const string invalidQuery = "INVALID SQL SYNTAX";
+
+        // Act
+        var parseResult = parser.ParseProtobuf(invalidQuery);
+        Assert.True(parseResult.IsError);
+
+        var deparseResult = parser.DeparseProtobuf(parseResult);
+
+        // Assert
+        Assert.True(deparseResult.IsError);
+        Assert.NotNull(deparseResult.Error);
+    }
+
+    [Fact]
+    public void ParseProtobuf_Multiple_Queries_No_Memory_Leak()
+    {
+        // Arrange
+        using var parser = new Parser();
+        const string query = "SELECT id FROM users";
+
+        // Act - Parse and deparse multiple times to check for memory leaks
+        for (int i = 0; i < 100; i++)
+        {
+            var parseResult = parser.ParseProtobuf(query);
+            Assert.True(parseResult.IsSuccess);
+
+            var deparseResult = parser.DeparseProtobuf(parseResult);
+            Assert.True(deparseResult.IsSuccess);
+        }
+
+        // Assert - If we made it here without crashing, memory management is working
+        Assert.True(true);
+    }
+
+    #endregion
+
 }

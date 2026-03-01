@@ -364,9 +364,9 @@ public sealed class Parser : IDisposable
     private static string? ExtractError(IntPtr errorPtr)
     {
         if (errorPtr == IntPtr.Zero) return null;
-        
+
         var errorStruct = NativeMethods.MarshalError(errorPtr);
-        return errorStruct?.message != IntPtr.Zero 
+        return errorStruct.HasValue && errorStruct.Value.message != IntPtr.Zero 
             ? NativeMethods.PtrToString(errorStruct.Value.message) ?? "Unknown error"
             : "Unknown error";
     }

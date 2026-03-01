@@ -225,11 +225,11 @@ internal static unsafe class NativeMethods {
             // Use MarshalError for proper error handling
             string? errorMessage = null;
             var errorStruct = MarshalError(nativeResult.error);
-            if (errorStruct?.message != IntPtr.Zero)
+            if (errorStruct.HasValue && errorStruct.Value.message != IntPtr.Zero)
             {
                 errorMessage = PtrToString(errorStruct.Value.message);
             }
-            
+
             return new NativeScanResult {
                 Error = errorMessage ?? "Scan error",
                 Stderr = PtrToString(nativeResult.stderr_buffer)

@@ -182,18 +182,15 @@ public class ReadmeExampleTests : IDisposable
     }
 
     [Fact]
-    public void ParseOptions_PostgreSqlVersion_ReadmeExample_Works()
+    public void ParseOptions_BasicUsage_ReadmeExample_Works()
     {
-        // Example from README - Parse Options with specific PostgreSQL version
+        // Example from README - Parse Options (version is determined by the Parser instance, not ParseOptions)
         using var parser = new Parser();
-        var optionsForPg15 = new ParseOptions
-        {
-            PostgreSqlVersion = 150000 // PostgreSQL 15
-        };
-        var resultForPg15 = parser.Parse("SELECT * FROM users", optionsForPg15);
+        var options = new ParseOptions();
+        var result = parser.Parse("SELECT * FROM users", options);
 
-        Assert.True(resultForPg15.IsSuccess);
-        Assert.NotNull(resultForPg15.ParseTree);
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.ParseTree);
     }
 
     [Fact]
@@ -203,8 +200,7 @@ public class ReadmeExampleTests : IDisposable
         using var parser = new Parser();
         var combinedOptions = new ParseOptions
         {
-            IncludeLocations = true,
-            PostgreSqlVersion = 140000 // PostgreSQL 14
+            IncludeLocations = true
         };
         var combinedResult = parser.Parse("SELECT * FROM users", combinedOptions);
 
@@ -218,8 +214,7 @@ public class ReadmeExampleTests : IDisposable
         // Example from README - Using options with static methods
         var combinedOptions = new ParseOptions
         {
-            IncludeLocations = true,
-            PostgreSqlVersion = 140000
+            IncludeLocations = true
         };
         var quickResult = Parser.QuickParse("SELECT * FROM users", combinedOptions);
 
@@ -234,8 +229,7 @@ public class ReadmeExampleTests : IDisposable
         using var parser = new Parser();
         var combinedOptions = new ParseOptions
         {
-            IncludeLocations = true,
-            PostgreSqlVersion = 140000
+            IncludeLocations = true
         };
         var asyncResult = await parser.ParseAsync("SELECT * FROM users", combinedOptions);
 
@@ -250,7 +244,6 @@ public class ReadmeExampleTests : IDisposable
         var defaultOptions = new ParseOptions();
         
         Assert.False(defaultOptions.IncludeLocations); // default: false
-        Assert.Equal(160000, defaultOptions.PostgreSqlVersion); // default: PostgreSQL 16
     }
 
     [Fact]
@@ -260,7 +253,6 @@ public class ReadmeExampleTests : IDisposable
         var defaultOptions = ParseOptions.Default;
         
         Assert.False(defaultOptions.IncludeLocations);
-        Assert.Equal(160000, defaultOptions.PostgreSqlVersion);
     }
 
     #endregion
@@ -715,8 +707,7 @@ public class ReadmeExampleTests : IDisposable
         using var parser = new Parser();
         var options = new ParseOptions
         {
-            IncludeLocations = true,
-            PostgreSqlVersion = 160000 // PostgreSQL 16
+            IncludeLocations = true
         };
 
         var result = parser.Parse("SELECT * FROM users", options);
@@ -761,8 +752,7 @@ public class ReadmeExampleTests : IDisposable
         // Test that reusing ParseOptions instance works (mentioned in README)
         var reusableOptions = new ParseOptions
         {
-            IncludeLocations = true,
-            PostgreSqlVersion = 160000
+            IncludeLocations = true
         };
 
         using var parser = new Parser();
@@ -778,23 +768,19 @@ public class ReadmeExampleTests : IDisposable
     }
 
     [Fact]
-    public void PostgreSqlVersionNumbers_ReadmeExamples_AreValid()
+    public void SupportedParserVersions_ParseSuccessfully()
     {
-        // Test the version numbers mentioned in README examples
-        var validVersions = new[]
+        // Test that the Parser version determines parsing behavior (not ParseOptions)
+        var supportedVersions = new[]
         {
-            170000, // PostgreSQL 17.0
-            160000, // PostgreSQL 16.0 (default)
-            150000, // PostgreSQL 15.0
-            140000  // PostgreSQL 14.0
+            PostgreSqlVersion.Postgres17,
+            PostgreSqlVersion.Postgres16
         };
 
-        using var parser = new Parser();
-        
-        foreach (var version in validVersions)
+        foreach (var version in supportedVersions)
         {
-            var options = new ParseOptions { PostgreSqlVersion = version };
-            var result = parser.Parse("SELECT 1", options);
+            using var parser = new Parser(version);
+            var result = parser.Parse("SELECT 1");
             
             // Should not throw and should parse successfully
             Assert.True(result.IsSuccess);

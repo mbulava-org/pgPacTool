@@ -81,28 +81,6 @@ public sealed record ParseOptions
     public bool IncludeLocations { get; init; } = false;
 
     /// <summary>
-    /// The PostgreSQL version to use for parsing.
-    /// If not specified, uses the Parser instance's version.
-    /// </summary>
-    public PostgreSqlVersion? Version { get; init; }
-
-    /// <summary>
-    /// The PostgreSQL version to use for parsing (default is PostgreSQL 16)
-    /// </summary>
-    [Obsolete("Use Version property instead. This property is maintained for backward compatibility and will be removed in a future version.")]
-    [System.Text.Json.Serialization.JsonIgnore]
-    public int PostgreSqlVersion
-    {
-        get => Version?.ToVersionNumber() ?? 160000;
-        init => Version = value switch
-        {
-            160000 => Npgquery.PostgreSqlVersion.Postgres16,
-            170000 => Npgquery.PostgreSqlVersion.Postgres17,
-            _ => Npgquery.PostgreSqlVersion.Postgres16
-        };
-    }
-
-    /// <summary>
     /// Default parse options
     /// </summary>
     public static readonly ParseOptions Default = new();

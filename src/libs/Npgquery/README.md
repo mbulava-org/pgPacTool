@@ -572,7 +572,7 @@ A static class with helper methods for common tasks.
 
 ### Parse Options
 
-The `ParseOptions` class provides several configuration options to customize the parsing behavior:
+The `ParseOptions` class provides configuration options to customize the parsing behavior:
 
 #### Available Options
 
@@ -581,17 +581,6 @@ The `ParseOptions` class provides several configuration options to customize the
 - Location information shows the character position in the original query where each element was found
 - Useful for analysis tools, syntax highlighting, or error reporting that need to map back to the original query text
 - Note: Including locations increases the size of the parse tree output
-
-**`PostgreSqlVersion`** (integer, default: `160000`)
-- Specifies the PostgreSQL version number for the parser to target
-- Format: Major version × 10000 + Minor version × 100 + Patch version
-- Examples:
-  - `170000` = PostgreSQL 17.0
-  - `160000` = PostgreSQL 16.0 (default)
-  - `150000` = PostgreSQL 15.0
-  - `140000` = PostgreSQL 14.0
-- Useful for ensuring compatibility with specific PostgreSQL versions
-- Parser behavior may vary slightly between versions for edge cases
 
 #### Usage Examples
 
@@ -609,26 +598,11 @@ var optionsWithLocations = new ParseOptions
 };
 var resultWithLocations = parser.Parse("SELECT * FROM users WHERE id = 1", optionsWithLocations);
 
-// Target a specific PostgreSQL version
-var optionsForPg15 = new ParseOptions
-{
-    PostgreSqlVersion = 150000 // PostgreSQL 15
-};
-var resultForPg15 = parser.Parse("SELECT * FROM users", optionsForPg15);
-
-// Combine multiple options
-var combinedOptions = new ParseOptions
-{
-    IncludeLocations = true,
-    PostgreSqlVersion = 140000 // PostgreSQL 14
-};
-var combinedResult = parser.Parse("SELECT * FROM users", combinedOptions);
-
 // Using with static methods
-var quickResult = Parser.QuickParse("SELECT * FROM users", combinedOptions);
+var quickResult = Parser.QuickParse("SELECT * FROM users", optionsWithLocations);
 
 // Using with async methods
-var asyncResult = await parser.ParseAsync("SELECT * FROM users", combinedOptions);
+var asyncResult = await parser.ParseAsync("SELECT * FROM users", optionsWithLocations);
 ```
 
 #### When to Use Parse Options
@@ -639,16 +613,9 @@ var asyncResult = await parser.ParseAsync("SELECT * FROM users", combinedOptions
   - Generate source maps for query transformations
   - Build refactoring tools that modify specific parts of queries
 
-- **PostgreSQL Version**: Specify when:
-  - Working with legacy systems running older PostgreSQL versions
-  - Ensuring compatibility across different PostgreSQL deployments
-  - Testing queries against specific PostgreSQL feature sets
-  - Building tools that need to support multiple PostgreSQL versions
-
 #### Performance Considerations
 
 - Including locations adds overhead to parsing and increases memory usage
-- Version-specific parsing differences are minimal for most common queries
 - For high-throughput scenarios, consider reusing the same `ParseOptions` instance
 
 ### Custom Parse Options
@@ -657,8 +624,7 @@ var asyncResult = await parser.ParseAsync("SELECT * FROM users", combinedOptions
 using var parser = new Parser();
 var options = new ParseOptions
 {
-    IncludeLocations = true,
-    PostgreSqlVersion = 160000 // PostgreSQL 16
+    IncludeLocations = true
 };
 
 var result = parser.Parse("SELECT * FROM users", options);

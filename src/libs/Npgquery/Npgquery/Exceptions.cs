@@ -10,11 +10,22 @@ public abstract class ParserException : Exception
     /// </summary>
     public string? Query { get; }
 
+    /// <summary>
+    /// Initializes a new instance of the ParserException class.
+    /// </summary>
+    /// <param name="message">The error message.</param>
+    /// <param name="query">The query that caused the exception (optional).</param>
     protected ParserException(string message, string? query = null) : base(message)
     {
         Query = query;
     }
 
+    /// <summary>
+    /// Initializes a new instance of the ParserException class with an inner exception.
+    /// </summary>
+    /// <param name="message">The error message.</param>
+    /// <param name="innerException">The inner exception.</param>
+    /// <param name="query">The query that caused the exception (optional).</param>
     protected ParserException(string message, Exception innerException, string? query = null) 
         : base(message, innerException)
     {
@@ -32,12 +43,23 @@ public sealed class ParseException : ParserException
     /// </summary>
     public string ParseError { get; }
 
+    /// <summary>
+    /// Initializes a new instance of the ParseException class.
+    /// </summary>
+    /// <param name="parseError">The parse error message.</param>
+    /// <param name="query">The query that caused the exception (optional).</param>
     public ParseException(string parseError, string? query = null) 
         : base($"Failed to parse PostgreSQL query: {parseError}", query)
     {
         ParseError = parseError;
     }
 
+    /// <summary>
+    /// Initializes a new instance of the ParseException class with an inner exception.
+    /// </summary>
+    /// <param name="parseError">The parse error message.</param>
+    /// <param name="innerException">The inner exception.</param>
+    /// <param name="query">The query that caused the exception (optional).</param>
     public ParseException(string parseError, Exception innerException, string? query = null) 
         : base($"Failed to parse PostgreSQL query: {parseError}", innerException, query)
     {

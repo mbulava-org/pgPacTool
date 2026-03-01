@@ -8,6 +8,10 @@ This directory contains all documentation for the AST-Based Compilation feature 
 - **[AST_COMPILATION_COMPLETE.md](AST_COMPILATION_COMPLETE.md)** - Complete feature summary with all achievements
 - **[AST_BASED_COMPILATION_STATUS.md](AST_BASED_COMPILATION_STATUS.md)** - Current status and test results
 - **[AST_BASED_COMPILATION.md](AST_BASED_COMPILATION.md)** - Original implementation plan and design
+- **[AST_ACHIEVEMENT_SUMMARY.md](AST_ACHIEVEMENT_SUMMARY.md)** - Achievement highlights and metrics
+- **[AST_PROGRESS_UPDATE.md](AST_PROGRESS_UPDATE.md)** - Progress tracking and milestones
+- **[AST_DEFINITION_REFACTOR.md](AST_DEFINITION_REFACTOR.md)** - Definition refactoring details
+- **[AST_TYPE_FIXES_COMPLETE.md](AST_TYPE_FIXES_COMPLETE.md)** - Type system fixes documentation
 
 ### Architecture Documentation
 Located in `../../architecture/`:

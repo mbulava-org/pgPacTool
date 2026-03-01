@@ -53,7 +53,8 @@ jobs:
       run: dotnet build --no-restore --configuration ${{ env.CONFIGURATION }}
 
     - name: Run tests with code coverage
-      continue-on-error: true # Allow the workflow to continue even if tests fail, so we can upload results and coverage, broken tests could be someone else's issue ;)
+      id: test-step
+      continue-on-error: true # Allow artifacts to be uploaded even if tests fail
       run: |
         dotnet test --no-build --configuration ${{ env.CONFIGURATION }} \
           --verbosity normal \
@@ -61,7 +62,7 @@ jobs:
           --results-directory ./coverage \
           --logger "trx;LogFileName=test-results.trx" \
           -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover \
-          DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Exclude="[Npgquery]*,[*]Npgquery.*,[*]PgQuery.*"
+          DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Exclude="[*]PgQuery.*"
       env:
         ConnectionStrings__TestDatabase: "Host=localhost;Port=5432;Database=testdb;Username=postgres;Password=testpassword"
 
@@ -139,6 +140,12 @@ jobs:
         else
           echo "⚠️ Coverage report not found, skipping threshold check"
         fi
+
+    - name: Fail if tests failed
+      if: steps.test-step.outcome == 'failure'
+      run: |
+        echo "❌ Tests failed! Check the test results artifact for details."
+        exit 1
 
   # Uncomment the following job to enable multi-version testing against PostgreSQL 16 and 17, but it's already happening in the Tests ;/
   # multi-version-test:

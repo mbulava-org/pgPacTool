@@ -268,29 +268,31 @@ public class TableDependencyExtractor : AstDependencyExtractor
         }
 
         // Check if function name is 'nextval'
-        if (funcCall.TryGetProperty("funcname", out var funcname))
+        if (!funcCall.TryGetProperty("funcname", out var funcname))
         {
-            var funcNameParts = new List<string>();
-            foreach (var node in funcname.EnumerateArray())
+            return null;
+        }
+
+        var funcNameParts = new List<string>();
+        foreach (var node in funcname.EnumerateArray())
+        {
+            if (node.TryGetProperty("String", out var stringNode))
             {
-                if (node.TryGetProperty("String", out var stringNode))
+                if (stringNode.TryGetProperty("sval", out var sval))
                 {
-                    if (stringNode.TryGetProperty("sval", out var sval))
+                    var part = sval.GetString();
+                    if (!string.IsNullOrEmpty(part))
                     {
-                        var part = sval.GetString();
-                        if (!string.IsNullOrEmpty(part))
-                        {
-                            funcNameParts.Add(part);
-                        }
+                        funcNameParts.Add(part);
                     }
                 }
             }
+        }
 
-            var actualFuncName = funcNameParts.LastOrDefault();
-            if (!actualFuncName?.Equals("nextval", StringComparison.OrdinalIgnoreCase) ?? true)
-            {
-                return null;
-            }
+        var actualFuncName = funcNameParts.LastOrDefault();
+        if (!actualFuncName?.Equals("nextval", StringComparison.OrdinalIgnoreCase) ?? true)
+        {
+            return null;
         }
 
         // Extract sequence name from first argument

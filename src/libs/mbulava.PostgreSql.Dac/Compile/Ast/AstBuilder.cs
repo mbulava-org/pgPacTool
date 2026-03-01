@@ -249,97 +249,334 @@ public static class AstBuilder
 
     /// <summary>
     /// Creates an ALTER TABLE ADD COLUMN statement AST.
-    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement AlterTableAddColumn(string schema, string tableName, string columnName, string dataType, bool notNull = false, string? defaultValue = null)
     {
-        // Temporary: Use parse-then-return
-        var sql = $"ALTER TABLE {QuoteIdentifier(schema)}.{QuoteIdentifier(tableName)} ADD COLUMN {QuoteIdentifier(columnName)} {dataType}";
-        if (notNull) sql += " NOT NULL";
-        if (defaultValue != null) sql += $" DEFAULT {defaultValue}";
-        sql += ";";
+        var constraints = new List<object>();
 
-        using var doc = AstSqlGenerator.ParseToAst(sql);
-        return doc.RootElement.Clone();
+        if (notNull)
+        {
+            constraints.Add(new
+            {
+                Constraint = new
+                {
+                    contype = "CONSTR_NOTNULL"
+                }
+            });
+        }
+
+        if (defaultValue != null)
+        {
+            // For simple defaults, use A_Const with sval
+            constraints.Add(new
+            {
+                Constraint = new
+                {
+                    contype = "CONSTR_DEFAULT",
+                    raw_expr = new
+                    {
+                        A_Const = new
+                        {
+                            sval = new
+                            {
+                                sval = defaultValue
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        var stmt = new
+        {
+            AlterTableStmt = new
+            {
+                relation = new
+                {
+                    schemaname = schema,
+                    relname = tableName,
+                    inh = true,
+                    relpersistence = "p"
+                },
+                cmds = new[]
+                {
+                    new
+                    {
+                        AlterTableCmd = new
+                        {
+                            subtype = "AT_AddColumn",
+                            def = new
+                            {
+                                ColumnDef = new
+                                {
+                                    colname = columnName,
+                                    typeName = BuildTypeName(dataType),
+                                    is_local = true,
+                                    constraints = constraints.ToArray()
+                                }
+                            },
+                            behavior = "DROP_RESTRICT"
+                        }
+                    }
+                },
+                objtype = "OBJECT_TABLE"
+            }
+        };
+
+        return WrapStatement(stmt);
     }
 
     /// <summary>
     /// Creates an ALTER TABLE DROP COLUMN statement AST.
-    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement AlterTableDropColumn(string schema, string tableName, string columnName, bool ifExists = true)
     {
-        // Temporary: Use parse-then-return
-        var ifExistsClause = ifExists ? "IF EXISTS " : "";
-        var sql = $"ALTER TABLE {QuoteIdentifier(schema)}.{QuoteIdentifier(tableName)} DROP COLUMN {ifExistsClause}{QuoteIdentifier(columnName)};";
+        var stmt = new
+        {
+            AlterTableStmt = new
+            {
+                relation = new
+                {
+                    schemaname = schema,
+                    relname = tableName,
+                    inh = true,
+                    relpersistence = "p"
+                },
+                cmds = new[]
+                {
+                    new
+                    {
+                        AlterTableCmd = new
+                        {
+                            subtype = "AT_DropColumn",
+                            name = columnName,
+                            behavior = "DROP_RESTRICT",
+                            missing_ok = ifExists
+                        }
+                    }
+                },
+                objtype = "OBJECT_TABLE"
+            }
+        };
 
-        using var doc = AstSqlGenerator.ParseToAst(sql);
-        return doc.RootElement.Clone();
+        return WrapStatement(stmt);
     }
 
     /// <summary>
     /// Creates an ALTER TABLE ALTER COLUMN TYPE statement AST.
-    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement AlterTableAlterColumnType(string schema, string tableName, string columnName, string newDataType)
     {
-        // Temporary: Use parse-then-return
-        var sql = $"ALTER TABLE {QuoteIdentifier(schema)}.{QuoteIdentifier(tableName)} ALTER COLUMN {QuoteIdentifier(columnName)} TYPE {newDataType};";
+        var stmt = new
+        {
+            AlterTableStmt = new
+            {
+                relation = new
+                {
+                    schemaname = schema,
+                    relname = tableName,
+                    inh = true,
+                    relpersistence = "p"
+                },
+                cmds = new[]
+                {
+                    new
+                    {
+                        AlterTableCmd = new
+                        {
+                            subtype = "AT_AlterColumnType",
+                            name = columnName,
+                            def = new
+                            {
+                                ColumnDef = new
+                                {
+                                    colname = columnName,
+                                    typeName = BuildTypeName(newDataType),
+                                    is_local = true
+                                }
+                            },
+                            behavior = "DROP_RESTRICT"
+                        }
+                    }
+                },
+                objtype = "OBJECT_TABLE"
+            }
+        };
 
-        using var doc = AstSqlGenerator.ParseToAst(sql);
-        return doc.RootElement.Clone();
+        return WrapStatement(stmt);
     }
 
     /// <summary>
     /// Creates an ALTER TABLE ALTER COLUMN SET NOT NULL statement AST.
-    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement AlterTableAlterColumnSetNotNull(string schema, string tableName, string columnName)
     {
-        // Temporary: Use parse-then-return
-        var sql = $"ALTER TABLE {QuoteIdentifier(schema)}.{QuoteIdentifier(tableName)} ALTER COLUMN {QuoteIdentifier(columnName)} SET NOT NULL;";
+        var stmt = new
+        {
+            AlterTableStmt = new
+            {
+                relation = new
+                {
+                    schemaname = schema,
+                    relname = tableName,
+                    inh = true,
+                    relpersistence = "p"
+                },
+                cmds = new[]
+                {
+                    new
+                    {
+                        AlterTableCmd = new
+                        {
+                            subtype = "AT_SetNotNull",
+                            name = columnName,
+                            behavior = "DROP_RESTRICT"
+                        }
+                    }
+                },
+                objtype = "OBJECT_TABLE"
+            }
+        };
 
-        using var doc = AstSqlGenerator.ParseToAst(sql);
-        return doc.RootElement.Clone();
+        return WrapStatement(stmt);
     }
 
     /// <summary>
     /// Creates an ALTER TABLE ALTER COLUMN DROP NOT NULL statement AST.
-    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement AlterTableAlterColumnDropNotNull(string schema, string tableName, string columnName)
     {
-        // Temporary: Use parse-then-return
-        var sql = $"ALTER TABLE {QuoteIdentifier(schema)}.{QuoteIdentifier(tableName)} ALTER COLUMN {QuoteIdentifier(columnName)} DROP NOT NULL;";
+        var stmt = new
+        {
+            AlterTableStmt = new
+            {
+                relation = new
+                {
+                    schemaname = schema,
+                    relname = tableName,
+                    inh = true,
+                    relpersistence = "p"
+                },
+                cmds = new[]
+                {
+                    new
+                    {
+                        AlterTableCmd = new
+                        {
+                            subtype = "AT_DropNotNull",
+                            name = columnName,
+                            behavior = "DROP_RESTRICT"
+                        }
+                    }
+                },
+                objtype = "OBJECT_TABLE"
+            }
+        };
 
-        using var doc = AstSqlGenerator.ParseToAst(sql);
-        return doc.RootElement.Clone();
+        return WrapStatement(stmt);
     }
 
     /// <summary>
     /// Creates an ALTER TABLE ALTER COLUMN SET DEFAULT statement AST.
-    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement AlterTableAlterColumnSetDefault(string schema, string tableName, string columnName, string defaultValue)
     {
-        // Temporary: Use parse-then-return
-        var sql = $"ALTER TABLE {QuoteIdentifier(schema)}.{QuoteIdentifier(tableName)} ALTER COLUMN {QuoteIdentifier(columnName)} SET DEFAULT {defaultValue};";
+        var stmt = new
+        {
+            AlterTableStmt = new
+            {
+                relation = new
+                {
+                    schemaname = schema,
+                    relname = tableName,
+                    inh = true,
+                    relpersistence = "p"
+                },
+                cmds = new[]
+                {
+                    new
+                    {
+                        AlterTableCmd = new
+                        {
+                            subtype = "AT_ColumnDefault",
+                            name = columnName,
+                            def = new
+                            {
+                                A_Const = new
+                                {
+                                    sval = new
+                                    {
+                                        sval = defaultValue
+                                    }
+                                }
+                            },
+                            behavior = "DROP_RESTRICT"
+                        }
+                    }
+                },
+                objtype = "OBJECT_TABLE"
+            }
+        };
 
-        using var doc = AstSqlGenerator.ParseToAst(sql);
-        return doc.RootElement.Clone();
+        return WrapStatement(stmt);
     }
 
     /// <summary>
     /// Creates an ALTER TABLE ALTER COLUMN DROP DEFAULT statement AST.
-    /// TODO: Implement as pure AST builder.
     /// </summary>
     public static JsonElement AlterTableAlterColumnDropDefault(string schema, string tableName, string columnName)
     {
-        // Temporary: Use parse-then-return
-        var sql = $"ALTER TABLE {QuoteIdentifier(schema)}.{QuoteIdentifier(tableName)} ALTER COLUMN {QuoteIdentifier(columnName)} DROP DEFAULT;";
+        var stmt = new
+        {
+            AlterTableStmt = new
+            {
+                relation = new
+                {
+                    schemaname = schema,
+                    relname = tableName,
+                    inh = true,
+                    relpersistence = "p"
+                },
+                cmds = new[]
+                {
+                    new
+                    {
+                        AlterTableCmd = new
+                        {
+                            subtype = "AT_ColumnDefault",
+                            name = columnName,
+                            behavior = "DROP_RESTRICT"
+                            // No def = drop default
+                        }
+                    }
+                },
+                objtype = "OBJECT_TABLE"
+            }
+        };
 
-        using var doc = AstSqlGenerator.ParseToAst(sql);
-        return doc.RootElement.Clone();
+        return WrapStatement(stmt);
+    }
+
+    /// <summary>
+    /// Helper to build TypeName structure from a data type string.
+    /// </summary>
+    private static object BuildTypeName(string dataType)
+    {
+        // Simple implementation for common types
+        // TODO: Handle complex types with type modifiers (e.g., varchar(255))
+
+        // For now, just parse the base type
+        var typeName = dataType.Split('(')[0].Trim().ToLower();
+
+        return new
+        {
+            names = new[]
+            {
+                new { String = new { sval = "pg_catalog" } },
+                new { String = new { sval = typeName } }
+            },
+            typemod = -1
+        };
     }
 
     /// <summary>

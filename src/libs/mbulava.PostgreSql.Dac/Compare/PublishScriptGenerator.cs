@@ -1,6 +1,8 @@
 ﻿using mbulava.PostgreSql.Dac.Models;
 using mbulava.PostgreSql.Dac.Deployment;
+using mbulava.PostgreSql.Dac.Compile.Ast;
 using System.Text;
+using System.Text.Json;
 
 namespace mbulava.PostgreSql.Dac.Compare;
 
@@ -134,6 +136,26 @@ public static class PublishScriptGenerator
         return script;
     }
 
+    /// <summary>
+    /// Helper method to append AST-generated SQL to the script.
+    /// </summary>
+    private static void AppendAstSql(StringBuilder sb, JsonElement ast)
+    {
+        var sql = AstSqlGenerator.Generate(ast);
+        sb.AppendLine(sql);
+    }
+
+    /// <summary>
+    /// Splits a qualified table name into schema and name parts.
+    /// </summary>
+    private static (string schema, string name) SplitQualifiedName(string qualifiedName)
+    {
+        var parts = qualifiedName.Split('.');
+        return parts.Length == 2 
+            ? (parts[0].Trim('"'), parts[1].Trim('"'))
+            : ("public", parts[0].Trim('"'));
+    }
+
     private static void GenerateTypeScripts(List<PgTypeDiff> diffs, StringBuilder sb, PublishOptions options)
     {
         if (diffs.Count == 0) return;
@@ -245,24 +267,33 @@ public static class PublishScriptGenerator
             // Column changes
             foreach (var colDiff in diff.ColumnDiffs)
             {
+                var (schema, tableName) = SplitQualifiedName(diff.TableName);
+
                 if (colDiff.SourceDataType == null && colDiff.TargetDataType != null)
                 {
                     // Column exists in target but not in source - DROP if configured
                     if (options.DropObjectsNotInSource)
                     {
-                        sb.AppendLine($"ALTER TABLE {QuoteIdentifier(diff.TableName)} DROP COLUMN IF EXISTS {QuoteIdentifier(colDiff.ColumnName)};");
+                        // ✅ Using AST builder
+                        var ast = AstBuilder.AlterTableDropColumn(schema, tableName, colDiff.ColumnName, ifExists: true);
+                        AppendAstSql(sb, ast);
                     }
                 }
                 else if (colDiff.SourceDataType != null && colDiff.TargetDataType == null)
                 {
                     // Column missing in target - ADD
-                    var colDef = $"{QuoteIdentifier(colDiff.ColumnName)} {colDiff.SourceDataType}";
-                    if (colDiff.SourceIsNotNull == true)
-                        colDef += " NOT NULL";
-                    if (!string.IsNullOrEmpty(colDiff.SourceDefault))
-                        colDef += $" DEFAULT {colDiff.SourceDefault}";
+                    // ✅ Using AST builder
+                    var notNull = colDiff.SourceIsNotNull == true;
+                    var defaultValue = !string.IsNullOrEmpty(colDiff.SourceDefault) ? colDiff.SourceDefault : null;
 
-                    sb.AppendLine($"ALTER TABLE {QuoteIdentifier(diff.TableName)} ADD COLUMN {colDef};");
+                    var ast = AstBuilder.AlterTableAddColumn(
+                        schema, 
+                        tableName, 
+                        colDiff.ColumnName, 
+                        colDiff.SourceDataType!,
+                        notNull,
+                        defaultValue);
+                    AppendAstSql(sb, ast);
                 }
                 else if (colDiff.SourceDataType != colDiff.TargetDataType ||
                          colDiff.SourceIsNotNull != colDiff.TargetIsNotNull ||
@@ -271,22 +302,36 @@ public static class PublishScriptGenerator
                     // Column changed - ALTER
                     if (colDiff.SourceDataType != colDiff.TargetDataType)
                     {
+                        // TODO: AST builder for ALTER COLUMN TYPE needs better type handling
+                        // Using string template for now until BuildTypeName is improved
                         sb.AppendLine($"ALTER TABLE {QuoteIdentifier(diff.TableName)} ALTER COLUMN {QuoteIdentifier(colDiff.ColumnName)} TYPE {colDiff.SourceDataType};");
                     }
                     if (colDiff.SourceIsNotNull != colDiff.TargetIsNotNull)
                     {
-                        var nullClause = colDiff.SourceIsNotNull == true ? "SET NOT NULL" : "DROP NOT NULL";
-                        sb.AppendLine($"ALTER TABLE {QuoteIdentifier(diff.TableName)} ALTER COLUMN {QuoteIdentifier(colDiff.ColumnName)} {nullClause};");
-                    }
-                    if (colDiff.SourceDefault != colDiff.TargetDefault)
-                    {
-                        if (string.IsNullOrEmpty(colDiff.SourceDefault))
+                        // ✅ Using AST builder
+                        if (colDiff.SourceIsNotNull == true)
                         {
-                            sb.AppendLine($"ALTER TABLE {QuoteIdentifier(diff.TableName)} ALTER COLUMN {QuoteIdentifier(colDiff.ColumnName)} DROP DEFAULT;");
+                            var ast = AstBuilder.AlterTableAlterColumnSetNotNull(schema, tableName, colDiff.ColumnName);
+                            AppendAstSql(sb, ast);
                         }
                         else
                         {
-                            sb.AppendLine($"ALTER TABLE {QuoteIdentifier(diff.TableName)} ALTER COLUMN {QuoteIdentifier(colDiff.ColumnName)} SET DEFAULT {colDiff.SourceDefault};");
+                            var ast = AstBuilder.AlterTableAlterColumnDropNotNull(schema, tableName, colDiff.ColumnName);
+                            AppendAstSql(sb, ast);
+                        }
+                    }
+                    if (colDiff.SourceDefault != colDiff.TargetDefault)
+                    {
+                        // ✅ Using AST builder
+                        if (string.IsNullOrEmpty(colDiff.SourceDefault))
+                        {
+                            var ast = AstBuilder.AlterTableAlterColumnDropDefault(schema, tableName, colDiff.ColumnName);
+                            AppendAstSql(sb, ast);
+                        }
+                        else
+                        {
+                            var ast = AstBuilder.AlterTableAlterColumnSetDefault(schema, tableName, colDiff.ColumnName, colDiff.SourceDefault);
+                            AppendAstSql(sb, ast);
                         }
                     }
                 }

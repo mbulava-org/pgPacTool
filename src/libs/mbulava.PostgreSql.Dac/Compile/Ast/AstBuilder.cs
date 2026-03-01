@@ -559,21 +559,59 @@ public static class AstBuilder
 
     /// <summary>
     /// Helper to build TypeName structure from a data type string.
+    /// For ALTER COLUMN TYPE, we can use parse-then-extract pattern for reliability.
     /// </summary>
     private static object BuildTypeName(string dataType)
     {
-        // Simple implementation for common types
-        // TODO: Handle complex types with type modifiers (e.g., varchar(255))
+        // For simple ALTER COLUMN TYPE, parse the type definition for accurate AST
+        // This ensures we get the exact same output as input
+        try
+        {
+            // Parse a simple SELECT statement with the type to extract TypeName
+            var sql = $"SELECT CAST(NULL AS {dataType});";
+            using var parser = new Npgquery.Parser();
+            var result = parser.Parse(sql);
 
-        // For now, just parse the base type
-        var typeName = dataType.Split('(')[0].Trim().ToLower();
+            if (result.IsSuccess && result.ParseTree != null)
+            {
+                // Navigate to the TypeCast -> TypeName node
+                var root = result.ParseTree.RootElement;
+                if (root.TryGetProperty("stmts", out var stmts) &&
+                    stmts.GetArrayLength() > 0)
+                {
+                    var stmt = stmts[0];
+                    if (stmt.TryGetProperty("stmt", out var selectStmt) &&
+                        selectStmt.TryGetProperty("SelectStmt", out var sel) &&
+                        sel.TryGetProperty("targetList", out var targetList) &&
+                        targetList.GetArrayLength() > 0)
+                    {
+                        var target = targetList[0];
+                        if (target.TryGetProperty("ResTarget", out var resTarget) &&
+                            resTarget.TryGetProperty("val", out var val) &&
+                            val.TryGetProperty("TypeCast", out var typeCast) &&
+                            typeCast.TryGetProperty("typeName", out var typeName))
+                        {
+                            // Return the extracted TypeName structure
+                            var json = typeName.GetRawText();
+                            var doc = JsonDocument.Parse(json);
+                            return JsonSerializer.Deserialize<object>(doc.RootElement)!;
+                        }
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Fall back to simple structure
+        }
 
+        // Fallback: Simple type name structure
         return new
         {
             names = new[]
             {
                 new { String = new { sval = "pg_catalog" } },
-                new { String = new { sval = typeName } }
+                new { String = new { sval = dataType.ToLower() } }
             },
             typemod = -1
         };

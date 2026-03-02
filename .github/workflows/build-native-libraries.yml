@@ -54,6 +54,10 @@ jobs:
         if: runner.os == 'Windows'
         uses: microsoft/setup-msbuild@v2
 
+      - name: Set up Visual Studio Developer Command Prompt (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Install build tools (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -66,18 +70,102 @@ jobs:
           # Xcode command line tools should be pre-installed, but ensure make is available
           which make || xcode-select --install
 
-      - name: Build libpg_query (Windows)
+      - name: Build libpg_query and create DLL (Windows)
         if: runner.os == 'Windows'
         working-directory: libpg_query
-        shell: cmd
+        shell: pwsh
         run: |
+          # Build static library first (this also compiles examples)
           nmake /F Makefile.msvc
 
-      - name: Build libpg_query (Unix)
+          Write-Host "Listing all .obj files after nmake:"
+          Get-ChildItem -Recurse -Filter *.obj | Select-Object FullName, Length | Format-Table
+
+          Write-Host "`nChecking pg_query.lib contents:"
+          lib /LIST pg_query.lib
+
+          Write-Host "`nCreating DLL from static library..."
+
+          # Use pg_query.lib directly with proper DEF file for exports
+          $defContent = @"
+LIBRARY pg_query
+EXPORTS
+    pg_query_deparse_protobuf
+    pg_query_fingerprint
+    pg_query_free_deparse_result
+    pg_query_free_fingerprint_result
+    pg_query_free_normalize_result
+    pg_query_free_parse_result
+    pg_query_free_plpgsql_parse_result
+    pg_query_free_scan_result
+    pg_query_free_split_result
+    pg_query_is_utility_stmt
+    pg_query_normalize
+    pg_query_parse
+    pg_query_parse_plpgsql
+    pg_query_scan
+    pg_query_split
+    pg_query_summary
+"@
+          $defContent | Out-File -FilePath pg_query.def -Encoding ASCII
+
+          # Link the static library into a DLL with exports
+          link /DLL /OUT:pg_query.dll /DEF:pg_query.def pg_query.lib
+
+          if (Test-Path pg_query.dll) {
+            Write-Host "✓ Built pg_query.dll"
+            Get-Item pg_query.dll | Format-Table Name, Length
+          } else {
+            Write-Host "❌ Failed to build pg_query.dll"
+            Get-Content *.log -ErrorAction SilentlyContinue
+            exit 1
+          }
+
+      - name: Build libpg_query and create shared library (Linux)
+        if: runner.os == 'Linux'
+        working-directory: libpg_query
+        run: |
+          # Build static library first
+          make
+
+          # Create shared library from object files
+          # Extract all .o files from the static library
+          ar -x libpg_query.a
+
+          # Link into shared library
+          gcc -shared -fPIC -o libpg_query.so *.o -pthread
+
+          echo "✓ Built libpg_query.so"
+          ls -lh libpg_query.so
+
+      - name: Build libpg_query and create shared library (macOS)
+        if: runner.os == 'macOS'
+        working-directory: libpg_query
+        run: |
+          # Build static library first
+          # On macOS 15+, strchrnul is already defined in the system
+          # Add HAVE_STRCHRNUL to prevent redefinition in PostgreSQL code
+          make CFLAGS="-DHAVE_STRCHRNUL" || make
+
+          # Create shared library from object files
+          # Extract all .o files from the static library
+          ar -x libpg_query.a
+
+          # Link into dynamic library
+          gcc -dynamiclib -o libpg_query.dylib *.o -pthread
+
+          echo "✓ Built libpg_query.dylib"
+          ls -lh libpg_query.dylib
+
+      - name: Debug - List built files (Unix)
         if: runner.os != 'Windows'
         working-directory: libpg_query
         run: |
-          make
+          echo "Files in libpg_query directory after build:"
+          ls -lah | grep -E '\.(so|dylib|a)$' || echo "No shared libraries found"
+          echo ""
+          echo "Searching for all library files:"
+          find . -type f \( -name "*.so" -o -name "*.dylib" -o -name "*.a" \) -ls
       
       - name: Determine output filename and runtime identifier
         id: get-info
@@ -87,9 +175,10 @@ jobs:
           if [ "${{ runner.os }}" == "Windows" ]; then
             RID="win-x64"
             SRC_FILE="libpg_query/pg_query.dll"
-            DEST_FILE="pg_query_${{ matrix.pg_version }}.dll"
+            DEST_FILE="libpg_query_${{ matrix.pg_version }}.dll"
           elif [ "${{ runner.os }}" == "Linux" ]; then
             RID="linux-x64"
+            # libpg_query build outputs to root directory
             SRC_FILE="libpg_query/libpg_query.so"
             DEST_FILE="libpg_query_${{ matrix.pg_version }}.so"
           elif [ "${{ runner.os }}" == "macOS" ]; then
@@ -99,25 +188,44 @@ jobs:
             else
               RID="osx-x64"
             fi
+            # libpg_query build outputs to root directory
             SRC_FILE="libpg_query/libpg_query.dylib"
             DEST_FILE="libpg_query_${{ matrix.pg_version }}.dylib"
           fi
-          
+
           echo "rid=$RID" >> $GITHUB_OUTPUT
           echo "src_file=$SRC_FILE" >> $GITHUB_OUTPUT
           echo "dest_file=$DEST_FILE" >> $GITHUB_OUTPUT
-          
+
           # Create target directory
           TARGET_DIR="npgquery/${{ env.NPGQUERY_PROJECT_PATH }}/runtimes/$RID/native"
           mkdir -p "$TARGET_DIR"
           echo "target_dir=$TARGET_DIR" >> $GITHUB_OUTPUT
+
+          echo "Will copy from: $SRC_FILE"
+          echo "Will copy to: $TARGET_DIR/$DEST_FILE"
       
       - name: Copy and rename library
         shell: bash
         run: |
+          echo "Attempting to copy library file..."
+          echo "Source: ${{ steps.get-info.outputs.src_file }}"
+          echo "Destination: ${{ steps.get-info.outputs.target_dir }}/${{ steps.get-info.outputs.dest_file }}"
+
+          # Check if source file exists
+          if [ ! -f "${{ steps.get-info.outputs.src_file }}" ]; then
+            echo "❌ ERROR: Source file not found!"
+            echo "Listing files in libpg_query directory:"
+            ls -lah libpg_query/ | head -20
+            echo ""
+            echo "Searching for library files:"
+            find libpg_query -type f \( -name "*.so" -o -name "*.dll" -o -name "*.dylib" -o -name "*.a" \) || true
+            exit 1
+          fi
+
           cp "${{ steps.get-info.outputs.src_file }}" \
              "${{ steps.get-info.outputs.target_dir }}/${{ steps.get-info.outputs.dest_file }}"
-          
+
           echo "✓ Built ${{ steps.get-info.outputs.dest_file }} for ${{ steps.get-info.outputs.rid }}"
           ls -lh "${{ steps.get-info.outputs.target_dir }}/${{ steps.get-info.outputs.dest_file }}"
       

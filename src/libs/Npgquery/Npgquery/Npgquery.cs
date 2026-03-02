@@ -263,7 +263,7 @@ public sealed class Parser : IDisposable
 
         try
         {
-            var result = NativeMethods.pg_query_parse_protobuf(NativeMethods.StringToUtf8Bytes(query));
+            var result = NativeMethods.pg_query_parse_protobuf(NativeMethods.StringToUtf8Bytes(query), _version);
             try
             {
                 var error = ExtractError(result.error);
@@ -291,7 +291,7 @@ public sealed class Parser : IDisposable
             finally
             {
                 // Free the native result immediately after copying data
-                NativeMethods.pg_query_free_protobuf_parse_result(result);
+                NativeMethods.pg_query_free_protobuf_parse_result(result, _version);
             }
         }
         catch (Exception ex)
@@ -327,7 +327,7 @@ public sealed class Parser : IDisposable
             var protoStruct = NativeMethods.AllocPgQueryProtobuf(parseResult.ProtobufData);
             try
             {
-                var deparseResult = NativeMethods.pg_query_deparse_protobuf(protoStruct);
+                var deparseResult = NativeMethods.pg_query_deparse_protobuf(protoStruct, _version);
                 try
                 {
                     return new DeparseResult
@@ -339,7 +339,7 @@ public sealed class Parser : IDisposable
                 }
                 finally
                 {
-                    NativeMethods.pg_query_free_deparse_result(deparseResult);
+                    NativeMethods.pg_query_free_deparse_result(deparseResult, _version);
                 }
             }
             finally

@@ -1,0 +1,24 @@
+<Project>
+  <!-- Common properties for all projects in the solution -->
+  
+  <PropertyGroup>
+    <!-- Code Coverage Settings -->
+    <CoverletOutput>./TestResults/</CoverletOutput>
+    <CollectCoverage>true</CollectCoverage>
+    <CoverletOutputFormat>cobertura</CoverletOutputFormat>
+    <ExcludeByFile>$(ExcludeByFile);**/obj/**/*.cs;**/Protos/*.cs</ExcludeByFile>
+    <ExcludeByAttribute>Obsolete;GeneratedCodeAttribute;CompilerGeneratedAttribute;ExcludeFromCodeCoverageAttribute</ExcludeByAttribute>
+  </PropertyGroup>
+
+  <!-- Common package references for testing (only when project is a test project) -->
+  <ItemGroup Condition="$(MSBuildProjectName.Contains('Tests'))">
+    <PackageReference Include="coverlet.collector" Version="6.0.2">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.msbuild" Version="6.0.2">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+</Project>

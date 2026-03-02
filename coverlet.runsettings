@@ -10,9 +10,11 @@
             [*]*Protos.*
             [*]*.Protos.*
             [*]*PgQuery.*
-            <!-- Exclude test assemblies from coverage -->
+            <!-- Exclude ALL test assemblies from coverage -->
             [*.Tests]*
             [*Tests]*
+            [*.Test]*
+            [*Test]*
             <!-- Exclude generated files by pattern -->
             [*]*.Designer.*
             [*]*.g.*
@@ -23,6 +25,8 @@
             **/*obj/**/*.cs
             <!-- Exclude all files in Protos directories -->
             **/Protos/*.cs
+            <!-- Exclude all test project files -->
+            **/tests/**/*.cs
             <!-- Exclude generated files -->
             **/*.Designer.cs
             **/*.generated.cs
@@ -39,7 +43,7 @@
             <Attribute>ExcludeFromCodeCoverageAttribute</Attribute>
           </ExcludeByAttribute>
           <IncludeDirectory>
-            <!-- Only include source directories -->
+            <!-- Only include source directories (src folder) -->
             **/src/**
           </IncludeDirectory>
           <SingleHit>false</SingleHit>

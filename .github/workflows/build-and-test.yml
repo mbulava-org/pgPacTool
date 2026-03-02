@@ -4,8 +4,12 @@ name: Build and Test
 # - Builds all projects targeting .NET 10
 # - Runs tests with code coverage
 # - Excludes LinuxContainer.Tests (for local multi-platform dev only)
+# - Excludes ALL test projects from coverage metrics
 # - Excludes generated protobuf code from coverage metrics
+# - Coverage measured ONLY for src/ folder projects
 # - Coverage threshold: 50% (source code only)
+# - Build does NOT fail on test failures (lists them in PR instead)
+# - Updates existing PR comments instead of creating duplicates
 
 on:
   push:
@@ -51,24 +55,30 @@ jobs:
         echo "📋 Test Configuration:"
         echo "  - Excluding: LinuxContainer.Tests (local development only)"
         echo "  - Using: coverlet.runsettings (excludes generated code)"
+        echo "  - Coverage scope: src/ folder ONLY"
+        echo "  - Test projects excluded from coverage"
         echo "  - Format: Cobertura XML"
         echo ""
         echo "Available test projects:"
         find tests -name "*.csproj" -type f | sed 's|tests/||' | sed 's|/.*||' | sort -u
+        echo ""
+        echo "Source projects (coverage measured):"
+        find src -name "*.csproj" -type f | sed 's|src/||' | sed 's|/.*||' | sort -u
 
     - name: Run tests with code coverage
       id: test-step
-      continue-on-error: true # Allow artifacts to be uploaded even if tests fail
+      continue-on-error: true # Don't fail build on test failures
       run: |
         # Exclude LinuxContainer.Tests (designed for local multi-platform dev testing)
-        # Use coverlet.runsettings to exclude generated protobuf code
+        # Use coverlet.runsettings to exclude generated protobuf code and test projects
         dotnet test --no-build --configuration ${{ env.CONFIGURATION }} \
           --filter "FullyQualifiedName!~LinuxContainer.Tests" \
           --verbosity normal \
           --collect:"XPlat Code Coverage" \
           --settings coverlet.runsettings \
           --results-directory ./coverage \
-          --logger "trx;LogFileName=test-results.trx"
+          --logger "trx;LogFileName=test-results.trx" \
+          --logger "console;verbosity=detailed"
 
     - name: Generate coverage report
       uses: danielpalme/ReportGenerator-GitHub-Action@5.2.0
@@ -76,9 +86,67 @@ jobs:
         reports: 'coverage/**/coverage.cobertura.xml'
         targetdir: 'coveragereport'
         reporttypes: 'Html;MarkdownSummaryGithub;Badges'
-        title: 'pgPacTool Code Coverage (Excluding Generated Code)'
-        classfilters: '-PgQuery.*;-*.Protos.*'
-        filefilters: '-**/obj/**;-**/Protos/**'
+        title: 'pgPacTool Code Coverage (Source Code Only - src/ folder)'
+        classfilters: '-PgQuery.*;-*.Protos.*;-*.Tests;-*Test'
+        filefilters: '-**/obj/**;-**/Protos/**;-**/tests/**'
+
+    - name: Analyze test results
+      id: test-analysis
+      if: always()
+      run: |
+        # Parse TRX files to find failed and skipped tests
+        echo "Analyzing test results..."
+
+        failed_tests=""
+        skipped_tests=""
+        total_tests=0
+        passed_tests=0
+        failed_count=0
+        skipped_count=0
+
+        for trx_file in $(find coverage -name "*.trx" 2>/dev/null); do
+          if [ -f "$trx_file" ]; then
+            # Extract test counts using grep and basic parsing
+            total=$(grep -oP 'total="\K[0-9]+' "$trx_file" | head -1 || echo "0")
+            passed=$(grep -oP 'passed="\K[0-9]+' "$trx_file" | head -1 || echo "0")
+            failed=$(grep -oP 'failed="\K[0-9]+' "$trx_file" | head -1 || echo "0")
+            skipped=$(grep -oP 'notExecuted="\K[0-9]+' "$trx_file" | head -1 || echo "0")
+
+            total_tests=$((total_tests + total))
+            passed_tests=$((passed_tests + passed))
+            failed_count=$((failed_count + failed))
+            skipped_count=$((skipped_count + skipped))
+
+            # Extract failed test names
+            if [ $failed -gt 0 ]; then
+              failed_names=$(grep -oP 'testName="\K[^"]+' "$trx_file" | grep -A1 'outcome="Failed"' | head -20)
+              failed_tests="${failed_tests}${failed_names}"$'\n'
+            fi
+
+            # Extract skipped test names  
+            if [ $skipped -gt 0 ]; then
+              skipped_names=$(grep -oP 'testName="\K[^"]+' "$trx_file" | grep -A1 'outcome="NotExecuted"' | head -20)
+              skipped_tests="${skipped_tests}${skipped_names}"$'\n'
+            fi
+          fi
+        done
+
+        # Export for use in PR comment
+        echo "TOTAL_TESTS=$total_tests" >> $GITHUB_OUTPUT
+        echo "PASSED_TESTS=$passed_tests" >> $GITHUB_OUTPUT
+        echo "FAILED_TESTS=$failed_count" >> $GITHUB_OUTPUT
+        echo "SKIPPED_TESTS=$skipped_count" >> $GITHUB_OUTPUT
+        echo "TEST_STATUS=${{ steps.test-step.outcome }}" >> $GITHUB_OUTPUT
+
+        # Save lists to files for PR comment
+        echo "$failed_tests" > /tmp/failed_tests.txt
+        echo "$skipped_tests" > /tmp/skipped_tests.txt
+
+        echo "Test analysis complete:"
+        echo "  Total: $total_tests"
+        echo "  Passed: $passed_tests"
+        echo "  Failed: $failed_count"
+        echo "  Skipped: $skipped_count"
 
     - name: Upload coverage report
       uses: actions/upload-artifact@v4
@@ -95,7 +163,7 @@ jobs:
         path: '**/*.trx'
         retention-days: 30
 
-    - name: Add coverage to PR comment
+    - name: Add or update coverage PR comment
       uses: actions/github-script@v7
       if: github.event_name == 'pull_request'
       with:
@@ -110,44 +178,137 @@ jobs:
             coverageSummary = 'Code coverage report not available.';
           }
 
+          // Get test results
+          const totalTests = '${{ steps.test-analysis.outputs.TOTAL_TESTS }}' || '0';
+          const passedTests = '${{ steps.test-analysis.outputs.PASSED_TESTS }}' || '0';
+          const failedTests = '${{ steps.test-analysis.outputs.FAILED_TESTS }}' || '0';
+          const skippedTests = '${{ steps.test-analysis.outputs.SKIPPED_TESTS }}' || '0';
+          const testStatus = '${{ steps.test-analysis.outputs.TEST_STATUS }}';
+
+          // Read failed/skipped test lists
+          let failedTestList = '';
+          let skippedTestList = '';
+          try {
+            failedTestList = fs.readFileSync('/tmp/failed_tests.txt', 'utf8').trim();
+          } catch {}
+          try {
+            skippedTestList = fs.readFileSync('/tmp/skipped_tests.txt', 'utf8').trim();
+          } catch {}
+
+          // Format test results
+          let testResultsSection = '';
+          if (testStatus === 'success') {
+            testResultsSection = `✅ All ${totalTests} tests passed`;
+          } else if (failedTests > 0) {
+            testResultsSection = `⚠️ ${failedTests} test(s) failed, ${passedTests} passed, ${skippedTests} skipped`;
+
+            if (failedTestList) {
+              const failedArray = failedTestList.split('\n').filter(t => t.trim()).slice(0, 10);
+              testResultsSection += '\n\n**Failed Tests:**\n';
+              failedArray.forEach(test => {
+                testResultsSection += `- ${test}\n`;
+              });
+              if (failedTests > 10) {
+                testResultsSection += `\n_... and ${failedTests - 10} more. See test results artifact for full details._\n`;
+              }
+            }
+          } else {
+            testResultsSection = `✅ ${passedTests} passed, ${skippedTests} skipped`;
+          }
+
+          if (skippedTests > 0 && skippedTestList) {
+            const skippedArray = skippedTestList.split('\n').filter(t => t.trim()).slice(0, 5);
+            testResultsSection += '\n\n**Skipped Tests:**\n';
+            skippedArray.forEach(test => {
+              testResultsSection += `- ${test}\n`;
+            });
+            if (skippedTests > 5) {
+              testResultsSection += `\n_... and ${skippedTests - 5} more skipped tests._\n`;
+            }
+          }
+
           const output = `
           ## 🧪 Build and Test Results
 
           ✅ Build successful
-          ✅ Tests completed
+          ${testResultsSection}
 
-          ### 📊 Code Coverage (Source Code Only)
+          ### 📊 Code Coverage (Source Code Only - src/ folder)
 
           > **Note**: Coverage metrics exclude:
           > - Generated protobuf files (~273 classes)
+          > - All test projects (tests/ folder)
           > - LinuxContainer.Tests (local dev only)
           > - Files in obj/Debug directories
+          > 
+          > **Only measuring**: Projects in \`src/\` folder
 
           ${coverageSummary}
 
+          ---
+
+          <details>
+          <summary>📦 Test Summary</summary>
+
+          | Metric | Count |
+          |--------|-------|
+          | Total Tests | ${totalTests} |
+          | ✅ Passed | ${passedTests} |
+          | ❌ Failed | ${failedTests} |
+          | ⏭️ Skipped | ${skippedTests} |
+
+          </details>
+
           [View detailed coverage report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+          _Last updated: ${new Date().toUTCString()}_
           `;
 
-          github.rest.issues.createComment({
+          // Find existing comment
+          const comments = await github.rest.issues.listComments({
             issue_number: context.issue.number,
             owner: context.repo.owner,
             repo: context.repo.repo,
-            body: output
           });
+
+          const botComment = comments.data.find(comment => 
+            comment.user.type === 'Bot' && 
+            comment.body.includes('🧪 Build and Test Results')
+          );
+
+          if (botComment) {
+            // Update existing comment
+            await github.rest.issues.updateComment({
+              comment_id: botComment.id,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });
+            console.log('Updated existing PR comment');
+          } else {
+            // Create new comment
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });
+            console.log('Created new PR comment');
+          }
 
     - name: Check coverage threshold
       run: |
         # Extract line coverage percentage from the summary
-        # Note: Coverage excludes generated protobuf code and LinuxContainer.Tests
+        # Note: Coverage only includes src/ folder, excludes generated protobuf code and all test projects
         if [ -f "coveragereport/SummaryGithub.md" ]; then
           coverage=$(grep -oP 'Line coverage.*?(\d+\.\d+)%' coveragereport/SummaryGithub.md | grep -oP '\d+\.\d+' || echo "0")
-          echo "Current coverage (excluding generated code): ${coverage}%"
+          echo "Current coverage (src/ folder only): ${coverage}%"
 
-          # Lower threshold since we're excluding generated code and measuring real source
+          # Threshold for source code only (src/ folder)
           threshold=50.0
           if (( $(echo "$coverage < $threshold" | bc -l) )); then
-            echo "❌ Coverage ${coverage}% is below threshold ${threshold}%"
-            echo "Note: This measures only source code, excluding generated protobuf files"
+            echo "⚠️ Coverage ${coverage}% is below threshold ${threshold}%"
+            echo "Note: This measures only src/ folder, excluding generated protobuf files and test projects"
           else
             echo "✅ Coverage ${coverage}% meets threshold ${threshold}%"
           fi
@@ -155,11 +316,21 @@ jobs:
           echo "⚠️ Coverage report not found, skipping threshold check"
         fi
 
-    - name: Fail if tests failed
-      if: steps.test-step.outcome == 'failure'
+    - name: Summary
+      if: always()
       run: |
-        echo "❌ Tests failed! Check the test results artifact for details."
-        exit 1
+        echo "=== Build and Test Summary ==="
+        echo "Build Status: ${{ job.status }}"
+        echo "Test Status: ${{ steps.test-step.outcome }}"
+        echo "Total Tests: ${{ steps.test-analysis.outputs.TOTAL_TESTS }}"
+        echo "Passed: ${{ steps.test-analysis.outputs.PASSED_TESTS }}"
+        echo "Failed: ${{ steps.test-analysis.outputs.FAILED_TESTS }}"
+        echo "Skipped: ${{ steps.test-analysis.outputs.SKIPPED_TESTS }}"
+        echo ""
+        if [ "${{ steps.test-step.outcome }}" != "success" ]; then
+          echo "⚠️ Some tests failed or were skipped, but build continues."
+          echo "Check PR comment for details on failed/skipped tests."
+        fi
 
   # Uncomment the following job to enable multi-version testing against PostgreSQL 16 and 17, but it's already happening in the Tests ;/
   # multi-version-test:

@@ -1,16 +1,16 @@
 using System.Runtime.CompilerServices;
-using Npgquery.Native;
 
 namespace Npgquery;
 
 /// <summary>
-/// Module initializer to set up native library loading
+/// Module initializer for Npgquery library
 /// </summary>
 internal static class ModuleInitializer
 {
     [ModuleInitializer]
     internal static void Initialize()
     {
-        NativeLibraryLoader.EnsureLoaded();
+        // Native libraries are loaded on-demand per version
+        // No pre-loading needed with multi-version support
     }
 }

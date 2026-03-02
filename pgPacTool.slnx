@@ -13,6 +13,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="src/libs/Npgquery/Npgquery.Tests/Npgquery.Tests.csproj" />
+    <Project Path="tests/LinuxContainer.Tests/LinuxContainer.Tests.csproj" />
     <Project Path="tests/mbulava.PostgreSql.Dac.Tests/mbulava.PostgreSql.Dac.Tests.csproj" />
     <Project Path="tests/ProjectExtract-Tests/ProjectExtract-Tests.csproj" />
   </Folder>

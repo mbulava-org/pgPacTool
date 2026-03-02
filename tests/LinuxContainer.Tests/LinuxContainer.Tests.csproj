@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="8.0.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Docker.DotNet" Version="3.125.15" />
+    <PackageReference Include="FluentAssertions" Version="8.8.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.3.0" />
+    <PackageReference Include="NUnit" Version="4.5.0" />
+    <PackageReference Include="NUnit.Analyzers" Version="4.11.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="NUnit3TestAdapter" Version="6.1.0" />
+    <PackageReference Include="Testcontainers" Version="4.10.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="NUnit.Framework" />
+  </ItemGroup>
+
+  <!-- Reference all test projects to ensure they're built -->
+  <ItemGroup>
+    <ProjectReference Include="..\mbulava.PostgreSql.Dac.Tests\mbulava.PostgreSql.Dac.Tests.csproj" />
+    <ProjectReference Include="..\ProjectExtract-Tests\ProjectExtract-Tests.csproj" />
+    <ProjectReference Include="..\..\src\libs\Npgquery\Npgquery.Tests\Npgquery.Tests.csproj" />
+  </ItemGroup>
+
+</Project>

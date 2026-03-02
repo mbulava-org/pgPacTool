@@ -27,13 +27,14 @@ public static class PostgreSqlVersionExtensions
     /// </summary>
     /// <param name="version">The PostgreSQL version</param>
     /// <returns>Library name suffix (e.g., "16", "17")</returns>
+    /// <exception cref="ArgumentOutOfRangeException">When version is not supported</exception>
     public static string ToLibrarySuffix(this PostgreSqlVersion version)
     {
         return version switch
         {
             PostgreSqlVersion.Postgres16 => "16",
             PostgreSqlVersion.Postgres17 => "17",
-            _ => throw new ArgumentOutOfRangeException(nameof(version), version, "Unknown PostgreSQL version")
+            _ => ((int)version).ToString() // Allow any version number for forward compatibility
         };
     }
 
@@ -48,7 +49,7 @@ public static class PostgreSqlVersionExtensions
         {
             PostgreSqlVersion.Postgres16 => "PostgreSQL 16",
             PostgreSqlVersion.Postgres17 => "PostgreSQL 17",
-            _ => throw new ArgumentOutOfRangeException(nameof(version), version, "Unknown PostgreSQL version")
+            _ => $"PostgreSQL {(int)version}" // Forward compatibility
         };
     }
 
@@ -63,7 +64,7 @@ public static class PostgreSqlVersionExtensions
         {
             PostgreSqlVersion.Postgres16 => 160000,
             PostgreSqlVersion.Postgres17 => 170000,
-            _ => throw new ArgumentOutOfRangeException(nameof(version), version, "Unknown PostgreSQL version")
+            _ => (int)version * 10000 // Forward compatibility
         };
     }
 

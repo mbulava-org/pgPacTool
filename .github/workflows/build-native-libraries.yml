@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       pg_versions:
-        description: 'PostgreSQL versions to build (comma-separated, e.g., "16,17")'
+        description: 'PostgreSQL versions to build (comma-separated, e.g., "15,16,17")'
         required: true
         default: '16,17'
       force_rebuild:
@@ -21,11 +21,17 @@ on:
 env:
   NPGQUERY_PROJECT_PATH: src/libs/Npgquery/Npgquery
   # Default versions for non-workflow_dispatch triggers
+  # Currently: PG16 & PG17 (active), PG15 (built but not yet implemented in code)
   DEFAULT_PG_VERSIONS: '16,17'
 
 jobs:
   build-matrix:
     name: Build libpg_query
+    # Supported PostgreSQL versions:
+    # - PG15: Critical fixes only (libpg_query 15-latest) - Built but not yet implemented in C# code
+    # - PG16: Active support (libpg_query 16-latest) - Default version
+    # - PG17: Active development (libpg_query 17-latest) - Latest features
+    # To build PG15: Run workflow with input "15" or "15,16,17"
     strategy:
       fail-fast: false
       matrix:
@@ -91,7 +97,23 @@ jobs:
           $pgVersion = "${{ matrix.pg_version }}"
           Write-Host "Creating DEF file for PostgreSQL $pgVersion..."
 
-          if ($pgVersion -eq "16") {
+          if ($pgVersion -eq "15") {
+            # PostgreSQL 15 - older API, some functions don't exist yet
+            $defContent = "LIBRARY pg_query`nEXPORTS`n"
+            $defContent += "    pg_query_deparse_protobuf`n"
+            $defContent += "    pg_query_fingerprint`n"
+            $defContent += "    pg_query_free_deparse_result`n"
+            $defContent += "    pg_query_free_fingerprint_result`n"
+            $defContent += "    pg_query_free_normalize_result`n"
+            $defContent += "    pg_query_free_parse_result`n"
+            $defContent += "    pg_query_free_plpgsql_parse_result`n"
+            $defContent += "    pg_query_free_scan_result`n"
+            $defContent += "    pg_query_free_split_result`n"
+            $defContent += "    pg_query_normalize`n"
+            $defContent += "    pg_query_parse`n"
+            $defContent += "    pg_query_parse_plpgsql`n"
+            $defContent += "    pg_query_scan`n"
+          } elseif ($pgVersion -eq "16") {
             # PostgreSQL 16 - some functions don't exist yet
             $defContent = "LIBRARY pg_query`nEXPORTS`n"
             $defContent += "    pg_query_deparse_protobuf`n"

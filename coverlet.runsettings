@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat code coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <Exclude>
+            <!-- Exclude generated protobuf files -->
+            [*]*Protos.*
+            [*]*.Protos.*
+            [*]*PgQuery.*
+            <!-- Exclude ALL test assemblies from coverage -->
+            [*.Tests]*
+            [*Tests]*
+            [*.Test]*
+            [*Test]*
+            <!-- Exclude generated files by pattern -->
+            [*]*.Designer.*
+            [*]*.g.*
+            [*]*.g.i.*
+          </Exclude>
+          <ExcludeByFile>
+            <!-- Exclude all files in obj directories -->
+            **/*obj/**/*.cs
+            <!-- Exclude all files in Protos directories -->
+            **/Protos/*.cs
+            <!-- Exclude all test project files -->
+            **/tests/**/*.cs
+            <!-- Exclude generated files -->
+            **/*.Designer.cs
+            **/*.generated.cs
+            **/*.g.cs
+            **/*.g.i.cs
+            <!-- Exclude AssemblyInfo -->
+            **/AssemblyInfo.cs
+          </ExcludeByFile>
+          <ExcludeByAttribute>
+            <!-- Exclude methods/classes marked with these attributes -->
+            <Attribute>Obsolete</Attribute>
+            <Attribute>GeneratedCodeAttribute</Attribute>
+            <Attribute>CompilerGeneratedAttribute</Attribute>
+            <Attribute>ExcludeFromCodeCoverageAttribute</Attribute>
+          </ExcludeByAttribute>
+          <IncludeDirectory>
+            <!-- Only include source directories (src folder) -->
+            **/src/**
+          </IncludeDirectory>
+          <SingleHit>false</SingleHit>
+          <UseSourceLink>true</UseSourceLink>
+          <IncludeTestAssembly>false</IncludeTestAssembly>
+          <SkipAutoProps>true</SkipAutoProps>
+          <DeterministicReport>true</DeterministicReport>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

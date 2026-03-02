@@ -145,23 +145,9 @@ public static class NativeLibraryLoader
     private static string GetLibraryName(PostgreSqlVersion version)
     {
         var suffix = version.ToLibrarySuffix();
-        
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            return $"pg_query_{suffix}";
-        }
-        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-        {
-            return $"libpg_query_{suffix}";
-        }
-        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-        {
-            return $"libpg_query_{suffix}";
-        }
-        else
-        {
-            throw new PlatformNotSupportedException($"Platform {RuntimeInformation.OSDescription} is not supported");
-        }
+
+        // All platforms use the same libpg_query_{version} naming convention
+        return $"libpg_query_{suffix}";
     }
 
     /// <summary>
@@ -192,47 +178,35 @@ public static class NativeLibraryLoader
         var paths = new List<string>();
 
         string extension;
-        string prefix;
 
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             extension = "dll";
-            prefix = "";
         }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
             extension = "so";
-            prefix = "lib";
         }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
         {
             extension = "dylib";
-            prefix = "lib";
         }
         else
         {
             yield break;
         }
 
-        var libraryFileName = $"{prefix}pg_query_{suffix}.{extension}";
-        
+        // All platforms use libpg_query_{version}.{extension}
+        var libraryFileName = $"libpg_query_{suffix}.{extension}";
+
         // Current directory
         paths.Add(Path.Combine(baseDir, libraryFileName));
 
         // Runtime-specific directory
         var rid = GetRuntimeIdentifier();
-        paths.Add(Path.Combine(baseDir, "runtimes", rid, "native", libraryFileName));
-
-        // Alternative RID patterns
         if (!string.IsNullOrEmpty(rid))
         {
-            var ridParts = rid.Split('-');
-            if (ridParts.Length >= 2)
-            {
-                var os = ridParts[0];
-                var arch = ridParts[1];
-                paths.Add(Path.Combine(baseDir, "runtimes", $"{os}-{arch}", "native", libraryFileName));
-            }
+            paths.Add(Path.Combine(baseDir, "runtimes", rid, "native", libraryFileName));
         }
 
         foreach (var path in paths)

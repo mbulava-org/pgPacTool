@@ -49,6 +49,11 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 	</PropertyGroup>
 
+	<!-- Expose internals to test project for comprehensive testing -->
+	<ItemGroup>
+		<InternalsVisibleTo Include="Npgquery.Tests" />
+	</ItemGroup>
+
 	<ItemGroup>
 		<PackageReference Include="Google.Protobuf" Version="3.33.5" />
 		<PackageReference Include="Grpc.Tools" Version="2.78.0" PrivateAssets="all" />

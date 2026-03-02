@@ -93,45 +93,39 @@ jobs:
 
           if ($pgVersion -eq "16") {
             # PostgreSQL 16 - some functions don't exist yet
-            $defContent = @'
-LIBRARY pg_query
-EXPORTS
-    pg_query_deparse_protobuf
-    pg_query_fingerprint
-    pg_query_free_deparse_result
-    pg_query_free_fingerprint_result
-    pg_query_free_normalize_result
-    pg_query_free_parse_result
-    pg_query_free_plpgsql_parse_result
-    pg_query_free_scan_result
-    pg_query_free_split_result
-    pg_query_normalize
-    pg_query_parse
-    pg_query_parse_plpgsql
-    pg_query_scan
-'@
+            $defContent = "LIBRARY pg_query`nEXPORTS`n"
+            $defContent += "    pg_query_deparse_protobuf`n"
+            $defContent += "    pg_query_fingerprint`n"
+            $defContent += "    pg_query_free_deparse_result`n"
+            $defContent += "    pg_query_free_fingerprint_result`n"
+            $defContent += "    pg_query_free_normalize_result`n"
+            $defContent += "    pg_query_free_parse_result`n"
+            $defContent += "    pg_query_free_plpgsql_parse_result`n"
+            $defContent += "    pg_query_free_scan_result`n"
+            $defContent += "    pg_query_free_split_result`n"
+            $defContent += "    pg_query_normalize`n"
+            $defContent += "    pg_query_parse`n"
+            $defContent += "    pg_query_parse_plpgsql`n"
+            $defContent += "    pg_query_scan`n"
           } else {
             # PostgreSQL 17+ - all functions available
-            $defContent = @'
-LIBRARY pg_query
-EXPORTS
-    pg_query_deparse_protobuf
-    pg_query_fingerprint
-    pg_query_free_deparse_result
-    pg_query_free_fingerprint_result
-    pg_query_free_normalize_result
-    pg_query_free_parse_result
-    pg_query_free_plpgsql_parse_result
-    pg_query_free_scan_result
-    pg_query_free_split_result
-    pg_query_is_utility_stmt
-    pg_query_normalize
-    pg_query_parse
-    pg_query_parse_plpgsql
-    pg_query_scan
-    pg_query_split
-    pg_query_summary
-'@
+            $defContent = "LIBRARY pg_query`nEXPORTS`n"
+            $defContent += "    pg_query_deparse_protobuf`n"
+            $defContent += "    pg_query_fingerprint`n"
+            $defContent += "    pg_query_free_deparse_result`n"
+            $defContent += "    pg_query_free_fingerprint_result`n"
+            $defContent += "    pg_query_free_normalize_result`n"
+            $defContent += "    pg_query_free_parse_result`n"
+            $defContent += "    pg_query_free_plpgsql_parse_result`n"
+            $defContent += "    pg_query_free_scan_result`n"
+            $defContent += "    pg_query_free_split_result`n"
+            $defContent += "    pg_query_is_utility_stmt`n"
+            $defContent += "    pg_query_normalize`n"
+            $defContent += "    pg_query_parse`n"
+            $defContent += "    pg_query_parse_plpgsql`n"
+            $defContent += "    pg_query_scan`n"
+            $defContent += "    pg_query_split`n"
+            $defContent += "    pg_query_summary`n"
           }
           $defContent | Out-File -FilePath pg_query.def -Encoding ASCII
 

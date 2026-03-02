@@ -111,8 +111,9 @@ jobs:
 
           # Link the static library into a DLL with exports
           # /NOENTRY: No DLL entry point needed (pure C library)
+          # /WHOLEARCHIVE: Include all objects from the static library
           # MSVCRT.lib: Link to dynamic C runtime
-          link /DLL /OUT:pg_query.dll /DEF:pg_query.def /NOENTRY pg_query.lib MSVCRT.lib
+          link /DLL /OUT:pg_query.dll /DEF:pg_query.def /NOENTRY /WHOLEARCHIVE:pg_query.lib MSVCRT.lib
 
           if (Test-Path pg_query.dll) {
             Write-Host "✓ Built pg_query.dll"

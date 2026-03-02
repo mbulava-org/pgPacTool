@@ -75,15 +75,24 @@ jobs:
         working-directory: libpg_query
         shell: cmd
         run: |
-          REM Build static library first
+          REM Build static library first (this also compiles examples)
           nmake /F Makefile.msvc
 
-          REM Create DLL from object files
-          REM Link all .obj files into a DLL
-          link /DLL /OUT:pg_query.dll *.obj
+          REM Create DLL from LIBRARY object files only (exclude test/*.obj and examples/*.obj)
+          REM The static library pg_query.lib contains the correct object files
+          REM Use lib.exe to list the contents, or just use the lib file directly
+          REM
+          REM Actually, we can create a DEF file or just link the lib as a DLL base
+          REM Simpler: Use the existing pg_query.lib to create a DLL
+          link /DLL /OUT:pg_query.dll pg_query.lib
 
-          dir pg_query.dll
-          echo ✓ Built pg_query.dll
+          if exist pg_query.dll (
+            echo ✓ Built pg_query.dll
+            dir pg_query.dll
+          ) else (
+            echo ❌ Failed to build pg_query.dll
+            exit /b 1
+          )
 
       - name: Build libpg_query and create shared library (Linux)
         if: runner.os == 'Linux'

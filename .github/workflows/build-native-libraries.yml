@@ -87,26 +87,26 @@ jobs:
           Write-Host "`nCreating DLL from static library..."
 
           # Use pg_query.lib directly with proper DEF file for exports
-          $defContent = @"
-LIBRARY pg_query
-EXPORTS
-    pg_query_deparse_protobuf
-    pg_query_fingerprint
-    pg_query_free_deparse_result
-    pg_query_free_fingerprint_result
-    pg_query_free_normalize_result
-    pg_query_free_parse_result
-    pg_query_free_plpgsql_parse_result
-    pg_query_free_scan_result
-    pg_query_free_split_result
-    pg_query_is_utility_stmt
-    pg_query_normalize
-    pg_query_parse
-    pg_query_parse_plpgsql
-    pg_query_scan
-    pg_query_split
-    pg_query_summary
-"@
+          $defContent = @'
+          LIBRARY pg_query
+          EXPORTS
+              pg_query_deparse_protobuf
+              pg_query_fingerprint
+              pg_query_free_deparse_result
+              pg_query_free_fingerprint_result
+              pg_query_free_normalize_result
+              pg_query_free_parse_result
+              pg_query_free_plpgsql_parse_result
+              pg_query_free_scan_result
+              pg_query_free_split_result
+              pg_query_is_utility_stmt
+              pg_query_normalize
+              pg_query_parse
+              pg_query_parse_plpgsql
+              pg_query_scan
+              pg_query_split
+              pg_query_summary
+          '@
           $defContent | Out-File -FilePath pg_query.def -Encoding ASCII
 
           # Link the static library into a DLL with exports

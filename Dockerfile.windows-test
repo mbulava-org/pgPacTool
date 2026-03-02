@@ -1,0 +1,26 @@
+# Use Windows Server Core with Visual Studio Build Tools
+# This matches the GitHub Actions environment
+FROM mcr.microsoft.com/windows/servercore:ltsc2022
+
+SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+
+# Install Chocolatey
+RUN Set-ExecutionPolicy Bypass -Scope Process -Force; `
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; `
+    iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+
+# Install Git
+RUN choco install -y git
+
+# Install Visual Studio Build Tools 2022 with C++ workload
+# This is a large download (~3GB) but necessary
+RUN choco install -y visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive"
+
+# Set up working directory
+WORKDIR C:\\build
+
+# Copy our test script
+COPY scripts/test-windows-build.bat C:\\build\\
+
+# Entry point - run a shell
+CMD ["powershell"]

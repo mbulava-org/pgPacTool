@@ -109,19 +109,30 @@ jobs:
           '@
           $defContent | Out-File -FilePath pg_query.def -Encoding ASCII
 
-          # Link all object files directly into a DLL (similar to Linux/macOS approach)
-          # Get all .obj files and link them
-          $objFiles = Get-ChildItem -Filter "*.obj" | Select-Object -ExpandProperty Name
-          Write-Host "Linking $($objFiles.Count) object files into DLL..."
+          # Windows: Extract object files from library then link (like ar -x on Linux/macOS)
+          Write-Host "`nExtracting object files from pg_query.lib..."
+          Remove-Item *.obj -ErrorAction SilentlyContinue
 
-          # /DLL: Create a DLL
-          # /OUT: Output filename
-          # /DEF: Use the exports definition file
-          # MSVCRT.lib: Link to dynamic C runtime
-          & link /DLL /OUT:pg_query.dll /DEF:pg_query.def $objFiles MSVCRT.lib
+          $libContents = & lib /NOLOGO /LIST pg_query.lib
+          Write-Host "Library contains $($libContents.Count) object files"
+
+          foreach ($objFile in $libContents) {
+            if ($objFile -match '\.obj$') {
+              & lib /NOLOGO "/EXTRACT:$objFile" pg_query.lib 2>&1 | Out-Null
+            }
+          }
+
+          $extractedObjs = (Get-ChildItem -Filter "*.obj").FullName
+          Write-Host "Extracted $($extractedObjs.Count) files, creating response file..."
+          $extractedObjs | ForEach-Object { "`"$_`"" } | Out-File -FilePath objs.rsp -Encoding ASCII
+
+          Write-Host "Linking DLL..."
+          & link /DLL /OUT:pg_query.dll /DEF:pg_query.def "@objs.rsp" MSVCRT.lib
 
           if ($LASTEXITCODE -ne 0) {
-            Write-Host "❌ Link command failed with exit code $LASTEXITCODE"
+            Write-Host "❌ Link failed with exit code $LASTEXITCODE"
+            Write-Host "`nFirst 5 object files:"
+            Get-Content objs.rsp | Select-Object -First 5
             exit 1
           }
 
@@ -388,3 +399,4 @@ jobs:
           echo "## ℹ️ No Changes" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Libraries are already up to date." >> $GITHUB_STEP_SUMMARY
+

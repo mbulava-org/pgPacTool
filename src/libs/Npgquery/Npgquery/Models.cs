@@ -81,11 +81,6 @@ public sealed record ParseOptions
     public bool IncludeLocations { get; init; } = false;
 
     /// <summary>
-    /// The PostgreSQL version to use for parsing (default is latest)
-    /// </summary>
-    public int PostgreSqlVersion { get; init; } = 160000; // PostgreSQL 16
-
-    /// <summary>
     /// Default parse options
     /// </summary>
     public static readonly ParseOptions Default = new();

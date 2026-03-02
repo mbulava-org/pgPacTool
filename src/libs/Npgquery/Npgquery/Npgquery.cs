@@ -10,6 +10,23 @@ namespace Npgquery;
 public sealed class Parser : IDisposable
 {
     private bool _disposed;
+    private readonly PostgreSqlVersion _version;
+
+    /// <summary>
+    /// Creates a new parser instance with the specified PostgreSQL version
+    /// </summary>
+    /// <param name="version">PostgreSQL version to use for parsing (default: Postgres16)</param>
+    public Parser(PostgreSqlVersion version = PostgreSqlVersion.Postgres16)
+    {
+        _version = version;
+        // Ensure the library is loaded and available on construction
+        NativeLibraryLoader.GetLibraryHandle(_version);
+    }
+
+    /// <summary>
+    /// Gets the PostgreSQL version this parser is using
+    /// </summary>
+    public PostgreSqlVersion Version => _version;
 
     /// <summary>
     /// Parse a PostgreSQL query into an Abstract Syntax Tree (AST)
@@ -17,9 +34,9 @@ public sealed class Parser : IDisposable
     public ParseResult Parse(string query, ParseOptions? options = null)
     {
         ThrowIfDisposedOrNull(query);
-        
+
         return ExecuteNativeOperation(query,
-            q => NativeMethods.pg_query_parse(NativeMethods.StringToUtf8Bytes(q)),
+            q => NativeMethods.pg_query_parse(NativeMethods.StringToUtf8Bytes(q), _version),
             (result, q) =>
             {
                 var error = ExtractError(result.error);
@@ -27,7 +44,7 @@ public sealed class Parser : IDisposable
                 {
                     return new ParseResult { Query = q, Error = error };
                 }
-                
+
                 if (result.tree != IntPtr.Zero)
                 {
                     var parseTreeJson = NativeMethods.PtrToString(result.tree);
@@ -40,10 +57,10 @@ public sealed class Parser : IDisposable
                         };
                     }
                 }
-                
+
                 return new ParseResult { Query = q, Error = "Failed to parse query: no result from parser" };
             },
-            NativeMethods.pg_query_free_parse_result);
+            result => NativeMethods.pg_query_free_parse_result(result, _version));
     }
 
     /// <summary>
@@ -54,14 +71,14 @@ public sealed class Parser : IDisposable
         ThrowIfDisposedOrNull(query);
 
         return ExecuteNativeOperation(query, 
-            q => NativeMethods.pg_query_normalize(NativeMethods.StringToUtf8Bytes(q)),
+            q => NativeMethods.pg_query_normalize(NativeMethods.StringToUtf8Bytes(q), _version),
             (result, q) => new NormalizeResult
             {
                 Query = q,
                 NormalizedQuery = NativeMethods.PtrToString(result.normalized_query),
                 Error = ExtractError(result.error)
             },
-            NativeMethods.pg_query_free_normalize_result);
+            result => NativeMethods.pg_query_free_normalize_result(result, _version));
     }
 
     /// <summary>
@@ -72,14 +89,14 @@ public sealed class Parser : IDisposable
         ThrowIfDisposedOrNull(query);
 
         return ExecuteNativeOperation(query,
-            q => NativeMethods.pg_query_fingerprint(NativeMethods.StringToUtf8Bytes(q)),
+            q => NativeMethods.pg_query_fingerprint(NativeMethods.StringToUtf8Bytes(q), _version),
             (result, q) => new FingerprintResult
             {
                 Query = q,
                 Fingerprint = NativeMethods.PtrToString(result.fingerprint_str),
                 Error = ExtractError(result.error)
             },
-            NativeMethods.pg_query_free_fingerprint_result);
+            result => NativeMethods.pg_query_free_fingerprint_result(result, _version));
     }
 
     /// <summary>
@@ -90,7 +107,7 @@ public sealed class Parser : IDisposable
         ThrowIfDisposedOrNull(query);
 
         return ExecuteNativeOperation(query,
-            q => NativeMethods.pg_query_split_with_parser(NativeMethods.StringToUtf8Bytes(q)),
+            q => NativeMethods.pg_query_split_with_parser(NativeMethods.StringToUtf8Bytes(q), _version),
             (result, q) =>
             {
                 var stmts = NativeMethods.MarshalSplitStmts(result);
@@ -108,7 +125,7 @@ public sealed class Parser : IDisposable
                     Error = ExtractError(result.error)
                 };
             },
-            NativeMethods.pg_query_free_split_result);
+            result => NativeMethods.pg_query_free_split_result(result, _version));
     }
 
     /// <summary>
@@ -119,7 +136,7 @@ public sealed class Parser : IDisposable
         ThrowIfDisposedOrNull(query);
 
         return ExecuteNativeOperation(query,
-            q => NativeMethods.pg_query_scan(NativeMethods.StringToUtf8Bytes(q)),
+            q => NativeMethods.pg_query_scan(NativeMethods.StringToUtf8Bytes(q), _version),
             (result, q) =>
             {
                 var processed = NativeMethods.ProcessScanResult(result, q);
@@ -132,7 +149,7 @@ public sealed class Parser : IDisposable
                     Stderr = processed.Stderr
                 };
             },
-            NativeMethods.pg_query_free_scan_result);
+            result => NativeMethods.pg_query_free_scan_result(result, _version));
     }
 
     /// <summary>
@@ -143,12 +160,12 @@ public sealed class Parser : IDisposable
         ThrowIfDisposedOrNull(query);
 
         return ExecuteNativeOperation(query,
-            q => NativeMethods.pg_query_scan(NativeMethods.StringToUtf8Bytes(q)),
+            q => NativeMethods.pg_query_scan(NativeMethods.StringToUtf8Bytes(q), _version),
             (result, q) =>
             {
                 var processed = NativeMethods.ProcessScanResult(result, q);
                 PgQuery.ScanResult? protobufResult = null;
-                
+
                 if (result.pbuf.data != IntPtr.Zero && result.pbuf.len != UIntPtr.Zero)
                 {
                     try
@@ -158,7 +175,7 @@ public sealed class Parser : IDisposable
                     }
                     catch { /* Ignore protobuf parsing errors */ }
                 }
-                
+
                 return new EnhancedScanResult
                 {
                     Query = q,
@@ -169,7 +186,7 @@ public sealed class Parser : IDisposable
                     ProtobufScanResult = protobufResult
                 };
             },
-            NativeMethods.pg_query_free_scan_result);
+            result => NativeMethods.pg_query_free_scan_result(result, _version));
     }
 
     /// <summary>
@@ -180,14 +197,14 @@ public sealed class Parser : IDisposable
         ThrowIfDisposedOrNull(plpgsqlCode);
 
         return ExecuteNativeOperation(plpgsqlCode,
-            q => NativeMethods.pg_query_parse_plpgsql(NativeMethods.StringToUtf8Bytes(q)),
+            q => NativeMethods.pg_query_parse_plpgsql(NativeMethods.StringToUtf8Bytes(q), _version),
             (result, q) => new PlpgsqlParseResult
             {
                 Query = q,
                 ParseTree = NativeMethods.PtrToString(result.tree),
                 Error = ExtractError(result.error)
             },
-            NativeMethods.pg_query_free_plpgsql_parse_result);
+            result => NativeMethods.pg_query_free_plpgsql_parse_result(result, _version));
     }
 
     /// <summary>
@@ -207,7 +224,7 @@ public sealed class Parser : IDisposable
 
             try
             {
-                var deparseResult = NativeMethods.pg_query_deparse_protobuf(protoStruct);
+                var deparseResult = NativeMethods.pg_query_deparse_protobuf(protoStruct, _version);
                 try
                 {
                     return new DeparseResult
@@ -219,7 +236,7 @@ public sealed class Parser : IDisposable
                 }
                 finally
                 {
-                    NativeMethods.pg_query_free_deparse_result(deparseResult);
+                    NativeMethods.pg_query_free_deparse_result(deparseResult, _version);
                 }
             }
             finally

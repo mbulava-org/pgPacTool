@@ -1,157 +1,283 @@
-using System.Reflection;
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 
-namespace Npgquery.Native;
+namespace Npgquery;
 
 /// <summary>
-/// Handles loading of native pg_query library with platform-specific resolution
+/// Manages loading and caching of version-specific PostgreSQL query parser native libraries
 /// </summary>
-internal static class NativeLibraryLoader
+public static class NativeLibraryLoader
 {
-    private static bool _resolverRegistered;
-    private static readonly object _lock = new();
+    private static readonly ConcurrentDictionary<PostgreSqlVersion, IntPtr> _loadedLibraries = new();
+    private static readonly ConcurrentDictionary<PostgreSqlVersion, bool> _availabilityCache = new();
+    private static readonly object _loadLock = new();
 
     /// <summary>
-    /// Register the DLL import resolver for the pg_query native library
+    /// Gets the native library handle for a specific PostgreSQL version
     /// </summary>
-    internal static void EnsureLoaded()
+    /// <param name="version">The PostgreSQL version</param>
+    /// <returns>Native library handle</returns>
+    /// <exception cref="PostgreSqlVersionNotAvailableException">Thrown when the requested version is not available</exception>
+    public static IntPtr GetLibraryHandle(PostgreSqlVersion version)
     {
-        if (_resolverRegistered)
-            return;
-
-        lock (_lock)
+        // Check cache first
+        if (_loadedLibraries.TryGetValue(version, out var handle))
         {
-            if (_resolverRegistered)
-                return;
+            return handle;
+        }
 
-            NativeLibrary.SetDllImportResolver(typeof(NativeMethods).Assembly, DllImportResolver);
-            _resolverRegistered = true;
+        lock (_loadLock)
+        {
+            // Double-check after acquiring lock
+            if (_loadedLibraries.TryGetValue(version, out handle))
+            {
+                return handle;
+            }
+
+            // Try to load the library
+            var libraryName = GetLibraryName(version);
+
+            if (!NativeLibrary.TryLoad(libraryName, out handle))
+            {
+                // Try with platform-specific search paths
+                handle = TryLoadWithSearchPaths(libraryName, version);
+            }
+
+            if (handle == IntPtr.Zero)
+            {
+                var availableVersions = GetAvailableVersions();
+                throw new PostgreSqlVersionNotAvailableException(
+                    version, 
+                    availableVersions,
+                    $"Could not load native library for {version.ToVersionString()}. " +
+                    $"Tried library name: {libraryName}. " +
+                    $"Available versions: {string.Join(", ", availableVersions.Select(v => v.ToVersionString()))}");
+            }
+
+            _loadedLibraries[version] = handle;
+            _availabilityCache[version] = true;
+
+            return handle;
         }
     }
 
-    private static IntPtr DllImportResolver(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
+    /// <summary>
+    /// Checks if a specific PostgreSQL version is available
+    /// </summary>
+    /// <param name="version">The PostgreSQL version to check</param>
+    /// <returns>True if the version is available, false otherwise</returns>
+    public static bool IsVersionAvailable(PostgreSqlVersion version)
     {
-        // Only handle pg_query library
-        if (libraryName != "pg_query")
-            return IntPtr.Zero;
+        if (_availabilityCache.TryGetValue(version, out var isAvailable))
+        {
+            return isAvailable;
+        }
 
-        // Try to load from runtime-specific directory
-        var runtimePath = GetRuntimeSpecificPath();
-        if (runtimePath != null && NativeLibrary.TryLoad(runtimePath, out var handle))
-            return handle;
+        var libraryName = GetLibraryName(version);
+        IntPtr handle;
 
-        // Fallback to default loading
-        if (NativeLibrary.TryLoad(libraryName, assembly, searchPath, out handle))
-            return handle;
+        if (!NativeLibrary.TryLoad(libraryName, out handle))
+        {
+            // Try with platform-specific search paths
+            handle = TryLoadWithSearchPaths(libraryName, version);
+        }
 
-        throw new DllNotFoundException(
-            $"Unable to load native library '{libraryName}'. " +
-            $"Please ensure the native library is present in the runtimes directory. " +
-            $"Expected path: {runtimePath}");
+        var available = handle != IntPtr.Zero;
+
+        if (available)
+        {
+            _loadedLibraries[version] = handle;
+        }
+
+        _availabilityCache[version] = available;
+        return available;
     }
 
-    private static string? GetRuntimeSpecificPath()
+    /// <summary>
+    /// Gets all available PostgreSQL versions
+    /// </summary>
+    /// <returns>Enumerable of available versions</returns>
+    public static IEnumerable<PostgreSqlVersion> GetAvailableVersions()
     {
-        var assemblyLocation = typeof(NativeMethods).Assembly.Location;
-        if (string.IsNullOrEmpty(assemblyLocation))
-            return null;
+        var versions = new List<PostgreSqlVersion>();
 
-        var assemblyDir = Path.GetDirectoryName(assemblyLocation);
-        if (string.IsNullOrEmpty(assemblyDir))
-            return null;
+        foreach (PostgreSqlVersion version in Enum.GetValues(typeof(PostgreSqlVersion)))
+        {
+            if (IsVersionAvailable(version))
+            {
+                versions.Add(version);
+            }
+        }
 
+        return versions;
+    }
+
+    /// <summary>
+    /// Unloads all loaded native libraries. Primarily for testing purposes.
+    /// </summary>
+    internal static void UnloadAll()
+    {
+        lock (_loadLock)
+        {
+            foreach (var kvp in _loadedLibraries)
+            {
+                if (kvp.Value != IntPtr.Zero)
+                {
+                    try
+                    {
+                        NativeLibrary.Free(kvp.Value);
+                    }
+                    catch
+                    {
+                        // Ignore errors during cleanup
+                    }
+                }
+            }
+
+            _loadedLibraries.Clear();
+            _availabilityCache.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Gets the platform-specific library name for a PostgreSQL version
+    /// </summary>
+    private static string GetLibraryName(PostgreSqlVersion version)
+    {
+        var suffix = version.ToLibrarySuffix();
+        
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return $"pg_query_{suffix}";
+        }
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            return $"libpg_query_{suffix}";
+        }
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            return $"libpg_query_{suffix}";
+        }
+        else
+        {
+            throw new PlatformNotSupportedException($"Platform {RuntimeInformation.OSDescription} is not supported");
+        }
+    }
+
+    /// <summary>
+    /// Attempts to load library with various search paths
+    /// </summary>
+    private static IntPtr TryLoadWithSearchPaths(string libraryName, PostgreSqlVersion version)
+    {
+        var searchPaths = GetSearchPaths(version);
+
+        foreach (var path in searchPaths)
+        {
+            if (NativeLibrary.TryLoad(path, out var handle))
+            {
+                return handle;
+            }
+        }
+
+        return IntPtr.Zero;
+    }
+
+    /// <summary>
+    /// Gets potential search paths for the native library
+    /// </summary>
+    private static IEnumerable<string> GetSearchPaths(PostgreSqlVersion version)
+    {
+        var suffix = version.ToLibrarySuffix();
+        var baseDir = AppContext.BaseDirectory;
+        var paths = new List<string>();
+
+        string extension;
+        string prefix;
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            extension = "dll";
+            prefix = "";
+        }
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            extension = "so";
+            prefix = "lib";
+        }
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            extension = "dylib";
+            prefix = "lib";
+        }
+        else
+        {
+            yield break;
+        }
+
+        var libraryFileName = $"{prefix}pg_query_{suffix}.{extension}";
+        
+        // Current directory
+        paths.Add(Path.Combine(baseDir, libraryFileName));
+
+        // Runtime-specific directory
         var rid = GetRuntimeIdentifier();
+        paths.Add(Path.Combine(baseDir, "runtimes", rid, "native", libraryFileName));
 
-        // Try both naming conventions for the native library
-        var nativeLibNames = GetNativeLibraryNames();
-
-        foreach (var nativeLibName in nativeLibNames)
+        // Alternative RID patterns
+        if (!string.IsNullOrEmpty(rid))
         {
-            // Try runtimes/{rid}/native/{lib} structure in assembly directory
-            var runtimePath = Path.Combine(assemblyDir, "runtimes", rid, "native", nativeLibName);
-            if (File.Exists(runtimePath))
-                return runtimePath;
-
-            // Try output root directory (for development/testing)
-            var rootPath = Path.Combine(assemblyDir, nativeLibName);
-            if (File.Exists(rootPath))
-                return rootPath;
-
-            // For test projects, check if we need to look in the bin directory where Npgquery.dll is located
-            // This handles the case where the test assembly and Npgquery.dll are in the same directory
-            // but the runtimes folder might be next to Npgquery.dll
-            var npgqueryDir = assemblyDir; // Same directory in this case
-            var testRuntimePath = Path.Combine(npgqueryDir, "runtimes", rid, "native", nativeLibName);
-            if (File.Exists(testRuntimePath))
-                return testRuntimePath;
+            var ridParts = rid.Split('-');
+            if (ridParts.Length >= 2)
+            {
+                var os = ridParts[0];
+                var arch = ridParts[1];
+                paths.Add(Path.Combine(baseDir, "runtimes", $"{os}-{arch}", "native", libraryFileName));
+            }
         }
 
-        return null;
+        foreach (var path in paths)
+        {
+            if (File.Exists(path))
+            {
+                yield return path;
+            }
+        }
     }
 
+    /// <summary>
+    /// Gets the runtime identifier for the current platform
+    /// </summary>
     private static string GetRuntimeIdentifier()
     {
+        string os;
+        string arch;
+
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            return RuntimeInformation.ProcessArchitecture switch
-            {
-                Architecture.X64 => "win-x64",
-                Architecture.Arm64 => "win-arm64",
-                _ => "win-x64"
-            };
+            os = "win";
         }
-
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
-            return RuntimeInformation.ProcessArchitecture switch
-            {
-                Architecture.X64 => "linux-x64",
-                Architecture.Arm64 => "linux-arm64",
-                _ => "linux-x64"
-            };
+            os = "linux";
         }
-
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
         {
-            return RuntimeInformation.ProcessArchitecture switch
-            {
-                Architecture.X64 => "osx-x64",
-                Architecture.Arm64 => "osx-arm64",
-                _ => "osx-x64"
-            };
+            os = "osx";
+        }
+        else
+        {
+            return string.Empty;
         }
 
-        return "unknown";
-    }
+        arch = RuntimeInformation.ProcessArchitecture switch
+        {
+            Architecture.X64 => "x64",
+            Architecture.X86 => "x86",
+            Architecture.Arm64 => "arm64",
+            Architecture.Arm => "arm",
+            _ => string.Empty
+        };
 
-    private static string GetNativeLibraryName()
-    {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            return "pg_query.dll";
-
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-            return "libpg_query.so";
-
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-            return "libpg_query.dylib";
-
-        return "pg_query";
-    }
-
-    /// <summary>
-    /// Get all possible native library names to try (handles different naming conventions)
-    /// </summary>
-    private static string[] GetNativeLibraryNames()
-    {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            return new[] { "pg_query.dll" };
-
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-            return new[] { "libpg_query.so", "pg_query.so" }; // Try both naming conventions
-
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-            return new[] { "libpg_query.dylib", "pg_query.dylib" }; // Try both naming conventions
-
-        return new[] { "pg_query" };
+        return $"{os}-{arch}";
     }
 }

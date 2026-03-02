@@ -88,9 +88,10 @@ jobs:
 
           # Create version-specific DEF file
           # Different PostgreSQL versions have different exported functions
-          Write-Host "Creating DEF file for PostgreSQL ${{ matrix.pg_version }}..."
+          $pgVersion = "${{ matrix.pg_version }}"
+          Write-Host "Creating DEF file for PostgreSQL $pgVersion..."
 
-          if (${{ matrix.pg_version }} -eq 16) {
+          if ($pgVersion -eq "16") {
             # PostgreSQL 16 - some functions don't exist yet
             $defContent = @'
 LIBRARY pg_query

@@ -110,7 +110,9 @@ jobs:
           $defContent | Out-File -FilePath pg_query.def -Encoding ASCII
 
           # Link the static library into a DLL with exports
-          link /DLL /OUT:pg_query.dll /DEF:pg_query.def pg_query.lib
+          # /NOENTRY: No DLL entry point needed (pure C library)
+          # MSVCRT.lib: Link to dynamic C runtime
+          link /DLL /OUT:pg_query.dll /DEF:pg_query.def /NOENTRY pg_query.lib MSVCRT.lib
 
           if (Test-Path pg_query.dll) {
             Write-Host "✓ Built pg_query.dll"

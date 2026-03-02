@@ -109,11 +109,21 @@ jobs:
           '@
           $defContent | Out-File -FilePath pg_query.def -Encoding ASCII
 
-          # Link the static library into a DLL with exports
-          # /NOENTRY: No DLL entry point needed (pure C library)
-          # /WHOLEARCHIVE: Include all objects from the static library
+          # Link all object files directly into a DLL (similar to Linux/macOS approach)
+          # Get all .obj files and link them
+          $objFiles = Get-ChildItem -Filter "*.obj" | Select-Object -ExpandProperty Name
+          Write-Host "Linking $($objFiles.Count) object files into DLL..."
+
+          # /DLL: Create a DLL
+          # /OUT: Output filename
+          # /DEF: Use the exports definition file
           # MSVCRT.lib: Link to dynamic C runtime
-          link /DLL /OUT:pg_query.dll /DEF:pg_query.def /NOENTRY /WHOLEARCHIVE:pg_query.lib MSVCRT.lib
+          & link /DLL /OUT:pg_query.dll /DEF:pg_query.def $objFiles MSVCRT.lib
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "❌ Link command failed with exit code $LASTEXITCODE"
+            exit 1
+          }
 
           if (Test-Path pg_query.dll) {
             Write-Host "✓ Built pg_query.dll"

@@ -70,12 +70,20 @@ jobs:
           # Xcode command line tools should be pre-installed, but ensure make is available
           which make || xcode-select --install
 
-      - name: Build libpg_query (Windows)
+      - name: Build libpg_query and create DLL (Windows)
         if: runner.os == 'Windows'
         working-directory: libpg_query
         shell: cmd
         run: |
+          REM Build static library first
           nmake /F Makefile.msvc
+
+          REM Create DLL from object files
+          REM Link all .obj files into a DLL
+          link /DLL /OUT:pg_query.dll *.obj
+
+          dir pg_query.dll
+          echo ✓ Built pg_query.dll
 
       - name: Build libpg_query and create shared library (Linux)
         if: runner.os == 'Linux'
@@ -99,7 +107,9 @@ jobs:
         working-directory: libpg_query
         run: |
           # Build static library first
-          make
+          # On macOS 15+, strchrnul is already defined in the system
+          # Add HAVE_STRCHRNUL to prevent redefinition in PostgreSQL code
+          make CFLAGS="-DHAVE_STRCHRNUL" || make
 
           # Create shared library from object files
           # Extract all .o files from the static library

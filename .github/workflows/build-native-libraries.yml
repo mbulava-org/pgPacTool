@@ -108,7 +108,7 @@ jobs:
             $defContent += "    pg_query_parse_plpgsql`n"
             $defContent += "    pg_query_scan`n"
           } else {
-            # PostgreSQL 17+ - all functions available
+            # PostgreSQL 17+ - all functions except pg_query_split
             $defContent = "LIBRARY pg_query`nEXPORTS`n"
             $defContent += "    pg_query_deparse_protobuf`n"
             $defContent += "    pg_query_fingerprint`n"
@@ -124,7 +124,6 @@ jobs:
             $defContent += "    pg_query_parse`n"
             $defContent += "    pg_query_parse_plpgsql`n"
             $defContent += "    pg_query_scan`n"
-            $defContent += "    pg_query_split`n"
             $defContent += "    pg_query_summary`n"
           }
           $defContent | Out-File -FilePath pg_query.def -Encoding ASCII

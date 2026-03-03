@@ -32,7 +32,8 @@ namespace mbulava.PostgreSql.Dac.Tests.Extract
             // Assert
             project.Should().NotBeNull();
             project.DatabaseName.Should().Be("testdb");
-            project.PostgresVersion.Should().StartWith("16.");
+            // Docker containers may return "16" or "16.x" format
+            project.PostgresVersion.Should().MatchRegex(@"^16(\.|$)", "PostgreSQL version should be 16 or 16.x");
         }
 
         [Test]
@@ -98,7 +99,8 @@ namespace mbulava.PostgreSql.Dac.Tests.Extract
             var version = await extractor.DetectPostgresVersion();
 
             // Assert
-            version.Should().StartWith("16.");
+            // Docker containers may return "16" or "16.x" format
+            version.Should().MatchRegex(@"^16(\.|$)", "PostgreSQL version should be 16 or 16.x");
         }
 
         [Test]
@@ -142,7 +144,8 @@ namespace mbulava.PostgreSql.Dac.Tests.Extract
 
             // Assert
             project.Should().NotBeNull();
-            project.PostgresVersion.Should().StartWith("17.");
+            // Docker containers may return "17" or "17.x" format
+            project.PostgresVersion.Should().MatchRegex(@"^17(\.|$)", "PostgreSQL version should be 17 or 17.x");
         }
 
         [Test]

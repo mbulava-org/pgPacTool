@@ -61,7 +61,8 @@ namespace ProjectExtract_Tests.Integration
             var version = await extractor.DetectPostgresVersion();
 
             // Assert
-            Assert.That(version, Does.StartWith("17."));
+            // Docker containers may return "17" or "17.x" format
+            Assert.That(version, Does.Match(@"^17(\.|$)"), "PostgreSQL version should be 17 or 17.x");
             TestContext.WriteLine($"✓ Detected PostgreSQL version: {version}");
         }
 

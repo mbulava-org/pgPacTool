@@ -51,7 +51,7 @@
 
 	<!-- Expose internals to test project for comprehensive testing -->
 	<ItemGroup>
-		<InternalsVisibleTo Include="Npgquery.Tests" />
+		<InternalsVisibleTo Include="NpgqueryExtended.Tests" />
 	</ItemGroup>
 
 	<ItemGroup>

@@ -2,7 +2,7 @@ using Xunit;
 using Npgquery;
 using System.Linq;
 
-namespace Npgquery.Tests;
+namespace NpgqueryExtended.Tests;
 
 /// <summary>
 /// Tests to verify PostgreSQL version compatibility and handle breaking changes between versions

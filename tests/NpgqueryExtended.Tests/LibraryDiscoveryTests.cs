@@ -2,7 +2,7 @@ using Xunit;
 using Xunit.Abstractions;
 using System.Runtime.InteropServices;
 
-namespace Npgquery.Tests;
+namespace NpgqueryExtended.Tests;
 
 /// <summary>
 /// Tests to diagnose native library discovery and path issues

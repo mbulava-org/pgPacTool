@@ -3,7 +3,7 @@ using Xunit.Abstractions;
 using Npgquery;
 using System.Text.Json;
 
-namespace Npgquery.Tests;
+namespace NpgqueryExtended.Tests;
 
 /// <summary>
 /// Comprehensive tests for AST generation across all supported PostgreSQL versions

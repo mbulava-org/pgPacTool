@@ -3,7 +3,7 @@ using Xunit.Abstractions;
 using Npgquery;
 using System.Runtime.InteropServices;
 
-namespace Npgquery.Tests;
+namespace NpgqueryExtended.Tests;
 
 /// <summary>
 /// Integration tests to verify native library loading and functionality across all supported versions and platforms

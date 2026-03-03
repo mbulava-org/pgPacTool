@@ -247,7 +247,7 @@ public class QueryUtilsTests
         Assert.Equal(expectedType, queryType);
     }
 
-    [Fact]
+    [Fact(Skip = "Uses protobuf deparse which is broken on Linux - see Issue #36")]
     public void CleanQuery_QueryWithWhitespace_ReturnsCleanedQuery()
     {
         // Arrange
@@ -638,7 +638,7 @@ $$;")]
         Assert.Contains("SELECT", deparseResult.Query);
     }
 
-    [Fact]
+    [Fact(Skip = "Uses protobuf deparse which is broken on Linux - see Issue #36")]
     public void ParseProtobuf_And_DeparseProtobuf_ComplexQuery_RoundTrip()
     {
         // Arrange

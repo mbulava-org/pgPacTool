@@ -1,0 +1,53 @@
+using System;
+using System.Text.Json;
+using mbulava.PostgreSql.Dac.Compile.Ast;
+
+class Program
+{
+    static void Main()
+    {
+        // Test data: Simple ALTER TABLE statement AST
+        var astJson = @"{
+            \"stmts\": [{
+                \"stmt\": {
+                    \"AlterTableStmt\": {
+                        \"relation\": {
+                            \"RangeVar\": {
+                                \"schemaname\": \"public\",
+                                \"relname\": \"users\"
+                            }
+                        },
+                        \"cmds\": [{
+                            \"AlterTableCmd\": {
+                                \"subtype\": \"AT_DropColumn\",
+                                \"name\": \"old_column\",
+                                \"missing_ok\": true
+                            }
+                        }]
+                    }
+                }
+            }]
+        }";
+
+        using var doc = JsonDocument.Parse(astJson);
+        var sql = AstSqlGenerator.Generate(doc);
+        
+        Console.WriteLine("Generated SQL: " + sql);
+        
+        // Verify no protobuf garbage
+        if (sql.Contains("\u0012") || sql.Contains("\u0006"))
+        {
+            Console.WriteLine("❌ FAIL: Output contains protobuf garbage");
+            Environment.Exit(1);
+        }
+        
+        // Verify correct SQL
+        if (!sql.ToUpper().Contains("DROP COLUMN"))
+        {
+            Console.WriteLine("❌ FAIL: Missing DROP COLUMN in output");
+            Environment.Exit(1);
+        }
+        
+        Console.WriteLine("✅ PASS: SQL generated correctly using JSON extraction");
+    }
+}

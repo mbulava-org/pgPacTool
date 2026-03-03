@@ -12,9 +12,7 @@
     <Project Path="src/sdk/MSBuild.Sdk.PostgreSql/MSBuild.Sdk.PostgreSql.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/LinuxContainer.Tests/LinuxContainer.Tests.csproj">
-      <Build Solution="Debug|*" Project="false" />
-    </Project>
+    <Project Path="tests/LinuxContainer.Tests/LinuxContainer.Tests.csproj" />
     <Project Path="tests/mbulava.PostgreSql.Dac.Tests/mbulava.PostgreSql.Dac.Tests.csproj" />
     <Project Path="tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj" />
     <Project Path="tests/ProjectExtract-Tests/ProjectExtract-Tests.csproj" />

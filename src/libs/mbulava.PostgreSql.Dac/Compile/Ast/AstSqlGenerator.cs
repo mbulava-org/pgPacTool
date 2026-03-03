@@ -128,6 +128,11 @@ public static class AstSqlGenerator
                 return GenerateSqlFromTrigger(trigStmt);
             }
 
+            if (stmtElement.TryGetProperty("InsertStmt", out var insertStmt))
+            {
+                return GenerateSqlFromInsert(insertStmt);
+            }
+
             System.Diagnostics.Debug.WriteLine($"TryExtractSqlFromAstJson: Unknown statement type");
             return null;
         }
@@ -163,10 +168,11 @@ public static class AstSqlGenerator
             return subtype switch
             {
                 "AT_DropColumn" => $"ALTER TABLE {QuoteIdent(schema)}.{QuoteIdent(table)} DROP COLUMN {(alterCmd.TryGetProperty("missing_ok", out var me) && me.GetBoolean() ? "IF EXISTS " : "")}{QuoteIdent(name)};",
-                "AT_ColumnType" => GenerateAlterColumnType(schema, table, alterCmd),
+                "AT_ColumnType" or "AT_AlterColumnType" => GenerateAlterColumnType(schema, table, alterCmd),
                 "AT_AddColumn" => GenerateAddColumn(schema, table, alterCmd),
                 "AT_SetNotNull" => $"ALTER TABLE {QuoteIdent(schema)}.{QuoteIdent(table)} ALTER COLUMN {QuoteIdent(name)} SET NOT NULL;",
                 "AT_DropNotNull" => $"ALTER TABLE {QuoteIdent(schema)}.{QuoteIdent(table)} ALTER COLUMN {QuoteIdent(name)} DROP NOT NULL;",
+                "AT_ColumnDefault" => GenerateColumnDefault(schema, table, alterCmd),
                 "AT_SetDefault" => GenerateSetDefault(schema, table, alterCmd),
                 "AT_DropDefault" => $"ALTER TABLE {QuoteIdent(schema)}.{QuoteIdent(table)} ALTER COLUMN {QuoteIdent(name)} DROP DEFAULT;",
                 "AT_AddConstraint" => GenerateAddConstraint(schema, table, alterCmd),
@@ -319,16 +325,33 @@ public static class AstSqlGenerator
     /// </summary>
     private static string ExtractTypeName(JsonElement typeName)
     {
-        if (!typeName.TryGetProperty("TypeName", out var typeNameNode))
-            return "TEXT";
+        // Try with TypeName wrapper first
+        JsonElement typeNameNode = typeName;
+        if (typeName.TryGetProperty("TypeName", out var wrappedNode))
+        {
+            typeNameNode = wrappedNode;
+        }
 
+        // Extract names array
         if (!typeNameNode.TryGetProperty("names", out var names) || names.GetArrayLength() == 0)
             return "TEXT";
 
         var lastName = names[names.GetArrayLength() - 1];
         if (lastName.TryGetProperty("String", out var str) && str.TryGetProperty("sval", out var sval))
         {
-            return sval.GetString()?.ToUpper() ?? "TEXT";
+            var typeName2 = sval.GetString()?.ToUpper() ?? "TEXT";
+
+            // Map PostgreSQL internal types to SQL types
+            return typeName2 switch
+            {
+                "INT8" => "BIGINT",
+                "INT4" => "INTEGER",
+                "INT2" => "SMALLINT",
+                "BOOL" => "BOOLEAN",
+                "VARCHAR" => "VARCHAR",
+                "BPCHAR" => "CHAR",
+                _ => typeName2
+            };
         }
 
         return "TEXT";
@@ -387,6 +410,32 @@ public static class AstSqlGenerator
 
             var defaultVal = ExtractExpression(def);
             return $"ALTER TABLE {QuoteIdent(schema)}.{QuoteIdent(table)} ALTER COLUMN {QuoteIdent(colName)} SET DEFAULT {defaultVal};";
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Generates SET DEFAULT or DROP DEFAULT based on presence of def
+    /// </summary>
+    private static string? GenerateColumnDefault(string schema, string table, JsonElement alterCmd)
+    {
+        try
+        {
+            var colName = alterCmd.GetProperty("name").GetString();
+
+            // If def is present, it's SET DEFAULT; otherwise DROP DEFAULT
+            if (alterCmd.TryGetProperty("def", out var def))
+            {
+                var defaultVal = ExtractExpression(def);
+                return $"ALTER TABLE {QuoteIdent(schema)}.{QuoteIdent(table)} ALTER COLUMN {QuoteIdent(colName)} SET DEFAULT {defaultVal};";
+            }
+            else
+            {
+                return $"ALTER TABLE {QuoteIdent(schema)}.{QuoteIdent(table)} ALTER COLUMN {QuoteIdent(colName)} DROP DEFAULT;";
+            }
         }
         catch
         {
@@ -457,11 +506,25 @@ public static class AstSqlGenerator
     {
         try
         {
-            if (!alterCmd.TryGetProperty("newowner", out var newOwner) || 
-                !newOwner.TryGetProperty("RoleSpec", out var roleSpec))
+            string? roleName = null;
+
+            if (alterCmd.TryGetProperty("newowner", out var newOwner))
+            {
+                // Try RoleSpec wrapper
+                if (newOwner.TryGetProperty("RoleSpec", out var roleSpec))
+                {
+                    roleName = roleSpec.TryGetProperty("rolename", out var rn) ? rn.GetString() : null;
+                }
+                // Try direct rolename (if not wrapped)
+                else if (newOwner.TryGetProperty("rolename", out var rn))
+                {
+                    roleName = rn.GetString();
+                }
+            }
+
+            if (roleName == null)
                 return null;
 
-            var roleName = roleSpec.TryGetProperty("rolename", out var rn) ? rn.GetString() : null;
             return $"ALTER TABLE {QuoteIdent(schema)}.{QuoteIdent(table)} OWNER TO {QuoteIdent(roleName)};";
         }
         catch
@@ -692,35 +755,77 @@ public static class AstSqlGenerator
                                     {
                                         if (field.TryGetProperty("String", out var str) && str.TryGetProperty("sval", out var sval))
                                         {
-                                            fieldNames.Add(sval.GetString() ?? "");
+                                            var fieldName = sval.GetString() ?? "";
+                                            // Handle wildcards
+                                            if (fieldName == "*")
+                                                fieldNames.Add("*");
+                                            else
+                                                fieldNames.Add(QuoteIdent(fieldName));
+                                        }
+                                        else if (field.TryGetProperty("A_Star", out _))
+                                        {
+                                            fieldNames.Add("*");
                                         }
                                     }
                                     if (fieldNames.Count > 0)
-                                        targets.Add(string.Join(".", fieldNames.Select(QuoteIdent)));
+                                        targets.Add(string.Join(".", fieldNames));
                                 }
                             }
                             else if (val.TryGetProperty("A_Const", out var aConst))
                             {
                                 targets.Add(ExtractConstant(aConst));
                             }
+                            else if (val.TryGetProperty("FuncCall", out var funcCall))
+                            {
+                                // Simplified function call extraction
+                                if (funcCall.TryGetProperty("funcname", out var funcName) && funcName.GetArrayLength() > 0)
+                                {
+                                    var lastFunc = funcName[funcName.GetArrayLength() - 1];
+                                    if (lastFunc.TryGetProperty("String", out var str) && str.TryGetProperty("sval", out var sval))
+                                    {
+                                        targets.Add($"{sval.GetString()}(...)");
+                                    }
+                                }
+                            }
                         }
                     }
                 }
-                sql += string.Join(", ", targets);
+                sql += targets.Count > 0 ? string.Join(", ", targets) : "*";
             }
 
             if (selectStmt.TryGetProperty("fromClause", out var fromClause) && fromClause.GetArrayLength() > 0)
             {
-                var from = fromClause[0];
-                if (from.TryGetProperty("RangeVar", out var rangeVar))
+                var fromParts = new List<string>();
+                foreach (var from in fromClause.EnumerateArray())
                 {
-                    var schema = rangeVar.TryGetProperty("schemaname", out var s) ? s.GetString() : null;
-                    var table = rangeVar.TryGetProperty("relname", out var t) ? t.GetString() : null;
-                    if (schema != null)
-                        sql += $" FROM {QuoteIdent(schema)}.{QuoteIdent(table)}";
-                    else
-                        sql += $" FROM {QuoteIdent(table)}";
+                    if (from.TryGetProperty("RangeVar", out var rangeVar))
+                    {
+                        var schema = rangeVar.TryGetProperty("schemaname", out var s) ? s.GetString() : null;
+                        var table = rangeVar.TryGetProperty("relname", out var t) ? t.GetString() : null;
+                        var alias = rangeVar.TryGetProperty("alias", out var a) && a.TryGetProperty("Alias", out var al) && al.TryGetProperty("aliasname", out var an) ? an.GetString() : null;
+
+                        if (schema != null)
+                            fromParts.Add($"{QuoteIdent(schema)}.{QuoteIdent(table)}" + (alias != null ? $" AS {QuoteIdent(alias)}" : ""));
+                        else
+                            fromParts.Add(QuoteIdent(table) + (alias != null ? $" AS {QuoteIdent(alias)}" : ""));
+                    }
+                    else if (from.TryGetProperty("JoinExpr", out var joinExpr))
+                    {
+                        // Simplified JOIN handling
+                        fromParts.Add("/* JOIN expression */");
+                    }
                 }
+
+                if (fromParts.Count > 0)
+                    sql += $" FROM {string.Join(", ", fromParts)}";
+            }
+
+            // Handle WHERE clause
+            if (selectStmt.TryGetProperty("whereClause", out var whereClause))
+            {
+                var whereExpr = ExtractExpression(whereClause);
+                if (whereExpr != "NULL")
+                    sql += $" WHERE {whereExpr}";
             }
 
             return sql + ";";
@@ -798,6 +903,63 @@ public static class AstSqlGenerator
 
             // Simplified trigger generation
             return $"CREATE TRIGGER {QuoteIdent(trigName)} AFTER INSERT ON {QuoteIdent(schema)}.{QuoteIdent(table)} FOR EACH ROW EXECUTE FUNCTION trigger_function();";
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Generates INSERT SQL
+    /// </summary>
+    private static string? GenerateSqlFromInsert(JsonElement insertStmt)
+    {
+        try
+        {
+            if (!insertStmt.TryGetProperty("relation", out var relation))
+                return null;
+
+            var (schema, table) = ExtractRelationName(relation);
+            var sql = $"INSERT INTO {QuoteIdent(schema)}.{QuoteIdent(table)}";
+
+            // Extract column names
+            if (insertStmt.TryGetProperty("cols", out var cols) && cols.GetArrayLength() > 0)
+            {
+                var colNames = new List<string>();
+                foreach (var col in cols.EnumerateArray())
+                {
+                    if (col.TryGetProperty("ResTarget", out var resTarget))
+                    {
+                        var colName = resTarget.TryGetProperty("name", out var n) ? n.GetString() : null;
+                        if (colName != null)
+                            colNames.Add(QuoteIdent(colName));
+                    }
+                }
+                if (colNames.Count > 0)
+                    sql += $" ({string.Join(", ", colNames)})";
+            }
+
+            // Extract VALUES
+            if (insertStmt.TryGetProperty("selectStmt", out var selectStmt) && 
+                selectStmt.TryGetProperty("SelectStmt", out var selectNode))
+            {
+                if (selectNode.TryGetProperty("valuesLists", out var valuesLists) && valuesLists.GetArrayLength() > 0)
+                {
+                    var valuesList = valuesLists[0];
+                    if (valuesList.TryGetProperty("List", out var list) && list.TryGetProperty("items", out var items))
+                    {
+                        var values = new List<string>();
+                        foreach (var item in items.EnumerateArray())
+                        {
+                            values.Add(ExtractExpression(item));
+                        }
+                        sql += $" VALUES ({string.Join(", ", values)})";
+                    }
+                }
+            }
+
+            return sql + ";";
         }
         catch
         {

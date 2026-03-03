@@ -3,7 +3,7 @@ using Xunit.Abstractions;
 using Npgquery;
 using System.Text.Json;
 
-namespace Npgquery.Tests;
+namespace NpgqueryExtended.Tests;
 
 /// <summary>
 /// Verifies that version-specific PostgreSQL features are properly isolated

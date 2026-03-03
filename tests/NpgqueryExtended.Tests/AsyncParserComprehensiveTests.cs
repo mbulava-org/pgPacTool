@@ -3,7 +3,7 @@ using Xunit.Abstractions;
 using Npgquery;
 using System.Text.Json;
 
-namespace Npgquery.Tests;
+namespace NpgqueryExtended.Tests;
 
 /// <summary>
 /// Comprehensive tests for async parser functionality across all supported PostgreSQL versions

@@ -3,7 +3,7 @@ using Xunit.Abstractions;
 using Npgquery;
 using System.Text.Json;
 
-namespace Npgquery.Tests;
+namespace NpgqueryExtended.Tests;
 
 /// <summary>
 /// Verifies that all native library functionality is properly exposed through the Parser API

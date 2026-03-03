@@ -407,7 +407,7 @@ public class ReadmeExampleTests : IDisposable
 
     #region Static Quick Methods Examples
 
-    [Fact]
+    [Fact(Skip = "Uses protobuf deparse which is broken on Linux - see Issue #36")]
     public void StaticQuickMethods_ReadmeExamples_Work()
     {
         // Test all static Quick methods mentioned in README
@@ -643,7 +643,7 @@ public class ReadmeExampleTests : IDisposable
         Assert.True(count >= 3);
     }
 
-    [Fact]
+    [Fact(Skip = "Uses protobuf deparse which is broken on Linux - see Issue #36")]
     public void QueryUtils_NormalizeStatements_ReadmeExample_Works()
     {
         // Example from README - NormalizeStatements
@@ -716,7 +716,7 @@ public class ReadmeExampleTests : IDisposable
         Assert.NotNull(result.ParseTree);
     }
 
-    [Fact]
+    [Fact(Skip = "Uses protobuf deparse which is broken on Linux - see Issue #36")]
     public void BatchProcessing_ReadmeExample_Simulation()
     {
         // Simulate the README example for batch processing

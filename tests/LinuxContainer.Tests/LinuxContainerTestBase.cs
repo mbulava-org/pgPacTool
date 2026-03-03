@@ -49,13 +49,17 @@ public abstract class LinuxContainerTestBase
 
         try
         {
+            // Normalize line endings to Unix (LF) for Linux bash compatibility
+            // Windows uses CRLF (\r\n) by default, but Linux bash requires LF (\n)
+            var normalizedScript = scriptContent.Replace("\r\n", "\n").Replace("\r", "\n");
+
             // Create container
             var container = new ContainerBuilder()
                 .WithImage("mcr.microsoft.com/dotnet/sdk:10.0")
                 .WithName($"pgpactool-linux-test-{name}-{Guid.NewGuid():N}"[..63]) // Docker name limit
                 .WithBindMount(solutionRoot, "/workspace")
                 .WithWorkingDirectory("/workspace")
-                .WithCommand("/bin/bash", "-c", scriptContent)
+                .WithCommand("/bin/bash", "-c", normalizedScript)
                 .WithCleanUp(true)
                 .Build();
 

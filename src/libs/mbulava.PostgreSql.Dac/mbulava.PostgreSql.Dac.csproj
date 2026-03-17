@@ -28,13 +28,31 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Npgquery\Npgquery\Npgquery.csproj" />
+    <ProjectReference Include="..\Npgquery\Npgquery\Npgquery.csproj">
+      <!-- Embed the assembly - don't create a NuGet dependency -->
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>compile;build;native;contentfiles;analyzers</IncludeAssets>
+    </ProjectReference>
   </ItemGroup>
 
-  <!-- Include README in package -->
+  <!-- Include README and LICENSE in package -->
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
     <None Include="LICENSE.txt" Pack="true" PackagePath="\" />
   </ItemGroup>
+
+  <!-- Include Npgquery DLL and native libraries in the package -->
+  <Target Name="IncludeNpgqueryInPackage" AfterTargets="Build">
+    <ItemGroup>
+      <!-- Include Npgquery.dll -->
+      <None Include="$(OutputPath)Npgquery.dll" Pack="true" PackagePath="lib\$(TargetFramework)\" />
+
+      <!-- Include native libraries from Npgquery -->
+      <None Include="..\Npgquery\Npgquery\runtimes\**\*.*">
+        <Pack>true</Pack>
+        <PackagePath>runtimes\%(RecursiveDir)</PackagePath>
+      </None>
+    </ItemGroup>
+  </Target>
 
 </Project>

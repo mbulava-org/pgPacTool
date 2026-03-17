@@ -27,6 +27,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\libs\mbulava.PostgreSql.Dac\mbulava.PostgreSql.Dac.csproj" />
+    <ProjectReference Include="..\..\src\libs\Npgquery\Npgquery\Npgquery.csproj" />
   </ItemGroup>
 
   <ItemGroup>

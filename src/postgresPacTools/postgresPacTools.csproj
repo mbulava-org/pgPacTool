@@ -5,11 +5,27 @@
 	<TargetFramework>net10.0</TargetFramework>
 	<ImplicitUsings>enable</ImplicitUsings>
 	<Nullable>enable</Nullable>
-	<PackageId>PostgresPacTools</PackageId>
-	<PackageId>PostgresPacTools</PackageId>
-	<Title>PostgresPacTools</Title>
-	<Description>Tools for packaging and extracting PostgreSQL projects</Description>
 
+	<!-- Global Tool Configuration -->
+	<PackAsTool>true</PackAsTool>
+	<ToolCommandName>pgpac</ToolCommandName>
+	<IsPackable>true</IsPackable>
+
+	<!-- Package Metadata -->
+	<PackageId>postgresPacTools</PackageId>
+	<Version>1.0.0-preview1</Version>
+	<Title>PostgreSQL Data-Tier Application Tools (CLI)</Title>
+	<Description>Command-line tools for PostgreSQL database lifecycle management. Extract, compile, validate, and deploy database schemas as code. SqlPackage equivalent for PostgreSQL. Supports PostgreSQL 16 and 17.</Description>
+	<Authors>mbulava</Authors>
+	<Company>mbulava</Company>
+	<Copyright>© 2025 Mike Bulava. All rights reserved.</Copyright>
+	<PackageTags>postgresql;cli;tool;database;sqlpackage;dacpac;pgpac;devops;schema;migration</PackageTags>
+	<PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+	<PackageProjectUrl>https://github.com/mbulava-org/pgPacTool</PackageProjectUrl>
+	<RepositoryUrl>https://github.com/mbulava-org/pgPacTool</RepositoryUrl>
+	<RepositoryType>git</RepositoryType>
+	<PackageReadmeFile>README.md</PackageReadmeFile>
+	<PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
   </PropertyGroup>
 
   <ItemGroup>
@@ -18,6 +34,12 @@
 
   <ItemGroup>
 	<ProjectReference Include="..\libs\mbulava.PostgreSql.Dac\mbulava.PostgreSql.Dac.csproj" />
+  </ItemGroup>
+
+  <!-- Include README in package -->
+  <ItemGroup>
+	<None Include="README.md" Pack="true" PackagePath="\" />
+	<None Include="LICENSE.txt" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <!-- Import Npgquery native library copy targets -->

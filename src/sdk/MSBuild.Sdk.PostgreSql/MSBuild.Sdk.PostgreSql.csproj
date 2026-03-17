@@ -9,11 +9,12 @@
     <PackageId>MSBuild.Sdk.PostgreSql</PackageId>
     <Title>MSBuild SDK for PostgreSQL Database Projects</Title>
     <Description>MSBuild SDK that enables SQL Server-style database project workflow for PostgreSQL. Build .csproj files with SQL scripts into deployable .pgpac packages.</Description>
-    <Authors>mbulava</Authors>
-    <Company>mbulava</Company>
-    <Copyright>© mbulava. All rights reserved.</Copyright>
+    <Authors>mbulava-org</Authors>
+    <Company>mbulava-org</Company>
+    <Copyright>© 2025 mbulava-org. All rights reserved.</Copyright>
     <PackageTags>postgresql;database;msbuild;sdk;dacpac;pgpac;sql;devops</PackageTags>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <PackageProjectUrl>https://github.com/mbulava-org/pgPacTool</PackageProjectUrl>
     <RepositoryUrl>https://github.com/mbulava-org/pgPacTool</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
@@ -32,6 +33,7 @@
   <ItemGroup>
     <None Include="Sdk\**\*" Pack="true" PackagePath="Sdk\" />
     <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="LICENSE.txt" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <!-- Dependencies for build tasks -->

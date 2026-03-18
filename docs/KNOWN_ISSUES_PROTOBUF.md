@@ -41,8 +41,12 @@ System.AccessViolationException: Attempted to read or write protected memory.
 2. **Protected ExtractError()** - Wrapped in try-catch to handle AccessViolationException gracefully
 3. **Use JSON parsing exclusively** - pgPacTool uses only Parse() method which returns JSON AST
 
-### Tests Skipped
-#### FunctionalityExposureTests.cs
+### Tests Skipped (34 total)
+
+#### mbulava.PostgreSql.Dac.Tests - AstSqlGeneratorDiagnosticsTests.cs
+- `Diagnostic_ProtobufDeparse_ShowsRawOutput` - [Ignore] Attempts to deparse AST using protobuf
+
+#### NpgqueryExtended.Tests - FunctionalityExposureTests.cs
 - `Parser_ExposesProtobufParseMethod`
 - `Parser_ExposesDeparseMethod`
 - `StaticMethods_QuickScanWithProtobuf_Works`

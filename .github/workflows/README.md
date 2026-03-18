@@ -81,7 +81,7 @@ git push origin preview1
 |-------|----------|
 | "NUGET_API_KEY not set" | Add secret to repository settings |
 | "Package already exists" | Increment version number in .csproj files |
-| Tests fail | Run locally: `dotnet test --filter "Category!=Docker"` |
+| Tests fail | Run locally: `dotnet test --filter "Category!=LinuxContainer"` (includes Integration tests) |
 | Build fails | Run locally: `.\scripts\Pack-PreviewRelease.ps1 -TestLocally` |
 
 ## Related Documentation

@@ -181,12 +181,14 @@ dotnet build
 ### Tests fail in workflow
 
 **Causes**:
-- Docker tests running (should be filtered out)
 - Code issues
+- Docker not available (shouldn't happen on ubuntu-latest runners)
 
 **Solution**: 
-- Verify tests pass locally: `dotnet test --filter "Category!=Docker"`
-- Check test output in workflow logs
+- Workflow includes Integration tests with Docker: `dotnet test --filter "Category!=LinuxContainer"`
+- Only LinuxContainer tests are skipped (used for local Linux compatibility testing)
+- Verify tests pass locally: `dotnet test --filter "Category!=LinuxContainer"`
+- Check test output in workflow logs for specific failures
 
 ### Native libraries not found in package
 

@@ -22,7 +22,7 @@
 │  ✅ Setup .NET 10                                               │
 │  ✅ Restore dependencies                                        │
 │  ✅ Build Release configuration                                 │
-│  ✅ Run tests (non-Docker)                                      │
+│  ✅ Run tests with Docker (skip LinuxContainer tests)          │
 │  ✅ Upload test results                                         │
 │                                                                 │
 └─────────────┬───────────────────────────────────────────────────┘

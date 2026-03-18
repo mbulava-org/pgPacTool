@@ -24,7 +24,7 @@ env:
 jobs:
   build-and-test:
     name: Build and Test
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     
     steps:
     - name: Checkout code
@@ -43,8 +43,8 @@ jobs:
     - name: Build solution
       run: dotnet build --configuration ${{ env.CONFIGURATION }} --no-restore
     
-    - name: Run unit tests (non-Docker)
-      run: dotnet test --configuration ${{ env.CONFIGURATION }} --no-build --filter "Category!=Docker" --verbosity normal --logger "trx;LogFileName=test-results.trx"
+    - name: Run tests (include Docker, skip LinuxContainer)
+      run: dotnet test --configuration ${{ env.CONFIGURATION }} --no-build --filter "Category!=LinuxContainer" --verbosity normal --logger "trx;LogFileName=test-results.trx"
     
     - name: Upload test results
       if: always()

@@ -14,6 +14,7 @@ namespace LinuxContainer.Tests;
 /// This helps catch Linux-specific issues (like protobuf corruption) before pushing to GitHub Actions.
 /// </summary>
 [TestFixture]
+[Category("LinuxContainer")]
 public class LinuxContainerTestRunner : LinuxContainerTestBase
 {
 

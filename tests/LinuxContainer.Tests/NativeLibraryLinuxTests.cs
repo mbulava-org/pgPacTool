@@ -7,8 +7,7 @@ namespace LinuxContainer.Tests;
 /// This ensures our multi-version PostgreSQL support works correctly on Linux
 /// </summary>
 [TestFixture]
-[Category("Linux")]
-[Category("Container")]
+[Category("LinuxContainer")]
 public class NativeLibraryLinuxTests : LinuxContainerTestBase
 {
     [Test]

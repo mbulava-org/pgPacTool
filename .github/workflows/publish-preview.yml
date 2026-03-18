@@ -38,13 +38,13 @@ jobs:
         dotnet-version: ${{ env.DOTNET_VERSION }}
     
     - name: Restore dependencies
-      run: dotnet restore
-    
+      run: dotnet restore --runtime linux-x64
+
     - name: Build solution
-      run: dotnet build --configuration ${{ env.CONFIGURATION }} --no-restore
-    
+      run: dotnet build --configuration ${{ env.CONFIGURATION }} --runtime linux-x64 --no-restore
+
     - name: Run tests (include Docker, skip LinuxContainer)
-      run: dotnet test --configuration ${{ env.CONFIGURATION }} --no-build --filter "Category!=LinuxContainer" --verbosity normal --logger "trx;LogFileName=test-results.trx"
+      run: dotnet test --configuration ${{ env.CONFIGURATION }} --runtime linux-x64 --no-build --filter "Category!=LinuxContainer" --verbosity normal --logger "trx;LogFileName=test-results.trx"
     
     - name: Upload test results
       if: always()

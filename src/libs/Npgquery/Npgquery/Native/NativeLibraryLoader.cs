@@ -35,6 +35,17 @@ public static class NativeLibraryLoader
 
     static NativeLibraryLoader()
     {
+        // Static constructor runs when class is first accessed
+        // But Module Initializer (ModuleInitializer.cs) runs BEFORE any code
+        LogDiagnostic("Static constructor called");
+    }
+
+    /// <summary>
+    /// Explicitly ensures the native library resolver is initialized
+    /// Called by ModuleInitializer to guarantee it runs before any P/Invoke
+    /// </summary>
+    public static void EnsureInitialized()
+    {
         InitializeDllImportResolver();
     }
 

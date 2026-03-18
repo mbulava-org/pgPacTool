@@ -1,37 +1,46 @@
 <Project>
 	<!-- This file is automatically included by projects that reference Npgquery -->
-	<!-- It ensures native libraries are copied to the output directory -->
+	<!-- It ensures native libraries are copied to runtime-specific directories (standard .NET approach) -->
 
 	<ItemGroup>
 		<!-- Define native library locations based on runtime -->
-		<NativeLibraryWin Include="$(MSBuildThisFileDirectory)..\runtimes\win-x64\native\pg_query.dll" Condition="'$(OS)' == 'Windows_NT'" />
-		<NativeLibraryLinux Include="$(MSBuildThisFileDirectory)..\runtimes\linux-x64\native\pg_query.so" Condition="'$(OS)' != 'Windows_NT'" />
+		<NativeLibraryWin Include="$(MSBuildThisFileDirectory)..\runtimes\win-x64\native\*.dll" Condition="Exists('$(MSBuildThisFileDirectory)..\runtimes\win-x64\native')" />
+		<NativeLibraryLinux Include="$(MSBuildThisFileDirectory)..\runtimes\linux-x64\native\*.so" Condition="Exists('$(MSBuildThisFileDirectory)..\runtimes\linux-x64\native')" />
+		<NativeLibraryOSX Include="$(MSBuildThisFileDirectory)..\runtimes\osx-x64\native\*.dylib" Condition="Exists('$(MSBuildThisFileDirectory)..\runtimes\osx-x64\native')" />
 	</ItemGroup>
 
 	<!-- Copy native libraries to output directory after build -->
+	<!-- Using ONLY runtime-specific folders (runtimes/{rid}/native/) for proper .NET native library probing -->
 	<Target Name="CopyNpgqueryNativeLibraries" AfterTargets="Build">
-		<!-- Copy to root output for direct loading -->
-		<Copy 
-			SourceFiles="@(NativeLibraryWin)" 
-			DestinationFolder="$(OutputPath)" 
-			SkipUnchangedFiles="true" 
-			Condition="'$(OS)' == 'Windows_NT' AND '@(NativeLibraryWin)' != ''" />
-		<Copy 
-			SourceFiles="@(NativeLibraryLinux)" 
-			DestinationFolder="$(OutputPath)" 
-			SkipUnchangedFiles="true" 
-			Condition="'$(OS)' != 'Windows_NT' AND '@(NativeLibraryLinux)' != ''" />
+		<Message Importance="High" Text="[Npgquery] Copying native libraries to runtime-specific folders..." />
 
-		<!-- Also copy to runtime-specific folder for .NET runtime probing -->
+		<!-- Windows: Copy to runtimes/win-x64/native/ -->
 		<Copy 
 			SourceFiles="@(NativeLibraryWin)" 
 			DestinationFolder="$(OutputPath)runtimes\win-x64\native\" 
 			SkipUnchangedFiles="true" 
-			Condition="'$(OS)' == 'Windows_NT' AND '@(NativeLibraryWin)' != ''" />
+			Condition="'@(NativeLibraryWin)' != ''" />
+		<Message Importance="High" Text="[Npgquery] Copied Windows native libraries: @(NativeLibraryWin->'%(Filename)%(Extension)', ', ')" 
+				 Condition="'@(NativeLibraryWin)' != ''" />
+
+		<!-- Linux: Copy to runtimes/linux-x64/native/ -->
 		<Copy 
 			SourceFiles="@(NativeLibraryLinux)" 
 			DestinationFolder="$(OutputPath)runtimes\linux-x64\native\" 
 			SkipUnchangedFiles="true" 
-			Condition="'$(OS)' != 'Windows_NT' AND '@(NativeLibraryLinux)' != ''" />
+			Condition="'@(NativeLibraryLinux)' != ''" />
+		<Message Importance="High" Text="[Npgquery] Copied Linux native libraries: @(NativeLibraryLinux->'%(Filename)%(Extension)', ', ')" 
+				 Condition="'@(NativeLibraryLinux)' != ''" />
+
+		<!-- macOS: Copy to runtimes/osx-x64/native/ -->
+		<Copy 
+			SourceFiles="@(NativeLibraryOSX)" 
+			DestinationFolder="$(OutputPath)runtimes\osx-x64\native\" 
+			SkipUnchangedFiles="true" 
+			Condition="'@(NativeLibraryOSX)' != ''" />
+		<Message Importance="High" Text="[Npgquery] Copied macOS native libraries: @(NativeLibraryOSX->'%(Filename)%(Extension)', ', ')" 
+				 Condition="'@(NativeLibraryOSX)' != ''" />
+
+		<Message Importance="High" Text="[Npgquery] Native library deployment complete. Libraries will be loaded from runtime-specific paths." />
 	</Target>
 </Project>

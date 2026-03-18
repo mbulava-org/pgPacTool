@@ -42,9 +42,9 @@
   </ItemGroup>
 
   <!-- Include Npgquery DLL and native libraries in the package -->
-  <Target Name="IncludeNpgqueryInPackage" AfterTargets="Build">
+  <Target Name="IncludeNpgqueryInPackage" BeforeTargets="GenerateNuspec">
     <ItemGroup>
-      <!-- Include Npgquery.dll -->
+      <!-- Include Npgquery.dll from build output -->
       <None Include="$(OutputPath)Npgquery.dll" Pack="true" PackagePath="lib\$(TargetFramework)\" />
 
       <!-- Include native libraries from Npgquery -->

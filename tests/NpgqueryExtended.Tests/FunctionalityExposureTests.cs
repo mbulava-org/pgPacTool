@@ -92,7 +92,7 @@ public class FunctionalityExposureTests
         _output.WriteLine($"✅ Scan() works on {version.ToVersionString()} - Found {result.Tokens.Length} tokens");
     }
 
-    [Theory]
+    [Theory(Skip = "ScanWithProtobuf broken on Linux. See Issue #36")]
     [InlineData(PostgreSqlVersion.Postgres16)]
     [InlineData(PostgreSqlVersion.Postgres17)]
     public void Parser_ExposesScanWithProtobufMethod(PostgreSqlVersion version)

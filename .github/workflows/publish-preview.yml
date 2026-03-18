@@ -129,25 +129,25 @@ jobs:
         dotnet pack src/libs/mbulava.PostgreSql.Dac/mbulava.PostgreSql.Dac.csproj `
           --configuration ${{ env.CONFIGURATION }} `
           --output ${{ env.PACKAGES_DIR }} `
-          --no-build `
+          --no-restore `
           /p:Version=${{ steps.get_version.outputs.VERSION }}
       shell: pwsh
-    
+
     - name: Pack MSBuild.Sdk.PostgreSql
       run: |
         dotnet pack src/sdk/MSBuild.Sdk.PostgreSql/MSBuild.Sdk.PostgreSql.csproj `
           --configuration ${{ env.CONFIGURATION }} `
           --output ${{ env.PACKAGES_DIR }} `
-          --no-build `
+          --no-restore `
           /p:Version=${{ steps.get_version.outputs.VERSION }}
       shell: pwsh
-    
+
     - name: Pack postgresPacTools
       run: |
         dotnet pack src/postgresPacTools/postgresPacTools.csproj `
           --configuration ${{ env.CONFIGURATION }} `
           --output ${{ env.PACKAGES_DIR }} `
-          --no-build `
+          --no-restore `
           /p:Version=${{ steps.get_version.outputs.VERSION }}
       shell: pwsh
     

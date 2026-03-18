@@ -45,7 +45,19 @@ jobs:
 
     - name: Run tests (exclude NpgqueryExtended.Tests due to Issue #37, skip LinuxContainer)
       run: |
-        dotnet test --configuration ${{ env.CONFIGURATION }} --no-build --filter "FullyQualifiedName!~NpgqueryExtended.Tests&Category!=LinuxContainer" --verbosity normal --logger "trx;LogFileName=test-results.trx"
+        # Run only ProjectExtract-Tests and Dac.Tests
+        # NpgqueryExtended.Tests crashes on Linux (Issue #37)
+        # LinuxContainer.Tests excluded via Category filter
+
+        dotnet test tests/ProjectExtract-Tests/ProjectExtract-Tests.csproj \
+          --configuration ${{ env.CONFIGURATION }} --no-build \
+          --filter "Category!=LinuxContainer" \
+          --verbosity normal --logger "trx;LogFileName=test-results-projectextract.trx"
+
+        dotnet test tests/mbulava.PostgreSql.Dac.Tests/mbulava.PostgreSql.Dac.Tests.csproj \
+          --configuration ${{ env.CONFIGURATION }} --no-build \
+          --filter "Category!=LinuxContainer" \
+          --verbosity normal --logger "trx;LogFileName=test-results-dac.trx"
     
     - name: Upload test results
       if: always()

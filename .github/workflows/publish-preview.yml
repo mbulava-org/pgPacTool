@@ -164,7 +164,7 @@ jobs:
         $dacPackage = Get-ChildItem ${{ env.PACKAGES_DIR }} -Filter "mbulava.PostgreSql.Dac*.nupkg" | Select-Object -First 1
         if ($dacPackage) {
           Write-Host "`n🔍 Verifying Npgquery embedding..." -ForegroundColor Yellow
-          $tempDir = Join-Path $env:TEMP "verify-$(Get-Random)"
+          $tempDir = if ($IsLinux -or $IsMacOS) { "/tmp/verify-$(Get-Random)" } else { Join-Path $env:TEMP "verify-$(Get-Random)" }
           Expand-Archive -Path $dacPackage.FullName -DestinationPath $tempDir -Force
           
           $hasNpgquery = Test-Path "$tempDir/lib/net10.0/Npgquery.dll"

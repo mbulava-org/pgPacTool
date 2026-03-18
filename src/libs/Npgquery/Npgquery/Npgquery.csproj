@@ -7,10 +7,10 @@
 		<VersionSuffix Condition=" '$(IsPreview)' == 'true' ">preview</VersionSuffix>
 		<Version Condition=" '$(VersionSuffix)' == '' ">$(ClientVersion)</Version>
 		<Version Condition=" '$(VersionSuffix)' != '' ">$(ClientVersion)-$(VersionSuffix)</Version>
-		<AssemblyVersion>$(Version)</AssemblyVersion>
-		<FileVersion>$(Version)</FileVersion>
-		<InformationalVersion>$(ClientVersion)</InformationalVersion>
+		<!-- AssemblyVersion must be numeric only, no prerelease suffix -->
+		<AssemblyVersion>$(ClientVersion)</AssemblyVersion>
 		<FileVersion>$(ClientVersion)</FileVersion>
+		<InformationalVersion>$(Version)</InformationalVersion>
 		<TargetFramework>net10.0</TargetFramework>
 		<LangVersion>13.0</LangVersion>
 		<CurrentDate>$([System.DateTime]::Now.ToString(yyyyMMdd))</CurrentDate>

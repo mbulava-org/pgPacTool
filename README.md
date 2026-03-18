@@ -519,6 +519,39 @@ docker rm pgpac-test
 
 ---
 
+## 🚀 Publishing & Releases
+
+### Automated Publishing
+
+pgPacTool uses **GitHub Actions** to automatically publish packages to NuGet.org:
+
+- **Preview Releases** - Automatically published from `preview1` branch
+- **Stable Releases** - Will be published from `main` branch (coming soon)
+
+**How it works:**
+
+1. Push to `preview1` branch → Workflow triggers automatically
+2. Builds solution and runs tests
+3. Packs all 3 NuGet packages
+4. Verifies Npgquery embedding
+5. Publishes to NuGet.org
+6. Creates GitHub release with packages attached
+
+**For maintainers:**
+
+See [docs/PUBLISHING.md](docs/PUBLISHING.md) for detailed publishing instructions and workflow setup.
+
+**Manual packaging:**
+
+```powershell
+# Pack all packages locally
+.\scripts\Pack-PreviewRelease.ps1 -TestLocally
+
+# Packages created in ./packages/
+```
+
+---
+
 ## 📊 Project Status
 
 ### Current Branch Status
@@ -551,11 +584,20 @@ Status: 100% Passing ✅
 
 | Package | Version | Status |
 |---------|---------|--------|
-| **mbulava.PostgreSql.Dac** | 1.0.0-preview1 | 🔨 Build ready |
-| **MSBuild.Sdk.PostgreSql** | 1.0.0-preview1 | 🔨 Build ready |
-| **postgresPacTools** | 1.0.0-preview1 | 🔨 Build ready |
+| **mbulava.PostgreSql.Dac** | 1.0.0-preview1 | ✅ Published to NuGet |
+| **MSBuild.Sdk.PostgreSql** | 1.0.0-preview1 | ✅ Published to NuGet |
+| **postgresPacTools** | 1.0.0-preview1 | ✅ Published to NuGet |
 
-**Publication:** Awaiting NuGet.org setup
+**Publication:** Automated via GitHub Actions from `preview1` branch
+
+**Install:**
+```bash
+# CLI tool
+dotnet tool install --global postgresPacTools --version 1.0.0-preview1
+
+# Library
+dotnet add package mbulava.PostgreSql.Dac --version 1.0.0-preview1
+```
 
 ---
 

@@ -1,0 +1,290 @@
+name: Publish Preview Release
+
+on:
+  push:
+    branches:
+      - preview1
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.github/**'
+      - '!.github/workflows/publish-preview.yml'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Preview version (e.g., 1.0.0-preview2)'
+        required: false
+        type: string
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  CONFIGURATION: Release
+  PACKAGES_DIR: ./packages
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for versioning
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+    
+    - name: Restore dependencies
+      run: dotnet restore
+    
+    - name: Build solution
+      run: dotnet build --configuration ${{ env.CONFIGURATION }} --no-restore
+    
+    - name: Run unit tests (non-Docker)
+      run: dotnet test --configuration ${{ env.CONFIGURATION }} --no-build --filter "Category!=Docker" --verbosity normal --logger "trx;LogFileName=test-results.trx"
+    
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: '**/test-results.trx'
+        retention-days: 30
+
+  pack-and-publish:
+    name: Pack and Publish to NuGet
+    runs-on: windows-latest
+    needs: build-and-test
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    
+    permissions:
+      contents: write  # For creating releases
+      packages: write  # For publishing packages
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+    
+    - name: Extract version from .csproj
+      id: get_version
+      shell: pwsh
+      run: |
+        # Get version from manual input or extract from project file
+        if ("${{ github.event.inputs.version }}" -ne "") {
+          $version = "${{ github.event.inputs.version }}"
+          Write-Host "Using manual version: $version"
+        } else {
+          # Extract version from mbulava.PostgreSql.Dac.csproj
+          $csprojPath = "src/libs/mbulava.PostgreSql.Dac/mbulava.PostgreSql.Dac.csproj"
+          [xml]$csproj = Get-Content $csprojPath
+          $version = $csproj.Project.PropertyGroup.Version | Select-Object -First 1
+          Write-Host "Extracted version from .csproj: $version"
+        }
+        
+        # Validate version format
+        if ($version -notmatch '^\d+\.\d+\.\d+(-preview\d+)?$') {
+          Write-Error "Invalid version format: $version"
+          exit 1
+        }
+        
+        echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+        echo "IS_PREVIEW=$($version -match 'preview')" >> $env:GITHUB_OUTPUT
+        echo "TAG_NAME=v$version" >> $env:GITHUB_OUTPUT
+    
+    - name: Restore dependencies
+      run: dotnet restore
+    
+    - name: Build solution
+      run: dotnet build --configuration ${{ env.CONFIGURATION }} --no-restore
+    
+    - name: Create packages directory
+      run: New-Item -ItemType Directory -Path ${{ env.PACKAGES_DIR }} -Force
+      shell: pwsh
+    
+    - name: Pack mbulava.PostgreSql.Dac
+      run: |
+        dotnet pack src/libs/mbulava.PostgreSql.Dac/mbulava.PostgreSql.Dac.csproj `
+          --configuration ${{ env.CONFIGURATION }} `
+          --output ${{ env.PACKAGES_DIR }} `
+          --no-build `
+          /p:Version=${{ steps.get_version.outputs.VERSION }}
+      shell: pwsh
+    
+    - name: Pack MSBuild.Sdk.PostgreSql
+      run: |
+        dotnet pack src/sdk/MSBuild.Sdk.PostgreSql/MSBuild.Sdk.PostgreSql.csproj `
+          --configuration ${{ env.CONFIGURATION }} `
+          --output ${{ env.PACKAGES_DIR }} `
+          --no-build `
+          /p:Version=${{ steps.get_version.outputs.VERSION }}
+      shell: pwsh
+    
+    - name: Pack postgresPacTools
+      run: |
+        dotnet pack src/postgresPacTools/postgresPacTools.csproj `
+          --configuration ${{ env.CONFIGURATION }} `
+          --output ${{ env.PACKAGES_DIR }} `
+          --no-build `
+          /p:Version=${{ steps.get_version.outputs.VERSION }}
+      shell: pwsh
+    
+    - name: Verify package contents
+      shell: pwsh
+      run: |
+        Write-Host "📦 Packages created:" -ForegroundColor Cyan
+        Get-ChildItem ${{ env.PACKAGES_DIR }} -Filter *.nupkg | ForEach-Object {
+          $size = [math]::Round($_.Length / 1KB, 2)
+          Write-Host "  • $($_.Name) ($size KB)" -ForegroundColor White
+        }
+        
+        # Verify Npgquery embedding in main package
+        $dacPackage = Get-ChildItem ${{ env.PACKAGES_DIR }} -Filter "mbulava.PostgreSql.Dac*.nupkg" | Select-Object -First 1
+        if ($dacPackage) {
+          Write-Host "`n🔍 Verifying Npgquery embedding..." -ForegroundColor Yellow
+          $tempDir = Join-Path $env:TEMP "verify-$(Get-Random)"
+          Expand-Archive -Path $dacPackage.FullName -DestinationPath $tempDir -Force
+          
+          $hasNpgquery = Test-Path "$tempDir/lib/net10.0/Npgquery.dll"
+          $nativeFiles = Get-ChildItem "$tempDir/runtimes" -Recurse -Filter "pg_query.*" -ErrorAction SilentlyContinue
+          
+          if ($hasNpgquery) {
+            Write-Host "✅ Npgquery.dll is embedded" -ForegroundColor Green
+          } else {
+            Write-Error "❌ Npgquery.dll not found in package!"
+            exit 1
+          }
+          
+          if ($nativeFiles.Count -gt 0) {
+            Write-Host "✅ Native libraries included ($($nativeFiles.Count) files)" -ForegroundColor Green
+          } else {
+            Write-Error "❌ Native libraries not found!"
+            exit 1
+          }
+          
+          Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    
+    - name: Upload packages as artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: nuget-packages
+        path: ${{ env.PACKAGES_DIR }}/*.nupkg
+        retention-days: 90
+    
+    - name: Publish to NuGet.org
+      env:
+        NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+      run: |
+        if ("$env:NUGET_API_KEY" -eq "") {
+          Write-Warning "⚠️ NUGET_API_KEY secret not set - skipping NuGet publish"
+          Write-Host "To publish to NuGet.org, add NUGET_API_KEY secret to repository settings"
+          exit 0
+        }
+        
+        Write-Host "📤 Publishing packages to NuGet.org..." -ForegroundColor Cyan
+        
+        Get-ChildItem ${{ env.PACKAGES_DIR }} -Filter *.nupkg | ForEach-Object {
+          Write-Host "Publishing $($_.Name)..." -ForegroundColor Yellow
+          dotnet nuget push $_.FullName `
+            --source https://api.nuget.org/v3/index.json `
+            --api-key $env:NUGET_API_KEY `
+            --skip-duplicate
+          
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "✅ Published $($_.Name)" -ForegroundColor Green
+          } else {
+            Write-Error "❌ Failed to publish $($_.Name)"
+            exit 1
+          }
+        }
+        
+        Write-Host "`n✅ All packages published successfully!" -ForegroundColor Green
+      shell: pwsh
+    
+    - name: Create GitHub Release
+      if: steps.get_version.outputs.IS_PREVIEW == 'true'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ steps.get_version.outputs.TAG_NAME }}
+        name: pgPacTool ${{ steps.get_version.outputs.TAG_NAME }}
+        body: |
+          # pgPacTool ${{ steps.get_version.outputs.VERSION }}
+          
+          ## 🚀 Preview Release
+          
+          This is a preview release for testing and feedback. Please report any issues on GitHub.
+          
+          ## 📦 NuGet Packages
+          
+          - **mbulava.PostgreSql.Dac** - Core library for PostgreSQL database-as-code
+          - **MSBuild.Sdk.PostgreSql** - MSBuild SDK for database projects
+          - **postgresPacTools** - CLI global tool (`pgpac` command)
+          
+          ## 📥 Installation
+          
+          ### CLI Tool
+          ```bash
+          dotnet tool install --global postgresPacTools --version ${{ steps.get_version.outputs.VERSION }}
+          pgpac --version
+          ```
+          
+          ### Library
+          ```bash
+          dotnet add package mbulava.PostgreSql.Dac --version ${{ steps.get_version.outputs.VERSION }}
+          ```
+          
+          ### MSBuild SDK
+          ```xml
+          <Project Sdk="MSBuild.Sdk.PostgreSql/${{ steps.get_version.outputs.VERSION }}">
+            <PropertyGroup>
+              <TargetFramework>net10.0</TargetFramework>
+            </PropertyGroup>
+          </Project>
+          ```
+          
+          ## 📝 Changelog
+          
+          See [CHANGELOG.md](https://github.com/mbulava-org/pgPacTool/blob/preview1/CHANGELOG.md) for detailed changes.
+          
+          ## 🐛 Feedback
+          
+          Please report issues and provide feedback at https://github.com/mbulava-org/pgPacTool/issues
+        files: ${{ env.PACKAGES_DIR }}/*.nupkg
+        draft: false
+        prerelease: true
+        make_latest: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify-completion:
+    name: Notify Completion
+    runs-on: ubuntu-latest
+    needs: pack-and-publish
+    if: always()
+    
+    steps:
+    - name: Summary
+      run: |
+        echo "# 🎉 Publish Preview Workflow Complete" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## Status" >> $GITHUB_STEP_SUMMARY
+        if [ "${{ needs.pack-and-publish.result }}" == "success" ]; then
+          echo "✅ **SUCCESS** - Packages published to NuGet.org" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ **FAILED** - Check workflow logs for details" >> $GITHUB_STEP_SUMMARY
+        fi
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## Next Steps" >> $GITHUB_STEP_SUMMARY
+        echo "- Verify packages on [NuGet.org](https://www.nuget.org/profiles/mbulava-org)" >> $GITHUB_STEP_SUMMARY
+        echo "- Check [GitHub Releases](https://github.com/mbulava-org/pgPacTool/releases)" >> $GITHUB_STEP_SUMMARY
+        echo "- Test installation: \`dotnet tool install --global postgresPacTools\`" >> $GITHUB_STEP_SUMMARY

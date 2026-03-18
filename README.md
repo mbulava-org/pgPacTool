@@ -608,7 +608,7 @@ dotnet add package mbulava.PostgreSql.Dac --version 1.0.0-preview1
   - [SqlPackage](https://learn.microsoft.com/sql/tools/sqlpackage/) - Microsoft's database deployment tool
 
 - **Built with:**
-  - [Npgquery](https://github.com/launchbadge/pg_query.net) - PostgreSQL query parser
+  - [Npgquery](https://github.com/JaredMSFT/Npgquery) - PostgreSQL query parser
   - [Npgsql](https://www.npgsql.org/) - PostgreSQL .NET client
   - [System.CommandLine](https://github.com/dotnet/command-line-api) - Modern CLI framework
 

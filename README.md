@@ -6,7 +6,14 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%2B-336791)](https://www.postgresql.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Tests](https://img.shields.io/badge/tests-201%20passing-success)
+[![Version](https://img.shields.io/badge/version-1.0.0--preview1-orange)](https://github.com/mbulava-org/pgPacTool/releases)
 
+> **📦 Release Status (v1.0.0-preview1)**:
+> - ✅ **MSBuild SDK** - Published! Install: `MSBuild.Sdk.PostgreSql/1.0.0-preview1`
+> - ✅ **CLI Tool (pgpac)** - Published! Install: `dotnet tool install -g postgresPacTools`
+
+> - ✅ **Core Library** - Published! `dotnet add package mbulava.PostgreSql.Dac` (includes Npgquery)
+>
 > **💡 PostgreSQL Version Support**: Currently supports **PostgreSQL 16 and 17**. Older versions (14, 15) may be added in the future based on demand. See [Multi-Version Support Documentation](docs/features/multi-version-support/README.md) for details.
 
 ---
@@ -91,57 +98,26 @@ pgPacTool brings **SQL Server-style database project workflow** to PostgreSQL. I
 
 ## 🚀 Quick Start
 
-### Option 1: Extract Existing Database to SDK-Style Project ⭐ RECOMMENDED
+### Prerequisites
 
-**For existing databases, instantly create a version-controllable project:**
-
-```bash
-# Build the CLI from source
-git clone https://github.com/mbulava-org/pgPacTool.git
-cd pgPacTool
-dotnet build
-
-# Extract your database to SDK-style .csproj
-dotnet run --project src/postgresPacTools/postgresPacTools.csproj -- extract \
-  --source-connection-string "Host=localhost;Database=mydb;Username=postgres;Password=***" \
-  --target-file output/mydb/mydb.csproj \
-  --verbose
-
-# Result: Complete project with individual SQL files!
-# output/mydb/
-#   ├── mydb.csproj
-#   ├── public/
-#   │   ├── Tables/
-#   │   ├── Views/
-#   │   ├── Functions/
-#   │   └── ...
-#   └── Security/
-```
-
-**What you get:**
-- ✅ One SQL file per database object
-- ✅ Organized by schema and object type
-- ✅ Ready for version control (git-friendly)
-- ✅ Editable in Visual Studio
-- ✅ Compilable with `dotnet build` (once SDK is published)
-
-**Real Examples:**
-```bash
-# Simple database (1 table) → 9 files
-extract -scs "..." -tf world_happiness/world_happiness.csproj
-
-# Medium database (15 tables, 7 views) → 107 files
-extract -scs "..." -tf dvdrental/dvdrental.csproj
-
-# Complex database (21 tables, 54 indexes) → 145 files
-extract -scs "..." -tf pagila/pagila.csproj
-```
+- **.NET 10 SDK** - [Download here](https://dotnet.microsoft.com/download/dotnet/10.0)
+- **PostgreSQL 16 or 17** - Local or remote instance
 
 ---
 
-### Option 2: MSBuild SDK (For New Projects)
+### 🎯 Option 1: Create New Database Project (MSBuild SDK)
 
-**Coming Soon!** Once published to NuGet.org:
+Perfect for **new databases** or starting fresh with infrastructure-as-code:
+
+#### Step 1: Create Project File
+
+```powershell
+# Create a new directory for your database project
+mkdir MyDatabase
+cd MyDatabase
+
+# Create MyDatabase.csproj with SDK reference
+```
 
 ```xml
 <!-- MyDatabase.csproj -->
@@ -150,80 +126,543 @@ extract -scs "..." -tf pagila/pagila.csproj
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <DatabaseName>MyDatabase</DatabaseName>
+    <OutputFormat>pgpac</OutputFormat>
   </PropertyGroup>
 
 </Project>
 ```
 
-```powershell
-# Organize SQL files
+#### Step 2: Add SQL Files
+
+Organize your schema using convention-based folders:
+
+```
 MyDatabase/
 ├── MyDatabase.csproj
 ├── Tables/
 │   ├── Users.sql
 │   └── Orders.sql
-└── Views/
-    └── CustomerOrders.sql
+├── Views/
+│   └── CustomerOrders.sql
+└── Functions/
+    └── GetActiveUsers.sql
+```
 
-# Build!
+**Tables/Users.sql:**
+```sql
+CREATE TABLE public.users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) NOT NULL,
+    email VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+**Views/CustomerOrders.sql:**
+```sql
+CREATE VIEW public.customer_orders AS
+SELECT u.username, COUNT(o.id) as order_count
+FROM users u
+LEFT JOIN orders o ON u.id = o.user_id
+GROUP BY u.username;
+```
+
+#### Step 3: Build Project
+
+```powershell
+# Build the database package
 dotnet build
-# Output: bin/Debug/net10.0/MyDatabase.pgpac ✅
+
+# ✅ Output: bin/Debug/net10.0/MyDatabase.pgpac
+```
+
+**What happens:**
+- ✅ SQL files are discovered automatically
+- ✅ Dependencies are analyzed (orders matter!)
+- ✅ Objects are sorted topologically
+- ✅ `.pgpac` package is generated
+
+#### Step 4: Deploy (Coming Soon)
+
+```powershell
+# Deploy to PostgreSQL
+pgpac publish -sf bin/Debug/net10.0/MyDatabase.pgpac \
+  -tcs "Host=localhost;Database=mydb;Username=postgres;Password=***"
 ```
 
 ---
 
-### Option 3: CLI Tool (For Ad-Hoc Operations)
+### 📥 Option 2: Extract Existing Database ⭐ RECOMMENDED FOR MIGRATION
 
-**Coming Soon!** Once published:
+Perfect for **bringing existing databases** under version control:
+
+#### Step 1: Install CLI Tool
+
+```bash
+# Install globally from NuGet
+dotnet tool install -g postgresPacTools
+```
+
+#### Step 2: Extract Your Database
+
+```bash
+# Extract to SDK-style .csproj project
+pgpac extract \
+  --source-connection-string "Host=localhost;Database=mydb;Username=postgres;Password=***" \
+  --target-file output/mydb/mydb.csproj \
+  --verbose
+```
+
+**Result: Complete project with individual SQL files!**
+
+```
+output/mydb/
+├── mydb.csproj                    # ← MSBuild SDK project
+├── public/
+│   ├── Tables/
+│   │   ├── users.sql
+│   │   ├── orders.sql
+│   │   └── products.sql
+│   ├── Views/
+│   │   ├── customer_orders.sql
+│   │   └── product_summary.sql
+│   ├── Functions/
+│   │   ├── get_active_users.sql
+│   │   └── calculate_total.sql
+│   └── Indexes/
+│       └── idx_users_email.sql
+└── Security/
+    ├── Schemas/
+    ├── Roles/
+    └── Extensions/
+```
+
+#### Step 3: Version Control & Build
+
+```bash
+cd output/mydb
+git init
+git add .
+git commit -m "Initial database schema extraction"
+
+# Build the project
+dotnet build
+# ✅ Output: bin/Debug/net10.0/mydb.pgpac
+```
+
+**What you get:**
+- ✅ **One SQL file per database object** (version control friendly!)
+- ✅ **Organized by schema and object type**
+- ✅ **Editable in any text editor or IDE**
+- ✅ **Compilable with `dotnet build`**
+- ✅ **Dependency-sorted** (automatic topological ordering)
+
+**Real-World Examples:**
+
+| Database | Objects | Generated Files | Build Time |
+|----------|---------|-----------------|------------|
+| **world_happiness** | 1 table, basic | 9 files | < 1s |
+| **dvdrental** | 15 tables, 7 views, functions | 107 files | < 2s |
+| **pagila** | 21 tables, 54 indexes, complex | 145 files | < 3s |
+
+---
+
+### 🔧 Option 3: CLI Tool (Ad-Hoc Operations)
+
+**Install globally:**
 
 ```powershell
-# Install globally
+# Install from NuGet
 dotnet tool install --global postgresPacTools
 
-# Extract schema to JSON
+# Extract schema to JSON format
 pgpac extract -scs "Host=localhost;Database=mydb;..." -tf mydb.pgproj.json
 
-# Extract schema to SDK project
+# Extract schema to SDK-style project
 pgpac extract -scs "Host=localhost;Database=mydb;..." -tf mydb/mydb.csproj
 
 # Compile project
 pgpac compile -sf MyDatabase.csproj
 
-# Deploy
+# Generate deployment script (preview changes)
+pgpac script -sf MyDatabase.pgpac -tcs "Host=prod;..." -o deploy.sql
+
+# Deploy to database
 pgpac publish -sf MyDatabase.pgpac -tcs "Host=prod;..."
+
+# Generate deployment report (JSON)
+pgpac deploy-report -sf MyDatabase.pgpac -tcs "Host=prod;..." -o report.json
 ```
 
 ---
 
-### Option 4: Core Library (For Custom Tools)
+### 🛠️ Option 4: Core Library (For Custom Tooling)
 
-**Coming Soon!** Once published:
+**Published to NuGet!**
 
 ```powershell
-dotnet add package mbulava.PostgreSql.Dac
+# Install core DAC library (includes Npgquery parser)
+dotnet add package mbulava.PostgreSql.Dac --version 1.0.0-preview1
 ```
 
 ```csharp
 using mbulava.PostgreSql.Dac.Extract;
 using mbulava.PostgreSql.Dac.Compile;
+using Npgquery;
 
-// Extract schema
+// Extract schema from live database
+var connectionString = "Host=localhost;Database=mydb;Username=postgres;Password=***";
 var extractor = new PgProjectExtractor(connectionString);
 var project = await extractor.ExtractPgProject("mydb");
 
-// Generate SDK-style project
+// Generate SDK-style .csproj project with individual SQL files
 var generator = new CsprojProjectGenerator("output/mydb/mydb.csproj");
 await generator.GenerateProjectAsync(project);
 
-// Or compile and validate
+// Or compile and validate in-memory
 var compiler = new ProjectCompiler();
 var result = compiler.Compile(project);
 
 if (result.Errors.Count == 0)
 {
     Console.WriteLine($"✅ {result.DeploymentOrder.Count} objects validated");
+    Console.WriteLine("Deployment order:");
+    foreach (var obj in result.DeploymentOrder)
+    {
+        Console.WriteLine($"  → {obj.Type} {obj.Name}");
+    }
 }
 ```
+
+**Or parse PostgreSQL SQL directly with Npgquery:**
+
+```csharp
+using Npgquery;
+
+// Parse SQL and get AST
+using var parser = new Parser(PostgreSqlVersion.Postgres16);
+var result = parser.Parse("SELECT * FROM users WHERE id = 1");
+
+if (result.IsSuccess)
+{
+    Console.WriteLine("SQL is valid!");
+    Console.WriteLine($"Parse tree: {result.Tree}");
+}
+```
+
+**Use cases:**
+- Custom database migration tools
+- Schema comparison utilities
+- CI/CD pipeline integrations
+- Database documentation generators
+- Schema validation services
+- SQL parsers and linters
+- Query analyzers
+
+---
+
+## 🔍 What Happens During Build?
+
+When you run `dotnet build` on a PostgreSQL database project:
+
+### 1. **SQL File Discovery** 📂
+- SDK automatically finds all `.sql` files in project directory
+- Follows convention-based folder structure
+- No manual ItemGroup entries needed (like C# with `*.cs` files)
+
+### 2. **Parsing & AST Generation** 🌳
+- Each SQL file parsed using **libpg_query** (PostgreSQL's official parser)
+- Generates Abstract Syntax Tree (AST)
+- Validates SQL syntax against PostgreSQL 16/17 grammar
+- **Syntax errors = build failures** (fail fast!)
+
+### 3. **Dependency Analysis** 🔗
+- Extracts object references from AST
+- Builds dependency graph:
+  - `customer_orders` VIEW → depends on → `users`, `orders` TABLES
+  - `calculate_tax()` FUNCTION → depends on → `tax_rates` TABLE
+- Detects circular references (e.g., View A → View B → View A)
+
+### 4. **Topological Sorting** 📊
+- Determines correct deployment order
+- Dependencies deployed first:
+  ```
+  1. Extensions (uuid-ossp, pg_trgm)
+  2. Schemas (public, auth, api)
+  3. Types (ENUM, composite)
+  4. Tables (base tables first, FK tables after)
+  5. Views (simple first, dependent after)
+  6. Functions & Procedures
+  7. Triggers
+  8. Indexes & Constraints
+  ```
+
+### 5. **Package Generation** 📦
+- Creates `.pgpac` file (PostgreSQL DACPAC equivalent)
+- Contains:
+  - ✅ All SQL definitions (sorted)
+  - ✅ Deployment order manifest
+  - ✅ Dependency graph
+  - ✅ Pre/Post deployment scripts
+  - ✅ SQLCMD variables
+  - ✅ Project metadata
+
+### 6. **Validation** ✅
+- **Dependency validation**: All referenced objects exist?
+- **Circular reference detection**: Any dependency loops?
+- **Syntax validation**: All SQL parses correctly?
+- **Schema validation**: All objects have valid definitions?
+
+**Build Output:**
+```
+MSBuild version 18.4.1+...
+  Compiling PostgreSQL Database Project: MyDatabase
+    📁 Project: C:\projects\MyDatabase\MyDatabase.csproj
+    📄 SQL files: 47
+    ⚙️  Loading project...
+    ✅ Loaded 1 schema(s)
+    📊 Objects extracted: 47
+    🔗 Building dependency graph...
+    ✅ Dependency analysis complete: 47 objects, 0 errors
+    📦 Creating package...
+  ✅ Build succeeded
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:02.15
+```
+
+---
+
+## 📋 Common Workflows
+
+### Workflow 1: New Database Project from Scratch
+
+**Scenario:** You're starting a new microservice and need a database.
+
+```powershell
+# 1. Create project
+mkdir UserService.Database
+cd UserService.Database
+
+# Create UserService.Database.csproj
+@"
+<Project Sdk="MSBuild.Sdk.PostgreSql/1.0.0-preview1">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <DatabaseName>UserService</DatabaseName>
+  </PropertyGroup>
+</Project>
+"@ | Out-File -FilePath UserService.Database.csproj
+
+# 2. Add schema files
+mkdir Tables, Views, Functions, Security
+
+# Tables/users.sql
+@"
+CREATE TABLE public.users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(255) NOT NULL UNIQUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"@ | Out-File -FilePath Tables/users.sql
+
+# 3. Build and validate
+dotnet build
+
+# 4. Version control
+git init
+git add .
+git commit -m "Initial database schema"
+```
+
+**Result:** ✅ Database schema as code, ready for deployment!
+
+---
+
+### Workflow 2: Migrate Existing Database to Version Control
+
+**Scenario:** You have a production database with 50 tables, need to get it under version control.
+
+```powershell
+# 1. Install pgpac CLI tool
+dotnet tool install -g postgresPacTools
+
+# 2. Extract your production schema
+pgpac extract \
+  --source-connection-string "Host=prod.company.com;Database=maindb;Username=readonly;Password=***" \
+  --target-file maindb-repo/maindb.csproj \
+  --verbose
+
+# 3. Review extracted files
+cd maindb-repo
+tree /F  # Windows
+# or: find . -type f  # Linux/Mac
+
+# 4. Initialize git repository
+git init
+git add .
+git commit -m "Initial extraction from production (2026-05-15)"
+
+# 5. Push to your repo
+git remote add origin https://github.com/yourorg/maindb.git
+git push -u origin main
+
+# 6. Build to validate
+dotnet build
+```
+
+**Result:** ✅ Production database now under version control with 145+ individual SQL files!
+
+---
+
+### Workflow 3: Make Schema Changes in Dev Environment
+
+**Scenario:** Add new feature requiring schema changes.
+
+```powershell
+# 1. Create feature branch
+git checkout -b feature/add-orders-table
+
+# 2. Add new table
+@"
+CREATE TABLE public.orders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id),
+    total DECIMAL(10,2) NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"@ | Out-File -FilePath Tables/orders.sql
+
+# 3. Add supporting view
+@"
+CREATE VIEW public.user_orders AS
+SELECT u.email, o.id AS order_id, o.total, o.status
+FROM users u
+LEFT JOIN orders o ON u.id = o.user_id;
+"@ | Out-File -FilePath Views/user_orders.sql
+
+# 4. Build (validates syntax & dependencies)
+dotnet build
+
+# ✅ Build checks:
+#    - SQL syntax valid?
+#    - users.id referenced by orders.user_id exists?
+#    - Deployment order correct? (users → orders → user_orders)
+
+# 5. Commit changes
+git add .
+git commit -m "feat: Add orders table and user_orders view"
+git push origin feature/add-orders-table
+
+# 6. Create PR for review
+```
+
+**Result:** ✅ Schema changes validated, tested, and ready for review!
+
+---
+
+### Workflow 4: Deploy Schema Changes to Staging/Production
+
+**Scenario:** Reviewed PR merged, deploy changes to staging then production.
+
+```powershell
+# 1. Pull latest changes
+git checkout main
+git pull origin main
+
+# 2. Build package
+dotnet build --configuration Release
+# Output: bin/Release/net10.0/MyDatabase.pgpac
+
+# 3. Preview changes (coming soon with publish command)
+pgpac script \
+  -sf bin/Release/net10.0/MyDatabase.pgpac \
+  -tcs "Host=staging;Database=mydb;..." \
+  -o preview-staging.sql
+
+# 4. Review SQL script
+cat preview-staging.sql
+# Expected:
+# -- Create table orders
+# CREATE TABLE public.orders (...);
+# -- Create view user_orders
+# CREATE VIEW public.user_orders AS ...;
+
+# 5. Deploy to staging
+pgpac publish \
+  -sf bin/Release/net10.0/MyDatabase.pgpac \
+  -tcs "Host=staging;Database=mydb;Username=deploy;Password=***"
+
+# 6. Test in staging environment
+# ... run integration tests ...
+
+# 7. Deploy to production (if tests pass)
+pgpac publish \
+  -sf bin/Release/net10.0/MyDatabase.pgpac \
+  -tcs "Host=prod;Database=mydb;Username=deploy;Password=***"
+```
+
+**Result:** ✅ Controlled, validated deployment to production!
+
+---
+
+### Workflow 5: CI/CD Pipeline Integration
+
+**Scenario:** Automate build and deployment with GitHub Actions.
+
+```yaml
+# .github/workflows/database-ci.yml
+name: Database CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup .NET 10
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Build database project
+      run: dotnet build --configuration Release
+
+    - name: Upload .pgpac artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: database-package
+        path: bin/Release/net10.0/*.pgpac
+
+  deploy-staging:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+    - uses: actions/download-artifact@v3
+      with:
+        name: database-package
+
+    - name: Deploy to staging
+      run: |
+        pgpac publish \
+          -sf MyDatabase.pgpac \
+          -tcs "${{ secrets.STAGING_CONNECTION_STRING }}"
+```
+
+**Result:** ✅ Automated database deployments with full audit trail!
 
 ---
 
@@ -232,9 +671,9 @@ if (result.Errors.Count == 0)
 ### Prerequisites
 
 - ✅ **.NET 10 SDK** - https://dotnet.microsoft.com/download/dotnet/10.0
-- ✅ **PostgreSQL 12+** - For testing (Docker recommended)
+- ✅ **PostgreSQL 16 or 17** - For testing (Docker recommended)
 - ✅ **Git** - Source control
-- ✅ **Visual Studio 2022** or **VS Code** (optional)
+- ✅ **Visual Studio 2026** or **VS Code** (optional)
 
 ### Clone and Build
 
@@ -275,17 +714,19 @@ pgPacTool/
 └── docs/                                      # Documentation
 ```
 
-### Run CLI Locally
+### Run CLI Locally (For Development)
+
+**Note:** For normal use, install from NuGet: `dotnet tool install -g postgresPacTools`
 
 ```powershell
-# Build CLI
+# For development/debugging: Build CLI from source
 dotnet build src/postgresPacTools/postgresPacTools.csproj
 
 # Run without installing
 dotnet run --project src/postgresPacTools/postgresPacTools.csproj -- --help
 
 # Extract example
-dotnet run --project src/postgresPacTools/postgresPacTools.csproj -- extract \
+pgpac extract \
   -scs "Host=localhost;Database=mydb;Username=postgres;Password=secret" \
   -tf mydb.pgproj.json
 ```
@@ -336,7 +777,7 @@ docker rm pgpac-test
 
 ### Debug in Visual Studio
 
-1. Open `pgPacTool.sln` in Visual Studio 2022+
+1. Open `pgPacTool.sln` in Visual Studio 2026+
 2. Set startup project:
    - For CLI: `postgresPacTools`
    - For tests: `mbulava.PostgreSql.Dac.Tests`
@@ -483,6 +924,225 @@ docker rm pgpac-test
 - [ ] **Rollback Support** - Generate undo scripts
 - [ ] **Data Migration** - Seed data and static data tables
 - [ ] **Schema Documentation** - Auto-generate markdown docs
+
+---
+
+## 🔧 Troubleshooting
+
+### Build Errors
+
+#### "SDK 'MSBuild.Sdk.PostgreSql/1.0.0-preview1' not found"
+
+**Problem:** MSBuild cannot find the SDK package.
+
+**Solution:**
+```powershell
+# Option 1: If SDK not published to NuGet yet
+# Pack locally and use local package source (see "Test MSBuild SDK Locally" section)
+
+# Option 2: Once published to NuGet
+dotnet nuget locals all --clear
+dotnet restore --force
+```
+
+#### "Could not load file or assembly 'libpg_query_16.dll'"
+
+**Problem:** Native PostgreSQL parser libraries not found.
+
+**Solution:**
+```powershell
+# Ensure you're on a supported platform:
+# - Windows x64
+# - Linux x64
+# - macOS ARM64 (M1/M2/M3)
+
+# If running on Windows, ensure Visual C++ Redistributable installed:
+# https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist
+```
+
+#### "Circular dependency detected"
+
+**Problem:** Your database has circular view/function references.
+
+**Solution:**
+```sql
+-- Example: View A depends on View B, View B depends on View A
+-- Solution: Combine into single view or refactor logic
+
+-- Instead of:
+CREATE VIEW view_a AS SELECT * FROM view_b;
+CREATE VIEW view_b AS SELECT * FROM view_a;  -- ❌ Circular!
+
+-- Do:
+CREATE VIEW combined_view AS
+SELECT ... -- combined logic
+```
+
+#### "Table 'xyz' not found during dependency analysis"
+
+**Problem:** SQL references an object that doesn't exist in project.
+
+**Solution:**
+```powershell
+# 1. Check if file exists in project directory
+dir -Recurse -Filter "*.sql" | Select-String "CREATE TABLE xyz"
+
+# 2. If missing, add the SQL file:
+#    Tables/xyz.sql with CREATE TABLE statement
+
+# 3. If it's an external dependency (another database), consider:
+#    - Adding placeholder files
+#    - Using SQLCMD variables
+#    - Documenting external dependencies
+```
+
+---
+
+### Extract Errors
+
+#### "Connection to database failed"
+
+**Problem:** Cannot connect to PostgreSQL.
+
+**Solution:**
+```powershell
+# Test connection manually:
+psql "Host=localhost;Database=mydb;Username=postgres;Password=secret"
+
+# Common issues:
+# 1. PostgreSQL not running: service postgresql status
+# 2. Wrong port: Default is 5432
+# 3. Firewall blocking connection
+# 4. pg_hba.conf not allowing connection
+```
+
+#### "Database 'mydb' does not exist"
+
+**Problem:** Target database doesn't exist.
+
+**Solution:**
+```bash
+# Create database first:
+createdb mydb
+
+# Or in psql:
+CREATE DATABASE mydb;
+```
+
+#### "Permission denied for schema public"
+
+**Problem:** User doesn't have read permissions.
+
+**Solution:**
+```sql
+-- Grant read permissions:
+GRANT USAGE ON SCHEMA public TO your_user;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO your_user;
+```
+
+---
+
+### Runtime Errors
+
+#### "Parser failed with unsupported SQL syntax"
+
+**Problem:** SQL contains syntax not supported by PostgreSQL 16/17 parser.
+
+**Solution:**
+```sql
+-- Check PostgreSQL version compatibility
+SELECT version();
+
+-- If using PG 14/15 specific syntax:
+-- 1. Update SQL to PG 16+ syntax
+-- 2. Or wait for PG 14/15 support (see roadmap)
+
+-- Example: Old syntax
+SELECT * FROM json_populate_recordset(...);  -- PG 12-15
+
+-- New syntax:
+SELECT * FROM JSON_TABLE(...);  -- PG 17+
+```
+
+---
+
+### Performance Issues
+
+#### "Extraction taking too long (large database)"
+
+**Problem:** Database has 1000+ objects, extraction slow.
+
+**Current workarounds:**
+```powershell
+# 1. Extract specific schemas:
+#    (Feature coming soon - currently extracts all schemas)
+
+# 2. Split into multiple projects by schema
+
+# 3. Use --verbose to see progress
+dotnet run --project src/postgresPacTools -- extract ... --verbose
+```
+
+**Future improvement:** Parallel extraction (on roadmap)
+
+---
+
+### Platform-Specific Issues
+
+#### Windows: "MSB4062: Task could not be loaded"
+
+**Problem:** Native DLL loading issue on Windows.
+
+**Solution:**
+```powershell
+# Install Visual C++ Redistributable:
+# https://aka.ms/vs/17/release/vc_redist.x64.exe
+
+# Or install via winget:
+winget install Microsoft.VCRedist.2015+.x64
+```
+
+#### Linux: "libpg_query_16.so not found"
+
+**Problem:** Native library not found or missing dependencies.
+
+**Solution:**
+```bash
+# Install dependencies:
+sudo apt-get install libicu-dev  # Ubuntu/Debian
+sudo yum install libicu           # RHEL/CentOS
+
+# Verify library:
+ldd path/to/libpg_query_16.so
+```
+
+#### macOS: "dyld: Library not loaded"
+
+**Problem:** Native library not signed or architecture mismatch.
+
+**Solution:**
+```bash
+# M1/M2/M3 (ARM64) required
+uname -m  # Should show: arm64
+
+# If using Rosetta (x86_64), install native .NET 10:
+# https://dotnet.microsoft.com/download/dotnet/10.0
+```
+
+---
+
+### Getting Help
+
+If you encounter issues not listed here:
+
+1. **Check Existing Issues**: [GitHub Issues](https://github.com/mbulava-org/pgPacTool/issues)
+2. **Enable Verbose Logging**: Add `--verbose` to CLI commands
+3. **Create New Issue**: Include:
+   - OS and .NET version (`dotnet --info`)
+   - PostgreSQL version (`SELECT version();`)
+   - Full error message and stack trace
+   - Steps to reproduce
+   - Sample SQL (if applicable)
 
 ---
 

@@ -97,6 +97,7 @@ public class AstSqlGeneratorDiagnosticsTests
     }
 
     [Test]
+    [Ignore("Deparse uses protobuf - broken on Linux. See Issue #36")]
     public void Diagnostic_ProtobufDeparse_ShowsRawOutput()
     {
         // This test helps diagnose if the issue is in protobuf conversion

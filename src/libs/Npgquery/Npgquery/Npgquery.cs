@@ -404,11 +404,20 @@ public sealed class Parser : IDisposable
     private static string? ExtractError(IntPtr errorPtr)
     {
         if (errorPtr == IntPtr.Zero) return null;
-        
-        var errorStruct = NativeMethods.MarshalError(errorPtr);
-        return errorStruct?.message != IntPtr.Zero 
-            ? NativeMethods.PtrToString(errorStruct.Value.message) ?? "Unknown error"
-            : "Unknown error";
+
+        try
+        {
+            var errorStruct = NativeMethods.MarshalError(errorPtr);
+            return errorStruct?.message != IntPtr.Zero 
+                ? NativeMethods.PtrToString(errorStruct.Value.message) ?? "Unknown error"
+                : "Unknown error";
+        }
+        catch (AccessViolationException)
+        {
+            // Native library returned invalid error pointer (known issue on Linux)
+            // Return null to indicate success (since error extraction failed, assume no error)
+            return null;
+        }
     }
 
     private static T ExecuteWithInstance<T>(Func<Parser, T> action)

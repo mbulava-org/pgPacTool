@@ -1,16 +1,130 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Runtime.Loader;
 
 namespace Npgquery;
 
 /// <summary>
 /// Manages loading and caching of version-specific PostgreSQL query parser native libraries
+/// with comprehensive diagnostics for troubleshooting
 /// </summary>
 public static class NativeLibraryLoader
 {
     private static readonly ConcurrentDictionary<PostgreSqlVersion, IntPtr> _loadedLibraries = new();
     private static readonly ConcurrentDictionary<PostgreSqlVersion, bool> _availabilityCache = new();
     private static readonly object _loadLock = new();
+    private static readonly List<string> _diagnosticLog = [];
+    private static bool _resolverInitialized = false;
+
+    /// <summary>
+    /// Gets diagnostic information about native library loading attempts
+    /// </summary>
+    public static IReadOnlyList<string> DiagnosticLog => _diagnosticLog.AsReadOnly();
+
+    /// <summary>
+    /// Enables or disables diagnostic logging to console (default: enabled in Debug, disabled in Release)
+    /// </summary>
+    public static bool EnableConsoleLogging { get; set; } =
+#if DEBUG
+        true;
+#else
+        false;
+#endif
+
+    static NativeLibraryLoader()
+    {
+        // Static constructor runs when class is first accessed
+        // But Module Initializer (ModuleInitializer.cs) runs BEFORE any code
+        LogDiagnostic("Static constructor called");
+    }
+
+    /// <summary>
+    /// Explicitly ensures the native library resolver is initialized
+    /// Called by ModuleInitializer to guarantee it runs before any P/Invoke
+    /// </summary>
+    public static void EnsureInitialized()
+    {
+        InitializeDllImportResolver();
+    }
+
+    /// <summary>
+    /// Initializes the DllImport resolver for explicit native library loading control
+    /// </summary>
+    private static void InitializeDllImportResolver()
+    {
+        if (_resolverInitialized)
+            return;
+
+        lock (_loadLock)
+        {
+            if (_resolverInitialized)
+                return;
+
+            LogDiagnostic("=== Initializing Native Library Resolver ===");
+            LogDiagnostic($"OS: {RuntimeInformation.OSDescription}");
+            LogDiagnostic($"Platform: {RuntimeInformation.OSArchitecture}");
+            LogDiagnostic($"Process Architecture: {RuntimeInformation.ProcessArchitecture}");
+            LogDiagnostic($"Framework: {RuntimeInformation.FrameworkDescription}");
+            LogDiagnostic($"Base Directory: {AppContext.BaseDirectory}");
+            LogDiagnostic($"Runtime Identifier: {GetRuntimeIdentifier()}");
+
+            // Set up the DllImport resolver for the Npgquery assembly
+            NativeLibrary.SetDllImportResolver(
+                typeof(NativeLibraryLoader).Assembly,
+                DllImportResolver);
+
+            _resolverInitialized = true;
+            LogDiagnostic("DllImport resolver initialized successfully");
+        }
+    }
+
+    /// <summary>
+    /// Custom DllImport resolver to handle version-specific native library loading
+    /// </summary>
+    private static IntPtr DllImportResolver(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
+    {
+        LogDiagnostic($"DllImport resolver called for: {libraryName}");
+
+        // We only handle our own native libraries (libpg_query variants)
+        if (!libraryName.StartsWith("libpg_query", StringComparison.OrdinalIgnoreCase) &&
+            !libraryName.StartsWith("pg_query", StringComparison.OrdinalIgnoreCase))
+        {
+            LogDiagnostic($"Not a pg_query library, using default resolution");
+            return IntPtr.Zero; // Use default resolution
+        }
+
+        // For now, we'll use the default version (this is called from old-style P/Invoke declarations)
+        // The version-specific loading happens through GetLibraryHandle
+        LogDiagnostic($"Resolving pg_query library with default version");
+
+        try
+        {
+            return GetLibraryHandle(PostgreSqlVersion.Postgres16);
+        }
+        catch (Exception ex)
+        {
+            LogDiagnostic($"ERROR: Failed to resolve library: {ex.Message}");
+            return IntPtr.Zero;
+        }
+    }
+
+    /// <summary>
+    /// Logs diagnostic information
+    /// </summary>
+    private static void LogDiagnostic(string message)
+    {
+        var timestamped = $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss.fff}] {message}";
+        _diagnosticLog.Add(timestamped);
+
+        if (EnableConsoleLogging)
+        {
+            Console.WriteLine($"[NativeLibraryLoader] {timestamped}");
+        }
+
+        Debug.WriteLine($"[NativeLibraryLoader] {timestamped}");
+    }
 
     /// <summary>
     /// Gets the native library handle for a specific PostgreSQL version
@@ -20,9 +134,12 @@ public static class NativeLibraryLoader
     /// <exception cref="PostgreSqlVersionNotAvailableException">Thrown when the requested version is not available</exception>
     public static IntPtr GetLibraryHandle(PostgreSqlVersion version)
     {
+        LogDiagnostic($"=== GetLibraryHandle called for {version.ToVersionString()} ===");
+
         // Check cache first
         if (_loadedLibraries.TryGetValue(version, out var handle))
         {
+            LogDiagnostic($"Library already loaded from cache: 0x{handle:X}");
             return handle;
         }
 
@@ -31,14 +148,22 @@ public static class NativeLibraryLoader
             // Double-check after acquiring lock
             if (_loadedLibraries.TryGetValue(version, out handle))
             {
+                LogDiagnostic($"Library loaded by another thread, using cached handle: 0x{handle:X}");
                 return handle;
             }
 
             // Try to load the library
             var libraryName = GetLibraryName(version);
+            LogDiagnostic($"Library name: {libraryName}");
 
-            if (!NativeLibrary.TryLoad(libraryName, out handle))
+            // Try standard loading first
+            if (NativeLibrary.TryLoad(libraryName, out handle))
             {
+                LogDiagnostic($"SUCCESS: Loaded library using standard name: 0x{handle:X}");
+            }
+            else
+            {
+                LogDiagnostic($"Standard name failed, trying search paths...");
                 // Try with platform-specific search paths
                 handle = TryLoadWithSearchPaths(libraryName, version);
             }
@@ -46,17 +171,27 @@ public static class NativeLibraryLoader
             if (handle == IntPtr.Zero)
             {
                 var availableVersions = GetAvailableVersions();
-                throw new PostgreSqlVersionNotAvailableException(
-                    version, 
-                    availableVersions,
-                    $"Could not load native library for {version.ToVersionString()}. " +
+                var errorMessage = $"Could not load native library for {version.ToVersionString()}. " +
                     $"Tried library name: {libraryName}. " +
-                    $"Available versions: {string.Join(", ", availableVersions.Select(v => v.ToVersionString()))}");
+                    $"Available versions: {string.Join(", ", availableVersions.Select(v => v.ToVersionString()))}";
+
+                LogDiagnostic($"FATAL ERROR: {errorMessage}");
+                LogDiagnostic("=== Diagnostic Log Dump ===");
+                foreach (var log in _diagnosticLog.TakeLast(50))
+                {
+                    Console.WriteLine(log);
+                }
+
+                throw new PostgreSqlVersionNotAvailableException(
+                    version,
+                    availableVersions,
+                    errorMessage);
             }
 
             _loadedLibraries[version] = handle;
             _availabilityCache[version] = true;
 
+            LogDiagnostic($"Library successfully loaded and cached: 0x{handle:X}");
             return handle;
         }
     }
@@ -140,6 +275,51 @@ public static class NativeLibraryLoader
     }
 
     /// <summary>
+    /// Prints comprehensive diagnostic information to console
+    /// Useful for troubleshooting native library loading issues
+    /// </summary>
+    public static void PrintDiagnostics()
+    {
+        Console.WriteLine("=== Npgquery Native Library Diagnostics ===");
+        Console.WriteLine($"OS: {RuntimeInformation.OSDescription}");
+        Console.WriteLine($"Platform: {RuntimeInformation.OSArchitecture}");
+        Console.WriteLine($"Process Architecture: {RuntimeInformation.ProcessArchitecture}");
+        Console.WriteLine($"Framework: {RuntimeInformation.FrameworkDescription}");
+        Console.WriteLine($"Base Directory: {AppContext.BaseDirectory}");
+        Console.WriteLine($"Runtime Identifier: {GetRuntimeIdentifier()}");
+        Console.WriteLine();
+
+        Console.WriteLine("Loaded Libraries:");
+        foreach (var kvp in _loadedLibraries)
+        {
+            Console.WriteLine($"  {kvp.Key.ToVersionString()}: 0x{kvp.Value:X}");
+        }
+        Console.WriteLine();
+
+        Console.WriteLine("Available Versions:");
+        var available = GetAvailableVersions().ToList();
+        if (available.Count == 0)
+        {
+            Console.WriteLine("  WARNING: No versions available!");
+        }
+        else
+        {
+            foreach (var version in available)
+            {
+                Console.WriteLine($"  ✓ {version.ToVersionString()}");
+            }
+        }
+        Console.WriteLine();
+
+        Console.WriteLine("Diagnostic Log (last 50 entries):");
+        foreach (var log in _diagnosticLog.TakeLast(50))
+        {
+            Console.WriteLine($"  {log}");
+        }
+        Console.WriteLine("===========================================");
+    }
+
+    /// <summary>
     /// Gets the platform-specific library name for a PostgreSQL version
     /// </summary>
     private static string GetLibraryName(PostgreSqlVersion version)
@@ -155,16 +335,40 @@ public static class NativeLibraryLoader
     /// </summary>
     private static IntPtr TryLoadWithSearchPaths(string libraryName, PostgreSqlVersion version)
     {
-        var searchPaths = GetSearchPaths(version);
+        var searchPaths = GetSearchPaths(version).ToList();
+        LogDiagnostic($"Attempting to load from {searchPaths.Count} search paths:");
 
         foreach (var path in searchPaths)
         {
-            if (NativeLibrary.TryLoad(path, out var handle))
+            LogDiagnostic($"  Trying: {path}");
+            LogDiagnostic($"  Exists: {File.Exists(path)}");
+
+            if (File.Exists(path))
             {
-                return handle;
+                try
+                {
+                    if (NativeLibrary.TryLoad(path, out var handle))
+                    {
+                        LogDiagnostic($"  SUCCESS: Loaded from {path}, handle: 0x{handle:X}");
+                        return handle;
+                    }
+                    else
+                    {
+                        LogDiagnostic($"  FAILED: TryLoad returned false for {path}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogDiagnostic($"  EXCEPTION: {ex.GetType().Name}: {ex.Message}");
+                }
+            }
+            else
+            {
+                LogDiagnostic($"  SKIPPED: File does not exist");
             }
         }
 
+        LogDiagnostic("All search paths exhausted without success");
         return IntPtr.Zero;
     }
 
@@ -175,7 +379,9 @@ public static class NativeLibraryLoader
     {
         var suffix = version.ToLibrarySuffix();
         var baseDir = AppContext.BaseDirectory;
-        var paths = new List<string>();
+
+        LogDiagnostic($"Generating search paths for version {version.ToVersionString()}, suffix: {suffix}");
+        LogDiagnostic($"Base directory: {baseDir}");
 
         string extension;
 
@@ -193,29 +399,29 @@ public static class NativeLibraryLoader
         }
         else
         {
+            LogDiagnostic("WARNING: Unknown platform, no extension determined");
             yield break;
         }
 
+        LogDiagnostic($"Platform extension: {extension}");
+
         // All platforms use libpg_query_{version}.{extension}
         var libraryFileName = $"libpg_query_{suffix}.{extension}";
+        LogDiagnostic($"Library file name: {libraryFileName}");
 
-        // Current directory
-        paths.Add(Path.Combine(baseDir, libraryFileName));
-
-        // Runtime-specific directory
+        // Strategy 1: Runtime-specific directory (STANDARD .NET APPROACH - PRIORITY)
         var rid = GetRuntimeIdentifier();
         if (!string.IsNullOrEmpty(rid))
         {
-            paths.Add(Path.Combine(baseDir, "runtimes", rid, "native", libraryFileName));
+            var runtimePath = Path.Combine(baseDir, "runtimes", rid, "native", libraryFileName);
+            LogDiagnostic($"Runtime-specific path (RID: {rid}): {runtimePath}");
+            yield return runtimePath;
         }
 
-        foreach (var path in paths)
-        {
-            if (File.Exists(path))
-            {
-                yield return path;
-            }
-        }
+        // Strategy 2: Base directory (fallback for compatibility)
+        var basePath = Path.Combine(baseDir, libraryFileName);
+        LogDiagnostic($"Base directory path: {basePath}");
+        yield return basePath;
     }
 
     /// <summary>

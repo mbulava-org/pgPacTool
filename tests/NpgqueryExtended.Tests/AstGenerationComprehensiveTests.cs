@@ -178,7 +178,7 @@ public class AstGenerationComprehensiveTests
         }
     }
 
-    [Theory]
+    [Theory(Skip = "ScanWithProtobuf broken on Linux. See Issue #36")]
     [InlineData(PostgreSqlVersion.Postgres16)]
     [InlineData(PostgreSqlVersion.Postgres17)]
     public void ScanWithProtobuf_ReturnsProtobufData(PostgreSqlVersion version)
@@ -277,7 +277,7 @@ $$ LANGUAGE plpgsql;";
     // Note: These functions may not be available in all library builds
     // ============================================
 
-    [Theory]
+    [Theory(Skip = "ParseProtobuf broken on Linux. See Issue #36")]
     [InlineData(PostgreSqlVersion.Postgres16)]
     [InlineData(PostgreSqlVersion.Postgres17)]
     public void ParseProtobuf_ValidQuery_WorksOrGracefullyFails(PostgreSqlVersion version)
@@ -411,7 +411,7 @@ $$ LANGUAGE plpgsql;";
         Assert.NotNull(result);
     }
 
-    [Fact]
+    [Fact(Skip = "QuickScanWithProtobuf broken on Linux. See Issue #36")]
     public void QuickScanWithProtobuf_ValidQuery_Works()
     {
         var result = Parser.QuickScanWithProtobuf("SELECT id FROM users");

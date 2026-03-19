@@ -28,13 +28,45 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Npgquery\Npgquery\Npgquery.csproj" />
+    <ProjectReference Include="..\Npgquery\Npgquery\Npgquery.csproj">
+      <!-- Don't create a NuGet dependency, but DO include the DLL -->
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
   </ItemGroup>
 
-  <!-- Include README in package -->
+  <!-- Include README and LICENSE in package -->
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
     <None Include="LICENSE.txt" Pack="true" PackagePath="\" />
   </ItemGroup>
+
+  <!-- Copy native libraries from Npgquery to output during build -->
+  <Target Name="CopyNativeLibraries" AfterTargets="Build">
+    <ItemGroup>
+      <NativeLibs Include="..\Npgquery\Npgquery\runtimes\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(NativeLibs)" DestinationFolder="$(OutputPath)runtimes\%(RecursiveDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- Include Npgquery.dll and native libraries in the package -->
+  <Target Name="IncludeNpgqueryInPackage" BeforeTargets="_GetPackageFiles" DependsOnTargets="ResolveReferences">
+    <ItemGroup>
+      <!-- Find Npgquery.dll from referenced assemblies -->
+      <_NpgqueryDll Include="@(ReferenceCopyLocalPaths)" Condition="'%(Filename)' == 'Npgquery'" />
+
+      <!-- Add Npgquery.dll to package -->
+      <None Include="@(_NpgqueryDll)">
+        <Pack>true</Pack>
+        <PackagePath>lib\$(TargetFramework)</PackagePath>
+      </None>
+
+      <!-- Add native libraries to package -->
+      <_NativeLibs Include="$(OutputPath)runtimes\**\*.*" />
+      <None Include="@(_NativeLibs)">
+        <Pack>true</Pack>
+        <PackagePath>runtimes\%(RecursiveDir)%(Filename)%(Extension)</PackagePath>
+      </None>
+    </ItemGroup>
+  </Target>
 
 </Project>

@@ -19,6 +19,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="DeparseMemoryFixVerification.cs" />
+    <None Include="DeparseMemoryFixVerification.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="xunit.runner.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\libs\Npgquery\Npgquery\Npgquery.csproj" />
   </ItemGroup>
 

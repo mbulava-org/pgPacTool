@@ -24,6 +24,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.33.5" />
     <PackageReference Include="Npgsql" Version="10.0.1" />
   </ItemGroup>
 

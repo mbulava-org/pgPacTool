@@ -217,7 +217,16 @@ public static class PublishScriptGenerator
 
         foreach (var diff in diffs)
         {
-            if (diff.DefinitionChanged)
+            if (diff.SourceDefinition != null && diff.TargetDefinition == null)
+            {
+                if (options.IncludeComments)
+                {
+                    sb.AppendLine($"-- Creating sequence {diff.SequenceName}");
+                }
+
+                sb.AppendLine(diff.SourceDefinition.TrimEnd());
+            }
+            else if (diff.DefinitionChanged)
             {
                 if (options.IncludeComments)
                 {
@@ -264,74 +273,98 @@ public static class PublishScriptGenerator
                 sb.AppendLine($"-- Table: {diff.TableName}");
             }
 
-            // Column changes
-            foreach (var colDiff in diff.ColumnDiffs)
+            // Table missing in target - CREATE table with original definition
+            if (diff.SourceDefinition != null && diff.TargetDefinition == null)
             {
-                var (schema, tableName) = SplitQualifiedName(diff.TableName);
-
-                if (colDiff.SourceDataType == null && colDiff.TargetDataType != null)
+                // Output original CREATE TABLE definition (don't modify it)
+                sb.AppendLine(diff.SourceDefinition.TrimEnd());
+                sb.AppendLine();
+                // Skip column processing - columns are already in CREATE TABLE
+                // Continue to process constraints and indexes below
+            }
+            else if (diff.SourceDefinition == null && diff.TargetDefinition != null)
+            {
+                // Table exists in target but not in source - DROP if configured
+                if (options.DropObjectsNotInSource)
                 {
-                    // Column exists in target but not in source - DROP if configured
-                    if (options.DropObjectsNotInSource)
-                    {
-                        // ✅ Using AST builder
-                        var ast = AstBuilder.AlterTableDropColumn(schema, tableName, colDiff.ColumnName, ifExists: true);
-                        AppendAstSql(sb, ast);
-                    }
-                }
-                else if (colDiff.SourceDataType != null && colDiff.TargetDataType == null)
-                {
-                    // Column missing in target - ADD
-                    // ✅ Using AST builder
-                    var notNull = colDiff.SourceIsNotNull == true;
-                    var defaultValue = !string.IsNullOrEmpty(colDiff.SourceDefault) ? colDiff.SourceDefault : null;
-
-                    var ast = AstBuilder.AlterTableAddColumn(
-                        schema, 
-                        tableName, 
-                        colDiff.ColumnName, 
-                        colDiff.SourceDataType!,
-                        notNull,
-                        defaultValue);
+                    var (schema, tableName) = SplitQualifiedName(diff.TableName);
+                    var ast = AstBuilder.DropTable(schema, tableName, ifExists: true, cascade: true);
                     AppendAstSql(sb, ast);
                 }
-                else if (colDiff.SourceDataType != colDiff.TargetDataType ||
-                         colDiff.SourceIsNotNull != colDiff.TargetIsNotNull ||
-                         colDiff.SourceDefault != colDiff.TargetDefault)
+                sb.AppendLine();
+                continue; // Skip column/constraint/index processing for dropped tables
+            }
+            else
+            {
+                // Table exists in both - process column changes
+                foreach (var colDiff in diff.ColumnDiffs)
                 {
-                    // Column changed - ALTER
-                    if (colDiff.SourceDataType != colDiff.TargetDataType)
+                    var (schema, tableName) = SplitQualifiedName(diff.TableName);
+
+                    if (colDiff.SourceDataType == null && colDiff.TargetDataType != null)
                     {
-                        // ✅ Using AST builder with parse-extract pattern for TypeName
-                        var ast = AstBuilder.AlterTableAlterColumnType(schema, tableName, colDiff.ColumnName, colDiff.SourceDataType!);
+                        // Column exists in target but not in source - DROP if configured
+                        if (options.DropObjectsNotInSource)
+                        {
+                            // ✅ Using AST builder
+                            var ast = AstBuilder.AlterTableDropColumn(schema, tableName, colDiff.ColumnName, ifExists: true);
+                            AppendAstSql(sb, ast);
+                        }
+                    }
+                    else if (colDiff.SourceDataType != null && colDiff.TargetDataType == null)
+                    {
+                        // Column missing in target - ADD
+                        // ✅ Using AST builder
+                        var notNull = colDiff.SourceIsNotNull == true;
+                        var defaultValue = !string.IsNullOrEmpty(colDiff.SourceDefault) ? colDiff.SourceDefault : null;
+
+                        var ast = AstBuilder.AlterTableAddColumn(
+                            schema, 
+                            tableName, 
+                            colDiff.ColumnName, 
+                            colDiff.SourceDataType!,
+                            notNull,
+                            defaultValue);
                         AppendAstSql(sb, ast);
                     }
-                    if (colDiff.SourceIsNotNull != colDiff.TargetIsNotNull)
+                    else if (colDiff.SourceDataType != colDiff.TargetDataType ||
+                             colDiff.SourceIsNotNull != colDiff.TargetIsNotNull ||
+                             colDiff.SourceDefault != colDiff.TargetDefault)
                     {
-                        // ✅ Using AST builder
-                        if (colDiff.SourceIsNotNull == true)
+                        // Column changed - ALTER
+                        if (colDiff.SourceDataType != colDiff.TargetDataType)
                         {
-                            var ast = AstBuilder.AlterTableAlterColumnSetNotNull(schema, tableName, colDiff.ColumnName);
+                            // ✅ Using AST builder with parse-extract pattern for TypeName
+                            var ast = AstBuilder.AlterTableAlterColumnType(schema, tableName, colDiff.ColumnName, colDiff.SourceDataType!);
                             AppendAstSql(sb, ast);
                         }
-                        else
+                        if (colDiff.SourceIsNotNull != colDiff.TargetIsNotNull)
                         {
-                            var ast = AstBuilder.AlterTableAlterColumnDropNotNull(schema, tableName, colDiff.ColumnName);
-                            AppendAstSql(sb, ast);
+                            // ✅ Using AST builder
+                            if (colDiff.SourceIsNotNull == true)
+                            {
+                                var ast = AstBuilder.AlterTableAlterColumnSetNotNull(schema, tableName, colDiff.ColumnName);
+                                AppendAstSql(sb, ast);
+                            }
+                            else
+                            {
+                                var ast = AstBuilder.AlterTableAlterColumnDropNotNull(schema, tableName, colDiff.ColumnName);
+                                AppendAstSql(sb, ast);
+                            }
                         }
-                    }
-                    if (colDiff.SourceDefault != colDiff.TargetDefault)
-                    {
-                        // ✅ Using AST builder
-                        if (string.IsNullOrEmpty(colDiff.SourceDefault))
+                        if (colDiff.SourceDefault != colDiff.TargetDefault)
                         {
-                            var ast = AstBuilder.AlterTableAlterColumnDropDefault(schema, tableName, colDiff.ColumnName);
-                            AppendAstSql(sb, ast);
-                        }
-                        else
-                        {
-                            var ast = AstBuilder.AlterTableAlterColumnSetDefault(schema, tableName, colDiff.ColumnName, colDiff.SourceDefault);
-                            AppendAstSql(sb, ast);
+                            // ✅ Using AST builder
+                            if (string.IsNullOrEmpty(colDiff.SourceDefault))
+                            {
+                                var ast = AstBuilder.AlterTableAlterColumnDropDefault(schema, tableName, colDiff.ColumnName);
+                                AppendAstSql(sb, ast);
+                            }
+                            else
+                            {
+                                var ast = AstBuilder.AlterTableAlterColumnSetDefault(schema, tableName, colDiff.ColumnName, colDiff.SourceDefault);
+                                AppendAstSql(sb, ast);
+                            }
                         }
                     }
                 }

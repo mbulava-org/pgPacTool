@@ -120,6 +120,29 @@ namespace ProjectExtract_Tests.Integration
         }
 
         [Test]
+        public async Task ExtractTypes_Postgres16_ExcludesImplicitRowTypes()
+        {
+            // Arrange
+            var extractor = new PgProjectExtractor(ConnectionString);
+
+            // Act
+            var project = await extractor.ExtractPgProject("testdb");
+
+            // Assert
+            var testSchema = project.Schemas.FirstOrDefault(s => s.Name == "test_schema");
+            Assert.That(testSchema, Is.Not.Null);
+
+            var implicitRowTypeNames = testSchema.Tables.Select(t => t.Name)
+                .Concat(testSchema.Views.Select(v => v.Name))
+                .ToHashSet();
+
+            var extractedTypeNames = testSchema.Types.Select(t => t.Name).ToList();
+
+            Assert.That(extractedTypeNames, Has.None.Matches<string>(name => implicitRowTypeNames.Contains(name)),
+                "Implicit row types for tables and views should not be extracted as standalone types");
+        }
+
+        [Test]
         public async Task VersionDetection_Postgres16_DetectsCorrectly()
         {
             // Arrange

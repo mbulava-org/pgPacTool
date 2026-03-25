@@ -142,7 +142,20 @@ public class ProjectPublisher
                 }
             }
 
-            // Step 6: Execute script (if not GenerateScriptOnly)
+            // Step 6: Persist generated script for troubleshooting
+            if (!string.IsNullOrWhiteSpace(options.OutputScriptPath))
+            {
+                var scriptDirectory = Path.GetDirectoryName(options.OutputScriptPath);
+                if (!string.IsNullOrWhiteSpace(scriptDirectory))
+                {
+                    Directory.CreateDirectory(scriptDirectory);
+                }
+
+                await File.WriteAllTextAsync(options.OutputScriptPath, result.Script);
+                result.ScriptFilePath = options.OutputScriptPath;
+            }
+
+            // Step 7: Execute script (if not GenerateScriptOnly)
             if (!options.GenerateScriptOnly && !string.IsNullOrWhiteSpace(result.Script))
             {
                 try
@@ -160,13 +173,6 @@ public class ProjectPublisher
             {
                 // Script generation only
                 result.Success = true;
-
-                // Save to file if path specified
-                if (!string.IsNullOrWhiteSpace(options.OutputScriptPath))
-                {
-                    await File.WriteAllTextAsync(options.OutputScriptPath, result.Script);
-                    result.ScriptFilePath = options.OutputScriptPath;
-                }
             }
 
             stopwatch.Stop();

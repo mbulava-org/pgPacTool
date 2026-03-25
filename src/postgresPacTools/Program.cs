@@ -89,7 +89,7 @@ internal class Program
 
         var sourceFileOption = new Option<string>(
             name: "--source-file",
-            description: "Source .pgproj.json file")
+            description: "Source .pgpac or .csproj file")
         {
             IsRequired = true
         };
@@ -122,16 +122,22 @@ internal class Program
             description: "Execute deployment in a transaction",
             getDefaultValue: () => true);
 
+        var scriptOutputOption = new Option<string?>(
+            name: "--script-output",
+            description: "Optional path for the generated deployment script. Defaults to deployment_{TargetDatabase}_{TimeStamp}.sql beside the source package.");
+        scriptOutputOption.AddAlias("-so");
+
         command.AddOption(sourceFileOption);
         command.AddOption(targetConnectionOption);
         command.AddOption(variablesOption);
         command.AddOption(dropObjectsOption);
         command.AddOption(transactionalOption);
+        command.AddOption(scriptOutputOption);
 
-        command.SetHandler(async (sourceFile, targetConnection, variables, dropObjects, transactional) =>
+        command.SetHandler(async (sourceFile, targetConnection, variables, dropObjects, transactional, scriptOutput) =>
         {
-            await PublishAction(sourceFile, targetConnection, variables, dropObjects, transactional);
-        }, sourceFileOption, targetConnectionOption, variablesOption, dropObjectsOption, transactionalOption);
+            await PublishAction(sourceFile, targetConnection, variables, dropObjects, transactional, scriptOutput);
+        }, sourceFileOption, targetConnectionOption, variablesOption, dropObjectsOption, transactionalOption, scriptOutputOption);
 
         return command;
     }
@@ -146,7 +152,7 @@ internal class Program
 
         var sourceFileOption = new Option<string>(
             name: "--source-file",
-            description: "Source .pgproj.json file")
+            description: "Source .pgpac or .csproj file")
         {
             IsRequired = true
         };
@@ -381,7 +387,7 @@ internal class Program
     }
 
     static async Task PublishAction(string sourceFile, string targetConnection, string[]? variables,
-        bool dropObjects, bool transactional)
+        bool dropObjects, bool transactional, string? scriptOutput)
     {
         Console.WriteLine("╔════════════════════════════════════════════════════════════╗");
         Console.WriteLine("║  PostgreSQL Schema Publishing                              ║");
@@ -394,12 +400,13 @@ internal class Program
             Console.WriteLine($"🎯 Target: {MaskPassword(targetConnection)}");
             Console.WriteLine($"🔄 Transactional: {transactional}");
             Console.WriteLine($"🗑️  Drop extra objects: {dropObjects}");
+            var resolvedScriptOutput = ResolveDeploymentScriptOutputPath(sourceFile, targetConnection, scriptOutput);
+            Console.WriteLine($"💾 Deployment script: {resolvedScriptOutput}");
             Console.WriteLine();
 
-            // Load source project
+            // Load source project (supports .pgpac and .csproj files)
             Console.WriteLine("📖 Loading source project...");
-            await using var fileStream = File.OpenRead(sourceFile);
-            var sourceProject = await PgProject.Load(fileStream);
+            var sourceProject = await PgProject.LoadFromFile(sourceFile);
             Console.WriteLine($"✅ Loaded {sourceProject.Schemas.Count} schema(s)");
 
             // Parse variables
@@ -417,6 +424,7 @@ internal class Program
             {
                 ConnectionString = targetConnection,
                 GenerateScriptOnly = false,
+                OutputScriptPath = resolvedScriptOutput,
                 DropObjectsNotInSource = dropObjects,
                 Transactional = transactional,
                 Variables = sqlCmdVars
@@ -425,6 +433,11 @@ internal class Program
             var result = await publisher.PublishAsync(sourceProject, targetConnection, options);
 
             Console.WriteLine();
+            if (!string.IsNullOrWhiteSpace(result.ScriptFilePath))
+            {
+                Console.WriteLine($"💾 Deployment script saved: {result.ScriptFilePath}");
+            }
+
             if (result.Success)
             {
                 Console.WriteLine("✅ Deployment successful!");
@@ -476,10 +489,9 @@ internal class Program
             Console.WriteLine($"💾 Output: {outputFile}");
             Console.WriteLine();
 
-            // Load source project
+            // Load source project (supports .pgpac and .csproj files)
             Console.WriteLine("📖 Loading source project...");
-            await using var fileStream = File.OpenRead(sourceFile);
-            var sourceProject = await PgProject.Load(fileStream);
+            var sourceProject = await PgProject.LoadFromFile(sourceFile);
 
             // Parse variables
             var sqlCmdVars = ParseVariables(variables);
@@ -778,5 +790,35 @@ internal class Program
     {
         var builder = new Npgsql.NpgsqlConnectionStringBuilder(connectionString);
         return builder.Database ?? "postgres";
+    }
+
+    static string ResolveDeploymentScriptOutputPath(string sourceFile, string targetConnection, string? scriptOutput)
+    {
+        if (!string.IsNullOrWhiteSpace(scriptOutput))
+        {
+            return Path.GetFullPath(scriptOutput);
+        }
+
+        var sourceDirectory = Path.GetDirectoryName(Path.GetFullPath(sourceFile));
+        if (string.IsNullOrWhiteSpace(sourceDirectory))
+        {
+            throw new ArgumentException("Unable to determine the source file directory.", nameof(sourceFile));
+        }
+
+        var targetDatabase = SanitizeFileNamePart(GetDatabaseFromConnection(targetConnection));
+        var timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
+        var fileName = $"deployment_{targetDatabase}_{timestamp}.sql";
+
+        return Path.Combine(sourceDirectory, fileName);
+    }
+
+    static string SanitizeFileNamePart(string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+
+        var invalidFileNameChars = Path.GetInvalidFileNameChars();
+        var sanitized = new string(value.Select(ch => invalidFileNameChars.Contains(ch) ? '_' : ch).ToArray());
+
+        return string.IsNullOrWhiteSpace(sanitized) ? "unknown" : sanitized;
     }
 }

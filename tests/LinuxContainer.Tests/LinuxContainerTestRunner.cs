@@ -76,7 +76,8 @@ public class LinuxContainerTestRunner : LinuxContainerTestBase
         var projects = new[]
         {
             ("mbulava.PostgreSql.Dac.Tests", "tests/mbulava.PostgreSql.Dac.Tests/mbulava.PostgreSql.Dac.Tests.csproj"),
-            ("ProjectExtract-Tests", "tests/ProjectExtract-Tests/ProjectExtract-Tests.csproj")
+            ("ProjectExtract-Tests", "tests/ProjectExtract-Tests/ProjectExtract-Tests.csproj"),
+            ("NpgqueryExtended.Tests", "tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj")
         };
 
         var allPassed = true;
@@ -132,9 +133,9 @@ NPGQUERY_LIB=""src/libs/Npgquery/Npgquery/runtimes/linux-x64/native/libpg_query.
 if [ -f ""$NPGQUERY_LIB"" ]; then
     echo ""✅ Found: $NPGQUERY_LIB""
     ls -lh ""$NPGQUERY_LIB""
-    
-    # Check if it's a valid ELF binary
-    file ""$NPGQUERY_LIB""
+
+    # Check ELF magic header (7f 45 4c 46)
+    echo ""ELF magic: $(head -c 4 ""$NPGQUERY_LIB"" | od -An -t x1)""
     
     # Check library dependencies
     echo ""Library dependencies:""
@@ -155,7 +156,7 @@ echo ""✅ Npgquery library built successfully""
 
         result.ExitCode.Should().Be(0, because: "native libraries should be present and loadable on Linux");
         result.Output.Should().Contain("✅ Found:", because: "libpg_query.so should exist");
-        result.Output.Should().Contain("ELF 64-bit", because: "it should be a valid Linux binary");
+        result.Output.Should().Contain("7f 45 4c 46", because: "it should be a valid Linux ELF binary");
     }
 
     /// <summary>

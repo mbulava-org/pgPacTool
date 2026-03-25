@@ -100,6 +100,7 @@ public class CliCommandTests
         optionNames.Should().Contain("variables");
         optionNames.Should().Contain("drop-objects-not-in-source");
         optionNames.Should().Contain("transactional");
+        optionNames.Should().Contain("script-output");
     }
 
     [Test]
@@ -124,6 +125,19 @@ public class CliCommandTests
 
         // Assert
         variablesOption.AllowMultipleArgumentsPerToken.Should().BeTrue();
+    }
+
+    [Test]
+    public void PublishCommand_ScriptOutputIsOptional()
+    {
+        // Arrange
+        var rootCommand = CreateRootCommand();
+        var publishCommand = rootCommand.Subcommands.First(c => c.Name == "publish");
+        var scriptOutputOption = publishCommand.Options.First(o => o.Name == "script-output");
+
+        // Assert
+        scriptOutputOption.IsRequired.Should().BeFalse();
+        scriptOutputOption.Aliases.Should().Contain("-so");
     }
 
     [Test]
@@ -203,6 +217,26 @@ public class CliCommandTests
             "extract",
             "--source-connection-string", "Host=localhost;Database=test",
             "--target-file", "test.pgproj.json"
+        };
+
+        // Act
+        var parseResult = rootCommand.Parse(args);
+
+        // Assert
+        parseResult.Errors.Should().BeEmpty();
+    }
+
+    [Test]
+    public void PublishCommand_ParseValidArgumentsWithScriptOutput_Succeeds()
+    {
+        // Arrange
+        var rootCommand = CreateRootCommand();
+        var args = new[]
+        {
+            "publish",
+            "--source-file", "test.pgpac",
+            "--target-connection-string", "Host=localhost;Database=test",
+            "--script-output", "deployment_test_20260101_010203.sql"
         };
 
         // Act
@@ -394,11 +428,14 @@ public class CliCommandTests
         var publishDropOption = new Option<bool>("--drop-objects-not-in-source", () => false);
         publishDropOption.AddAlias("-dons");
         var publishTransOption = new Option<bool>("--transactional", () => true);
+        var publishScriptOutputOption = new Option<string?>("--script-output", "Optional path for the generated deployment script");
+        publishScriptOutputOption.AddAlias("-so");
         publishCommand.AddOption(publishSourceOption);
         publishCommand.AddOption(publishTargetOption);
         publishCommand.AddOption(publishVariablesOption);
         publishCommand.AddOption(publishDropOption);
         publishCommand.AddOption(publishTransOption);
+        publishCommand.AddOption(publishScriptOutputOption);
         rootCommand.AddCommand(publishCommand);
 
         // Script command

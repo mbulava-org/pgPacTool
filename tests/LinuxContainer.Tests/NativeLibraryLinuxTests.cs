@@ -21,16 +21,15 @@ public class NativeLibraryLinuxTests : LinuxContainerTestBase
 
         var script = @"
 cd /workspace
-dotnet test tests/Npgquery.Tests/Npgquery.Tests.csproj \
-    --filter 'FullyQualifiedName~NativeLibraryIntegrationTests.NativeLibraryLoader_IsVersionAvailable_ReturnsTrue&Category=Postgres16' \
-    --logger 'console;verbosity=normal' \
-    --no-build
+dotnet test tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj \
+    --filter 'FullyQualifiedName~NativeLibraryIntegrationTests.NativeLibraryLoader_IsVersionAvailable_ReturnsTrue' \
+    --logger 'console;verbosity=normal'
 ";
 
         var result = await RunScriptInLinuxContainerAsync("pg16-load", script);
         
         result.ExitCode.Should().Be(0, "PG16 library should load successfully on Linux");
-        result.Output.Should().Contain("Passed", "Tests should pass");
+        result.Output.Should().Contain("PostgreSQL 16 availability: True", "PG16 should be available on Linux");
     }
 
     [Test]
@@ -44,16 +43,15 @@ dotnet test tests/Npgquery.Tests/Npgquery.Tests.csproj \
 
         var script = @"
 cd /workspace
-dotnet test tests/Npgquery.Tests/Npgquery.Tests.csproj \
-    --filter 'FullyQualifiedName~NativeLibraryIntegrationTests.NativeLibraryLoader_IsVersionAvailable_ReturnsTrue&Category=Postgres17' \
-    --logger 'console;verbosity=normal' \
-    --no-build
+dotnet test tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj \
+    --filter 'FullyQualifiedName~NativeLibraryIntegrationTests.NativeLibraryLoader_IsVersionAvailable_ReturnsTrue' \
+    --logger 'console;verbosity=normal'
 ";
 
         var result = await RunScriptInLinuxContainerAsync("pg17-load", script);
         
         result.ExitCode.Should().Be(0, "PG17 library should load successfully on Linux");
-        result.Output.Should().Contain("Passed", "Tests should pass");
+        result.Output.Should().Contain("PostgreSQL 17 availability: True", "PG17 should be available on Linux");
     }
 
     [Test]
@@ -67,10 +65,9 @@ dotnet test tests/Npgquery.Tests/Npgquery.Tests.csproj \
 
         var script = @"
 cd /workspace
-dotnet test tests/Npgquery.Tests/Npgquery.Tests.csproj \
+dotnet test tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj \
     --filter 'FullyQualifiedName~NativeLibraryIntegrationTests.NativeLibraryLoader_CanDetectAvailableVersions' \
-    --logger 'console;verbosity=detailed' \
-    --no-build
+    --logger 'console;verbosity=detailed'
 ";
 
         var result = await RunScriptInLinuxContainerAsync("detect-versions", script);
@@ -91,10 +88,9 @@ dotnet test tests/Npgquery.Tests/Npgquery.Tests.csproj \
 
         var script = @"
 cd /workspace
-dotnet test tests/Npgquery.Tests/Npgquery.Tests.csproj \
+dotnet test tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj \
     --filter 'FullyQualifiedName~NativeLibraryIntegrationTests.Parse_BasicQueries_SucceedsWithCorrectVersion' \
-    --logger 'console;verbosity=normal' \
-    --no-build
+    --logger 'console;verbosity=normal'
 ";
 
         var result = await RunScriptInLinuxContainerAsync("basic-parsing", script);
@@ -113,10 +109,9 @@ dotnet test tests/Npgquery.Tests/Npgquery.Tests.csproj \
 
         var script = @"
 cd /workspace
-dotnet test tests/Npgquery.Tests/Npgquery.Tests.csproj \
+dotnet test tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj \
     --filter 'FullyQualifiedName~NativeLibraryIntegrationTests.Parse_ComplexJoinQuery_Succeeds|FullyQualifiedName~NativeLibraryIntegrationTests.Parse_CTE_Succeeds|FullyQualifiedName~NativeLibraryIntegrationTests.Parse_WindowFunctions_Succeeds' \
-    --logger 'console;verbosity=normal' \
-    --no-build
+    --logger 'console;verbosity=normal'
 ";
 
         var result = await RunScriptInLinuxContainerAsync("complex-sql", script);
@@ -135,10 +130,9 @@ dotnet test tests/Npgquery.Tests/Npgquery.Tests.csproj \
 
         var script = @"
 cd /workspace
-dotnet test tests/Npgquery.Tests/Npgquery.Tests.csproj \
+dotnet test tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj \
     --filter 'FullyQualifiedName~FunctionalityExposureTests' \
-    --logger 'console;verbosity=normal' \
-    --no-build
+    --logger 'console;verbosity=normal'
 ";
 
         var result = await RunScriptInLinuxContainerAsync("all-functions", script);
@@ -157,10 +151,9 @@ dotnet test tests/Npgquery.Tests/Npgquery.Tests.csproj \
 
         var script = @"
 cd /workspace
-dotnet test tests/Npgquery.Tests/Npgquery.Tests.csproj \
+dotnet test tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj \
     --filter 'FullyQualifiedName~NativeLibraryIntegrationTests.Parser_MultipleVersions_Simultaneous_AllWork' \
-    --logger 'console;verbosity=detailed' \
-    --no-build
+    --logger 'console;verbosity=detailed'
 ";
 
         var result = await RunScriptInLinuxContainerAsync("multi-version", script);
@@ -180,10 +173,9 @@ dotnet test tests/Npgquery.Tests/Npgquery.Tests.csproj \
 
         var script = @"
 cd /workspace
-dotnet test tests/Npgquery.Tests/Npgquery.Tests.csproj \
+dotnet test tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj \
     --filter 'FullyQualifiedName~VersionCompatibilityTests.JsonTable_FailsInPG16_SucceedsInPG17' \
-    --logger 'console;verbosity=detailed' \
-    --no-build
+    --logger 'console;verbosity=detailed'
 ";
 
         var result = await RunScriptInLinuxContainerAsync("version-features", script);
@@ -203,10 +195,9 @@ dotnet test tests/Npgquery.Tests/Npgquery.Tests.csproj \
 
         var script = @"
 cd /workspace
-dotnet test tests/Npgquery.Tests/Npgquery.Tests.csproj \
+dotnet test tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj \
     --filter 'FullyQualifiedName~NativeLibraryIntegrationTests.LibraryPaths_ExpectedFilesExist' \
-    --logger 'console;verbosity=detailed' \
-    --no-build
+    --logger 'console;verbosity=detailed'
 ";
 
         var result = await RunScriptInLinuxContainerAsync("library-paths", script);
@@ -227,10 +218,9 @@ dotnet test tests/Npgquery.Tests/Npgquery.Tests.csproj \
 
         var script = @"
 cd /workspace
-dotnet test tests/Npgquery.Tests/Npgquery.Tests.csproj \
+dotnet test tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj \
     --filter 'FullyQualifiedName~NativeLibraryIntegrationTests.PlatformDetection_ReportsCorrectPlatform' \
-    --logger 'console;verbosity=detailed' \
-    --no-build
+    --logger 'console;verbosity=detailed'
 ";
 
         var result = await RunScriptInLinuxContainerAsync("platform-detection", script);
@@ -255,14 +245,14 @@ dotnet build --configuration Release
 
 echo ''
 echo '=== Running All Npgquery Integration Tests ==='
-dotnet test tests/Npgquery.Tests/Npgquery.Tests.csproj \
+dotnet test tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj \
     --filter 'FullyQualifiedName~NativeLibraryIntegrationTests' \
     --logger 'console;verbosity=normal' \
     --configuration Release
 
 echo ''
 echo '=== Running Version Compatibility Tests ==='
-dotnet test tests/Npgquery.Tests/Npgquery.Tests.csproj \
+dotnet test tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj \
     --filter 'FullyQualifiedName~VersionCompatibilityTests' \
     --logger 'console;verbosity=normal' \
     --configuration Release

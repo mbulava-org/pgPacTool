@@ -118,11 +118,22 @@ public class CsprojProjectLoader
         // Phase 2: Build dependency graph and order objects
         var orderedObjects = OrderObjectsByDependencies(parsedObjects);
 
+        // Separate roles from schema-scoped objects (roles are database-level)
+        var roles = orderedObjects.Where(o => o.ObjectType == SqlObjectType.Role).ToList();
+        var schemaObjects = orderedObjects.Where(o => o.ObjectType != SqlObjectType.Role).ToList();
+
         // Phase 3: Group by schema (extracted from AST, not folder structure)
-        var schemaGroups = orderedObjects.GroupBy(o => o.SchemaName);
+        var schemaGroups = schemaObjects.GroupBy(o => o.SchemaName ?? "public");
 
         foreach (var schemaGroup in schemaGroups)
         {
+            // Skip empty schema names (defensive)
+            if (string.IsNullOrWhiteSpace(schemaGroup.Key))
+            {
+                Console.WriteLine("Warning: Skipping objects with empty schema name");
+                continue;
+            }
+
             var schema = new PgSchema
             {
                 Name = schemaGroup.Key,
@@ -136,6 +147,19 @@ public class CsprojProjectLoader
             }
 
             project.Schemas.Add(schema);
+        }
+
+        // Phase 4: Add roles to project (roles are database-level, not schema-scoped)
+        foreach (var roleObj in roles)
+        {
+            if (roleObj.Ast is CreateRoleStmt createRole)
+            {
+                project.Roles.Add(new PgRole
+                {
+                    Name = roleObj.ObjectName,
+                    Definition = roleObj.Sql
+                });
+            }
         }
 
         return project;
@@ -294,6 +318,16 @@ public class CsprojProjectLoader
     {
         schema = rangeVar?.Schemaname;
         name = rangeVar?.Relname;
+
+        // Handle empty strings from protobuf deserialization
+        if (string.IsNullOrWhiteSpace(schema))
+        {
+            schema = null;
+        }
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            name = null;
+        }
     }
 
     /// <summary>

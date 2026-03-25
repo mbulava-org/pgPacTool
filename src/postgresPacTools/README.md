@@ -100,8 +100,10 @@ pgpac publish
 **Options:**
 - `-sf` / `--source-file` - Package or project file
 - `-tcs` / `--target-connection-string` - Target database connection
-- `--include-transaction` - Wrap deployment in transaction (default: true)
-- `-v` / `--verbose` - Show deployment progress
+- `--transactional` - Wrap deployment in transaction (default: true)
+- `-so` / `--script-output` - Optional deployment script path override
+
+Every `publish` run also writes the generated SQL deployment script to disk for troubleshooting. By default the script is written beside the source package using `deployment_{TargetDatabase}_{TimeStamp}.sql`.
 
 ### `script` - Generate Deployment SQL
 

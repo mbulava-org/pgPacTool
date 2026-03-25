@@ -397,13 +397,11 @@ public class CsprojProjectGenerator
     {
         var csproj = new XDocument(
             new XElement("Project",
-                new XAttribute("Sdk", "Microsoft.NET.Sdk"),
+                new XAttribute("Sdk", "MSBuild.Sdk.PostgreSql/1.0.0"),
 
                 // PropertyGroup
                 new XElement("PropertyGroup",
                     new XElement("TargetFramework", "net10.0"),
-                    new XElement("OutputType", "Library"),
-                    new XElement("IsPackable", "false"),
                     new XElement("DatabaseName", project.DatabaseName ?? _projectName),
                     new XElement("PostgresVersion", project.PostgresVersion ?? "16"),
                     new XComment(" PostgreSQL target version (major version only) - used for compilation and deployment validation "),

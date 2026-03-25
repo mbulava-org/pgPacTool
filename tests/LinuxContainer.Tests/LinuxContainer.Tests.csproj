@@ -34,7 +34,7 @@
   <ItemGroup>
     <ProjectReference Include="..\mbulava.PostgreSql.Dac.Tests\mbulava.PostgreSql.Dac.Tests.csproj" />
     <ProjectReference Include="..\ProjectExtract-Tests\ProjectExtract-Tests.csproj" />
-    <ProjectReference Include="..\..\src\libs\Npgquery\Npgquery.Tests\Npgquery.Tests.csproj" />
+    <ProjectReference Include="..\NpgqueryExtended.Tests\NpgqueryExtended.Tests.csproj" />
   </ItemGroup>
 
 </Project>

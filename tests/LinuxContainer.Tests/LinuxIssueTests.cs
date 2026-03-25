@@ -81,7 +81,7 @@ echo ""✅ Found: $NATIVE_LIB""
 ls -lh ""$NATIVE_LIB""
 
 # Verify it's a valid ELF binary
-file ""$NATIVE_LIB""
+echo ""ELF magic: $(head -c 4 ""$NATIVE_LIB"" | od -An -t x1)""
 
 # Check dependencies
 echo """"
@@ -91,12 +91,12 @@ ldd ""$NATIVE_LIB"" 2>&1 || true
 # Build and run Npgquery tests
 echo """"
 echo ""Running Npgquery tests to verify library loads:""
-cd src/libs/Npgquery/Npgquery.Tests
-dotnet build -c Release --no-restore
+cd tests/NpgqueryExtended.Tests
+dotnet build -c Release
 
 # Run a simple parse test to ensure library loads
-dotnet test -c Release --no-build --no-restore \
-    --filter ""FullyQualifiedName~BasicParse"" \
+dotnet test -c Release --no-build \
+    --filter ""FullyQualifiedName~NativeLibraryIntegrationTests.Parse_BasicQueries_SucceedsWithCorrectVersion"" \
     --logger ""console;verbosity=detailed"" || exit 1
 
 echo """"
@@ -106,7 +106,7 @@ echo ""✅ Native library loads and works correctly on Linux""
         var result = await RunScriptInLinuxContainerAsync("native-lib-test", script);
 
         result.ExitCode.Should().Be(0, because: "native library should load without errors");
-        result.Output.Should().Contain("ELF 64-bit", because: "it should be a valid Linux binary");
+        result.Output.Should().Contain("7f 45 4c 46", because: "it should be a valid Linux binary");
         result.Output.Should().NotContain("error while loading shared libraries", because: "all dependencies should be satisfied");
     }
 

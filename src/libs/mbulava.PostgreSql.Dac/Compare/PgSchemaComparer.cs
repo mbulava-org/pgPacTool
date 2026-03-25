@@ -98,10 +98,18 @@ namespace mbulava.PostgreSql.Dac.Compare
                 var tgt = targetTables.FirstOrDefault(t => t.Name == src.Name);
                 if (tgt == null)
                 {
+                    // Table missing in target - CREATE TABLE will include columns
+                    // Only populate constraint/index diffs (not column diffs - columns are in CREATE TABLE)
                     diffs.Add(new PgTableDiff
                     {
                         TableName = src.Name,
-                        DefinitionChanged = true, // missing in target
+                        DefinitionChanged = true,
+                        SourceDefinition = src.Definition,
+                        TargetDefinition = null,
+                        ColumnDiffs = new List<PgColumnDiff>(), // Empty - columns are in CREATE TABLE
+                        ConstraintDiffs = CompareConstraints(src.Constraints, new List<PgConstraint>()),
+                        IndexDiffs = CompareIndexes(src.Indexes, new List<PgIndex>()),
+                        PrivilegeChanges = ComparePrivileges(src.Privileges, new List<PgPrivilege>())
                     });
                     continue;
                 }
@@ -232,12 +240,20 @@ namespace mbulava.PostgreSql.Dac.Compare
                     diffs.Add(new PgSequenceDiff
                     {
                         SequenceName = src.Name,
+                        SourceDefinition = src.Definition,
+                        TargetDefinition = null,
+                        SourceOptions = src.Options,
                         DefinitionChanged = true
                     });
                     continue;
                 }
 
-                var seqDiff = new PgSequenceDiff { SequenceName = src.Name };
+                var seqDiff = new PgSequenceDiff
+                {
+                    SequenceName = src.Name,
+                    SourceDefinition = src.Definition,
+                    TargetDefinition = tgt.Definition
+                };
 
                 // Owner
                 if (options.CompareOwners && src.Owner != tgt.Owner)

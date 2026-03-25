@@ -237,7 +237,7 @@ public class PublishResult
     public TimeSpan ExecutionTime { get; set; }
 
     /// <summary>
-    /// Path to generated script file (if GenerateScriptOnly was true).
+    /// Path to the generated deployment script file.
     /// </summary>
     [JsonPropertyName("scriptFilePath")]
     public string? ScriptFilePath { get; set; }

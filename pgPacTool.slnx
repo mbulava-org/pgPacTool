@@ -19,6 +19,7 @@
     <Project Path="tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj">
       <Build Solution="Debug|*" Project="false" />
     </Project>
+    <Project Path="tests/NugetPackage.Tests/NugetPackage.Tests.csproj" />
     <Project Path="tests/ProjectExtract-Tests/ProjectExtract-Tests.csproj" />
   </Folder>
 </Solution>

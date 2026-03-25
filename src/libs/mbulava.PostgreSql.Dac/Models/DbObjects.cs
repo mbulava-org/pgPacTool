@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.IO.Compression;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
@@ -40,6 +41,54 @@ namespace mbulava.PostgreSql.Dac.Models
             };
             return await JsonSerializer.DeserializeAsync<PgProject>(input, options) 
                 ?? throw new InvalidOperationException("Failed to deserialize PgProject");
+        }
+
+        /// <summary>
+        /// Loads a PgProject from a file. Supports .pgpac (ZIP) and .csproj (MSBuild SDK) formats.
+        /// </summary>
+        /// <param name="filePath">Path to .pgpac or .csproj file</param>
+        /// <returns>Loaded PgProject</returns>
+        /// <exception cref="NotSupportedException">If file format is not supported</exception>
+        public static async Task<PgProject> LoadFromFile(string filePath)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+
+            if (!File.Exists(filePath))
+            {
+                throw new FileNotFoundException($"File not found: {filePath}", filePath);
+            }
+
+            var extension = Path.GetExtension(filePath).ToLowerInvariant();
+
+            return extension switch
+            {
+                ".pgpac" => await LoadFromPgPac(filePath),
+                ".csproj" => await LoadFromCsproj(filePath),
+                _ => throw new NotSupportedException(
+                    $"Unsupported file format: {extension}. Only .pgpac and .csproj files are supported.")
+            };
+        }
+
+        /// <summary>
+        /// Loads a PgProject from a .pgpac file (ZIP containing content.json).
+        /// </summary>
+        private static async Task<PgProject> LoadFromPgPac(string pgpacPath)
+        {
+            using var archive = ZipFile.OpenRead(pgpacPath);
+            var contentEntry = archive.GetEntry("content.json")
+                ?? throw new InvalidOperationException($"Invalid .pgpac file: missing content.json entry in {pgpacPath}");
+
+            await using var entryStream = contentEntry.Open();
+            return await Load(entryStream);
+        }
+
+        /// <summary>
+        /// Loads a PgProject from a .csproj file (MSBuild SDK format) by compiling it.
+        /// </summary>
+        private static async Task<PgProject> LoadFromCsproj(string csprojPath)
+        {
+            var loader = new Compile.CsprojProjectLoader(csprojPath);
+            return await loader.LoadProjectAsync();
         }
     }
 

@@ -288,33 +288,42 @@ postgresPacTools publish [options]
 | `--variables` | `-v` | ❌ | SQLCMD variables in format `Name=Value` (can specify multiple) |
 | `--drop-objects-not-in-source` | `-dons` | ❌ | Drop objects in target that don't exist in source (default: `false`) |
 | `--transactional` | | ❌ | Execute deployment in a transaction (default: `true`) |
+| `--script-output` | `-so` | ❌ | Override the generated deployment script path |
 
 #### Examples
 
 ```bash
 # Basic publish
 postgresPacTools publish \
-  -sf myapp.pgproj.json \
+  -sf myapp.pgpac \
   -tcs "Host=prod;Database=myapp;Username=deploy;Password=secret"
 
 # Publish with variables
 postgresPacTools publish \
-  -sf myapp.pgproj.json \
+  -sf myapp.pgpac \
   -tcs "Host=prod;Database=myapp;Username=deploy;Password=secret" \
   -v DatabaseName=prod_myapp \
   -v Environment=production
 
 # Publish and drop extra objects
 postgresPacTools publish \
-  -sf myapp.pgproj.json \
+  -sf myapp.pgpac \
   -tcs "Host=prod;Database=myapp;Username=deploy;Password=secret" \
   --drop-objects-not-in-source
 
 # Non-transactional publish
 postgresPacTools publish \
-  -sf myapp.pgproj.json \
+  -sf myapp.pgpac \
   -tcs "Host=prod;Database=myapp;Username=deploy;Password=secret" \
   --transactional false
+
+# Publish with an explicit script output path
+postgresPacTools publish \
+  -sf myapp.pgpac \
+  -tcs "Host=prod;Database=myapp;Username=deploy;Password=secret" \
+  -so artifacts/deployment_prod_myapp.sql
+
+Every publish writes the generated deployment SQL to disk. If `--script-output` is omitted, the script is written beside the source package using `deployment_{TargetDatabase}_{TimeStamp}.sql`.
 ```
 
 #### Output
@@ -323,15 +332,18 @@ postgresPacTools publish \
 ║  PostgreSQL Schema Publishing                              ║
 ╚════════════════════════════════════════════════════════════╝
 
-📋 Source: myapp.pgproj.json
+📋 Source: myapp.pgpac
 🎯 Target: Host=prod;Database=myapp;Username=deploy;Password=****
 🔄 Transactional: True
 🗑️  Drop extra objects: False
+💾 Deployment script: .\deployment_myapp_20260325_053015.sql
 
 📖 Loading source project...
 ✅ Loaded 2 schema(s)
 
 🚀 Publishing changes...
+
+💾 Deployment script saved: .\deployment_myapp_20260325_053015.sql
 
 ✅ Deployment successful!
    📊 Created: 3

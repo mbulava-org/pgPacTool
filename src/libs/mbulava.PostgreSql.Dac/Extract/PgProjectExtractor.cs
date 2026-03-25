@@ -814,28 +814,37 @@ namespace mbulava.PostgreSql.Dac.Extract
             await using var conn = await CreateConnectionAsync();
             await using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-        SELECT t.oid, t.typname, t.typtype, r.rolname
+        SELECT t.oid,
+               t.typname,
+               t.typtype,
+               r.rolname,
+               t.typrelid
         FROM pg_type t
         JOIN pg_namespace n ON n.oid = t.typnamespace
         JOIN pg_roles r ON r.oid = t.typowner
+        LEFT JOIN pg_class c ON c.oid = t.typrelid
         WHERE n.nspname = @schema
-          AND t.typtype IN ('d','e','c');";
+          AND (
+              t.typtype IN ('d','e')
+              OR (t.typtype = 'c' AND c.relkind = 'c')
+          );";
 
             cmd.Parameters.AddWithValue("schema", schema);
 
             await using var reader = await cmd.ExecuteReaderAsync();
-            var typeInfos = new List<(uint oid, string name, char typtype, string owner)>();
+            var typeInfos = new List<(uint oid, string name, char typtype, string owner, uint relationOid)>();
             while (await reader.ReadAsync())
             {
                 var oid = reader.GetFieldValue<uint>(0);
                 var name = reader.GetString(1);
                 var typtype = reader.GetChar(2);
                 var owner = reader.GetString(3);
-                typeInfos.Add((oid, name, typtype, owner));
+                var relationOid = reader.GetFieldValue<uint>(4);
+                typeInfos.Add((oid, name, typtype, owner, relationOid));
             }
             await reader.CloseAsync();
 
-            foreach (var (oid, name, typtype, owner) in typeInfos)
+            foreach (var (oid, name, typtype, owner, relationOid) in typeInfos)
             {
                 string sql;
                 PgType pgType = new PgType { Name = name, Owner = owner };
@@ -911,7 +920,7 @@ namespace mbulava.PostgreSql.Dac.Extract
                     FROM pg_attribute a
                     WHERE a.attrelid = @oid AND a.attnum > 0 AND NOT a.attisdropped
                     ORDER BY a.attnum;";
-                            compCmd.Parameters.AddWithValue("oid", (int)oid);
+                            compCmd.Parameters.AddWithValue("oid", (int)relationOid);
                             await using var compReader = await compCmd.ExecuteReaderAsync();
                             while (await compReader.ReadAsync())
                             {

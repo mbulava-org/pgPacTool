@@ -47,6 +47,10 @@ namespace mbulava.PostgreSql.Dac.Models
         public List<PgConstraintDiff> ConstraintDiffs { get; set; } = new();
         public List<PgIndexDiff> IndexDiffs { get; set; } = new();
 
+        // Source/target definitions for script generation (needed when table is missing/extra)
+        public string? SourceDefinition { get; set; }
+        public string? TargetDefinition { get; set; }
+
         // Privilege changes
         public List<PgPrivilegeDiff> PrivilegeChanges { get; set; } = new();
     }
@@ -108,6 +112,9 @@ namespace mbulava.PostgreSql.Dac.Models
     public class PgSequenceDiff
     {
         public string SequenceName { get; set; } = string.Empty;
+
+        public string? SourceDefinition { get; set; }
+        public string? TargetDefinition { get; set; }
 
         public (string SourceOwner, string TargetOwner)? OwnerChanged { get; set; }
         public bool DefinitionChanged { get; set; }

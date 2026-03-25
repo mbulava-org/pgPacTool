@@ -476,4 +476,33 @@ public class PublishScriptGeneratorTests
         result.Should().Contain("ALTER SEQUENCE");
         result.Should().Contain("INCREMENT 5");
     }
+
+    [Test]
+    public void Generate_MissingSequence_CreatesSequence()
+    {
+        // Arrange
+        var diff = new PgSchemaDiff
+        {
+            SchemaName = "public",
+            SequenceDiffs = new List<PgSequenceDiff>
+            {
+                new()
+                {
+                    SequenceName = "user_id_seq",
+                    SourceDefinition = "CREATE SEQUENCE public.user_id_seq START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1 NO CYCLE;",
+                    TargetDefinition = null,
+                    DefinitionChanged = true
+                }
+            }
+        };
+
+        var options = new PublishOptions { IncludeComments = false };
+
+        // Act
+        var result = PublishScriptGenerator.Generate(diff, options);
+
+        // Assert
+        result.Should().Contain("CREATE SEQUENCE public.user_id_seq");
+        result.Should().NotContain("ALTER SEQUENCE \"user_id_seq\"");
+    }
 }

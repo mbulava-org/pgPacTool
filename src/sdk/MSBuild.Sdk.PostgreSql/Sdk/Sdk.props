@@ -22,13 +22,14 @@
     
     <!-- Default database name (from project name) -->
     <DatabaseName Condition="'$(DatabaseName)' == ''">$(MSBuildProjectName)</DatabaseName>
+    <DefaultSchema Condition="'$(DefaultSchema)' == ''">public</DefaultSchema>
     
     <!-- Output format: pgpac (default) or json -->
     <OutputFormat Condition="'$(OutputFormat)' == ''">pgpac</OutputFormat>
     
     <!-- Output file name -->
     <PgPacFileName Condition="'$(PgPacFileName)' == ''">$(DatabaseName).pgpac</PgPacFileName>
-    <PgPacFilePath Condition="'$(PgPacFilePath)' == ''">$(OutputPath)$(PgPacFileName)</PgPacFilePath>
+    <PgPacFilePath Condition="'$(PgPacFilePath)' == '' and '$(OutputPath)' != ''">$(OutputPath)$(PgPacFileName)</PgPacFilePath>
     
     <!-- Enable validation during build -->
     <ValidateOnBuild Condition="'$(ValidateOnBuild)' == ''">true</ValidateOnBuild>

@@ -395,16 +395,20 @@ public class CsprojProjectGenerator
     /// </summary>
     private void GenerateCsprojFile(PgProject project)
     {
+        var projectPostgresVersion = GetProjectPostgresVersion(project.PostgresVersion);
+
         var csproj = new XDocument(
-            new XElement("Project",
-                new XAttribute("Sdk", "MSBuild.Sdk.PostgreSql/1.0.0"),
+                new XElement("Project",
+                    new XAttribute("Sdk", "MSBuild.Sdk.PostgreSql/1.0.0-preview1"),
 
                 // PropertyGroup
                 new XElement("PropertyGroup",
                     new XElement("TargetFramework", "net10.0"),
                     new XElement("DatabaseName", project.DatabaseName ?? _projectName),
-                    new XElement("PostgresVersion", project.PostgresVersion ?? "16"),
+                    new XElement("PostgresVersion", projectPostgresVersion),
                     new XComment(" PostgreSQL target version (major version only) - used for compilation and deployment validation "),
+                    new XElement("DefaultSchema", GetProjectDefaultSchema(project.DefaultSchema)),
+                    new XComment(" Default schema for objects that omit schema qualification "),
                     new XElement("DefaultOwner", project.DefaultOwner ?? "postgres"),
                     new XComment(" Default owner for objects that don't explicitly specify one "),
                     new XElement("DefaultTablespace", project.DefaultTablespace ?? "pg_default"),
@@ -449,6 +453,27 @@ public class CsprojProjectGenerator
 
         var csprojPath = Path.Combine(_projectDirectory, $"{_projectName}.csproj");
         csproj.Save(csprojPath);
+    }
+
+    private static string GetProjectPostgresVersion(string? projectPostgresVersion)
+    {
+        if (string.IsNullOrWhiteSpace(projectPostgresVersion))
+        {
+            return "16";
+        }
+
+        var majorVersion = projectPostgresVersion
+            .Split('.', 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault();
+
+        return string.IsNullOrWhiteSpace(majorVersion) ? "16" : majorVersion;
+    }
+
+    private static string GetProjectDefaultSchema(string? projectDefaultSchema)
+    {
+        return string.IsNullOrWhiteSpace(projectDefaultSchema)
+            ? "public"
+            : projectDefaultSchema.Trim();
     }
 
     /// <summary>

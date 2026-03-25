@@ -2,7 +2,9 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.Runtime.CompilerServices;
 using System.Xml.Linq;
+using Npgsql;
 using NuGet.Packaging;
+using Testcontainers.PostgreSql;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -14,10 +16,13 @@ namespace NugetPackage.Tests;
 /// </summary>
 public class NugetPackageValidationTests : IDisposable
 {
+    private const string ReadmePackageVersion = "1.0.0-preview1";
+
     private readonly ITestOutputHelper _output;
     private readonly string _solutionRoot;
     private readonly string _testWorkspace;
     private readonly string _localNugetFeed;
+    private readonly string _nugetPackagesFolder;
 
     public NugetPackageValidationTests(ITestOutputHelper output)
     {
@@ -33,10 +38,15 @@ public class NugetPackageValidationTests : IDisposable
         // Create temporary local NuGet feed
         _localNugetFeed = Path.Combine(_testWorkspace, "local-feed");
         Directory.CreateDirectory(_localNugetFeed);
+
+        // Use an isolated NuGet package cache per test instance
+        _nugetPackagesFolder = Path.Combine(_testWorkspace, "packages");
+        Directory.CreateDirectory(_nugetPackagesFolder);
         
         _output.WriteLine($"Solution root: {_solutionRoot}");
         _output.WriteLine($"Test workspace: {_testWorkspace}");
         _output.WriteLine($"Local NuGet feed: {_localNugetFeed}");
+        _output.WriteLine($"NuGet packages folder: {_nugetPackagesFolder}");
     }
 
     public void Dispose()
@@ -244,6 +254,119 @@ public class NugetPackageValidationTests : IDisposable
     }
 
     [Fact]
+    public async Task MsBuildSdkPackage_ReadmeQuickStartProject_CanBuildSuccessfully()
+    {
+        var packagePath = await BuildPackage("MSBuild.Sdk.PostgreSql");
+        await PublishPackageToLocalFeed(packagePath);
+
+        var version = GetPackageVersion(packagePath);
+        Assert.Equal(ReadmePackageVersion, version);
+
+        ClearNuGetPackageCache("MSBuild.Sdk.PostgreSql");
+
+        var projectDirectory = Path.Combine(_testWorkspace, "MyDatabase");
+        Directory.CreateDirectory(projectDirectory);
+
+        await CreateQuickStartNuGetConfigAsync(projectDirectory);
+        await CreateReadmeQuickStartProjectAsync(projectDirectory, version);
+
+        var buildResult = await RunDotNetCommand(projectDirectory, "build");
+
+        Assert.Equal(0, buildResult.ExitCode);
+        Assert.Contains("Build succeeded", buildResult.Output, StringComparison.OrdinalIgnoreCase);
+
+        var packageOutputPath = Path.Combine(projectDirectory, "bin", "Debug", "net10.0", "MyDatabase.pgpac");
+        Assert.True(File.Exists(packageOutputPath), $"Expected quick start package output at {packageOutputPath}");
+    }
+
+    [Fact]
+    public async Task GlobalToolPackage_ReadmeQuickStartProject_CanCompileSuccessfully()
+    {
+        var toolPackagePath = await BuildPackage("postgresPacTools");
+        await PublishPackageToLocalFeed(toolPackagePath);
+
+        var toolVersion = GetPackageVersion(toolPackagePath);
+        Assert.Equal(ReadmePackageVersion, toolVersion);
+
+        var toolPath = await InstallToolAsync(toolVersion);
+
+        var projectDirectory = Path.Combine(_testWorkspace, "MyDatabase");
+        Directory.CreateDirectory(projectDirectory);
+        await CreateReadmeQuickStartProjectAsync(projectDirectory, ReadmePackageVersion);
+
+        var projectPath = Path.Combine(projectDirectory, "MyDatabase.csproj");
+        var compileResult = await RunCommand(toolPath, $"compile --source-file \"{projectPath}\" --verbose", projectDirectory);
+
+        Assert.Equal(0, compileResult.ExitCode);
+
+        var packageOutputPath = Path.Combine(projectDirectory, "bin", "Debug", "net10.0", "MyDatabase.pgpac");
+        Assert.True(File.Exists(packageOutputPath), $"Expected quick start compile output at {packageOutputPath}");
+    }
+
+    [Fact]
+    public async Task GlobalToolPackage_ReadmeExtractExample_CanExtractAndBuildProject()
+    {
+        var sdkPackagePath = await BuildPackage("MSBuild.Sdk.PostgreSql");
+        await PublishPackageToLocalFeed(sdkPackagePath);
+
+        var toolPackagePath = await BuildPackage("postgresPacTools");
+        await PublishPackageToLocalFeed(toolPackagePath);
+
+        var sdkVersion = GetPackageVersion(sdkPackagePath);
+        var toolVersion = GetPackageVersion(toolPackagePath);
+
+        Assert.Equal(ReadmePackageVersion, sdkVersion);
+        Assert.Equal(ReadmePackageVersion, toolVersion);
+
+        var toolPath = await InstallToolAsync(toolVersion);
+
+        await using var container = new PostgreSqlBuilder("postgres:16")
+            .WithDatabase("mydb")
+            .WithUsername("postgres")
+            .WithPassword("postgres123")
+            .WithCleanUp(true)
+            .Build();
+
+        await container.StartAsync();
+        await SeedQuickStartDatabaseAsync(container.GetConnectionString());
+
+        var outputDirectory = Path.Combine(_testWorkspace, "output", "mydb");
+        Directory.CreateDirectory(outputDirectory);
+        await CreateQuickStartNuGetConfigAsync(outputDirectory);
+
+        var projectPath = Path.Combine(outputDirectory, "mydb.csproj");
+        var extractResult = await RunCommand(
+            toolPath,
+            $"extract --source-connection-string \"{container.GetConnectionString()}\" --target-file \"{projectPath}\" --verbose",
+            outputDirectory);
+
+        Assert.Equal(0, extractResult.ExitCode);
+        Assert.True(File.Exists(projectPath), $"Expected extracted project at {projectPath}");
+
+        var projectContent = await File.ReadAllTextAsync(projectPath);
+        Assert.Contains($"<Project Sdk=\"MSBuild.Sdk.PostgreSql/{ReadmePackageVersion}\">", projectContent, StringComparison.Ordinal);
+        Assert.Contains("<PostgresVersion>16</PostgresVersion>", projectContent, StringComparison.Ordinal);
+        Assert.Contains("<DefaultSchema>public</DefaultSchema>", projectContent, StringComparison.Ordinal);
+
+        Assert.True(File.Exists(Path.Combine(outputDirectory, "public", "Tables", "users.sql")));
+        Assert.True(File.Exists(Path.Combine(outputDirectory, "public", "Tables", "orders.sql")));
+
+        ClearNuGetPackageCache("MSBuild.Sdk.PostgreSql");
+        var buildResult = await RunDotNetCommand(outputDirectory, "build");
+
+        Assert.Equal(0, buildResult.ExitCode);
+        Assert.Contains("Build succeeded", buildResult.Output, StringComparison.OrdinalIgnoreCase);
+
+        var expectedPackageOutputs = new[]
+        {
+            Path.Combine(outputDirectory, "bin", "Debug", "net10.0", "mydb.pgpac"),
+            Path.Combine(outputDirectory, "mydb.pgpac")
+        };
+
+        Assert.True(expectedPackageOutputs.Any(File.Exists), $"Expected extracted project package output at one of: {string.Join(", ", expectedPackageOutputs)}");
+    }
+
+    [Fact]
     public async Task DacLibraryPackage_NativeLibrariesLoadCorrectly()
     {
         // Arrange: Build and publish the package
@@ -352,23 +475,31 @@ catch (Exception ex)
         var projectPath = projectName switch
         {
             "mbulava.PostgreSql.Dac" => Path.Combine(_solutionRoot, "src", "libs", "mbulava.PostgreSql.Dac"),
+            "MSBuild.Sdk.PostgreSql" => Path.Combine(_solutionRoot, "src", "sdk", "MSBuild.Sdk.PostgreSql"),
             "postgresPacTools" => Path.Combine(_solutionRoot, "src", "postgresPacTools"),
             _ => throw new ArgumentException($"Unknown project: {projectName}")
         };
 
         _output.WriteLine($"Building package for: {projectPath}");
+        var projectFilePath = Path.Combine(projectPath, $"{projectName}.csproj");
+
+        // Restore first because these tests use an isolated NuGet package cache per run.
+        var restoreResult = await RunDotNetCommand(projectPath, $"restore \"{projectFilePath}\"");
+        Assert.Equal(0, restoreResult.ExitCode);
 
         // Clean previous builds
-        var cleanResult = await RunDotNetCommand(projectPath, "clean -c Release");
+        var cleanResult = await RunDotNetCommand(projectPath, $"clean \"{projectFilePath}\" -c Release");
         Assert.Equal(0, cleanResult.ExitCode);
 
+        var packOutputDirectory = Path.Combine(_testWorkspace, "packed", projectName);
+        Directory.CreateDirectory(packOutputDirectory);
+
         // Build and pack in Release mode (don't use --no-build since we just cleaned)
-        var packResult = await RunDotNetCommand(projectPath, "pack -c Release");
+        var packResult = await RunDotNetCommand(projectPath, $"pack \"{projectFilePath}\" -c Release -o \"{packOutputDirectory}\"");
         Assert.Equal(0, packResult.ExitCode);
 
         // Find the generated .nupkg file
-        var binPath = Path.Combine(projectPath, "bin", "Release");
-        var nupkgFiles = Directory.GetFiles(binPath, "*.nupkg", SearchOption.TopDirectoryOnly);
+        var nupkgFiles = Directory.GetFiles(packOutputDirectory, "*.nupkg", SearchOption.TopDirectoryOnly);
         
         Assert.NotEmpty(nupkgFiles);
         var packagePath = nupkgFiles.OrderByDescending(File.GetLastWriteTime).First();
@@ -452,6 +583,135 @@ Console.WriteLine($""Created project: {project.DatabaseName}"");
         await File.WriteAllTextAsync(programPath, code);
     }
 
+    private async Task CreateQuickStartNuGetConfigAsync(string projectDir)
+    {
+        var nugetConfig = $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+              <packageSources>
+                <clear />
+                <add key="LocalFeed" value="{_localNugetFeed}" />
+                <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+              </packageSources>
+            </configuration>
+            """;
+
+        await File.WriteAllTextAsync(Path.Combine(projectDir, "nuget.config"), nugetConfig);
+    }
+
+    private async Task CreateReadmeQuickStartProjectAsync(string projectDir, string sdkVersion)
+    {
+        var projectFilePath = Path.Combine(projectDir, "MyDatabase.csproj");
+
+        var projectContent = $"""
+            <Project Sdk="MSBuild.Sdk.PostgreSql/{sdkVersion}">
+
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <DatabaseName>MyDatabase</DatabaseName>
+                <PostgresVersion>16</PostgresVersion>
+                <DefaultSchema>public</DefaultSchema>
+                <OutputFormat>pgpac</OutputFormat>
+              </PropertyGroup>
+
+            </Project>
+            """;
+
+        await File.WriteAllTextAsync(projectFilePath, projectContent);
+
+        var tablesDirectory = Path.Combine(projectDir, "Tables");
+        var viewsDirectory = Path.Combine(projectDir, "Views");
+        var functionsDirectory = Path.Combine(projectDir, "Functions");
+
+        Directory.CreateDirectory(tablesDirectory);
+        Directory.CreateDirectory(viewsDirectory);
+        Directory.CreateDirectory(functionsDirectory);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(tablesDirectory, "Users.sql"),
+            """
+            CREATE TABLE public.users (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(50) NOT NULL,
+                email VARCHAR(100) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(tablesDirectory, "Orders.sql"),
+            """
+            CREATE TABLE public.orders (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES public.users(id),
+                ordered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(viewsDirectory, "CustomerOrders.sql"),
+            """
+            CREATE VIEW public.customer_orders AS
+            SELECT u.username, COUNT(o.id) AS order_count
+            FROM users u
+            LEFT JOIN orders o ON u.id = o.user_id
+            GROUP BY u.username;
+            """);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(functionsDirectory, "GetActiveUsers.sql"),
+            """
+            CREATE FUNCTION public.get_active_users()
+            RETURNS TABLE(id integer, username varchar)
+            LANGUAGE sql
+            AS $$
+                SELECT u.id, u.username
+                FROM public.users u;
+            $$;
+            """);
+    }
+
+    private async Task<string> InstallToolAsync(string version)
+    {
+        ClearNuGetPackageCache("postgresPacTools");
+
+        var toolDirectory = Path.Combine(_testWorkspace, "tools");
+        Directory.CreateDirectory(toolDirectory);
+
+        var installResult = await RunDotNetCommand(
+            _testWorkspace,
+            $"tool install postgresPacTools --version {version} --tool-path \"{toolDirectory}\" --add-source \"{_localNugetFeed}\"");
+
+        Assert.Equal(0, installResult.ExitCode);
+
+        var toolPath = Path.Combine(toolDirectory, OperatingSystem.IsWindows() ? "pgpac.exe" : "pgpac");
+        Assert.True(File.Exists(toolPath), $"Tool executable not found at: {toolPath}");
+
+        return toolPath;
+    }
+
+    private static async Task SeedQuickStartDatabaseAsync(string connectionString)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            CREATE TABLE public.users (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(50) NOT NULL,
+                email VARCHAR(100) NOT NULL
+            );
+
+            CREATE TABLE public.orders (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES public.users(id)
+            );
+            """;
+
+        await command.ExecuteNonQueryAsync();
+    }
+
     private async Task<(int ExitCode, string Output)> RunDotNetCommand(string workingDirectory, string arguments)
     {
         return await RunCommand("dotnet", arguments, workingDirectory);
@@ -461,19 +721,7 @@ Console.WriteLine($""Created project: {project.DatabaseName}"");
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(packageName);
 
-        var globalPackagesPath = Environment.GetEnvironmentVariable("NUGET_PACKAGES");
-        if (string.IsNullOrWhiteSpace(globalPackagesPath))
-        {
-            var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            if (string.IsNullOrWhiteSpace(userProfile))
-            {
-                throw new InvalidOperationException("Unable to determine the NuGet global packages folder.");
-            }
-
-            globalPackagesPath = Path.Combine(userProfile, ".nuget", "packages");
-        }
-
-        var packageCachePath = Path.Combine(globalPackagesPath, packageName.ToLowerInvariant());
+        var packageCachePath = Path.Combine(_nugetPackagesFolder, packageName.ToLowerInvariant());
         if (!Directory.Exists(packageCachePath))
         {
             return;
@@ -495,6 +743,8 @@ Console.WriteLine($""Created project: {project.DatabaseName}"");
             UseShellExecute = false,
             CreateNoWindow = true
         };
+
+        startInfo.Environment["NUGET_PACKAGES"] = _nugetPackagesFolder;
 
         _output.WriteLine($"Running: {command} {arguments}");
         _output.WriteLine($"Working directory: {startInfo.WorkingDirectory}");

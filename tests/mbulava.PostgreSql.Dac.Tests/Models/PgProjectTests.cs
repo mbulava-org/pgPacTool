@@ -24,6 +24,7 @@ public class PgProjectTests
         project.DatabaseName.Should().BeEmpty();
         project.PostgresVersion.Should().BeEmpty();
         project.SourceConnection.Should().BeEmpty();
+        project.DefaultSchema.Should().Be("public");
         project.DefaultOwner.Should().Be("postgres");
         project.DefaultTablespace.Should().Be("pg_default");
         project.Schemas.Should().NotBeNull().And.BeEmpty();
@@ -40,6 +41,7 @@ public class PgProjectTests
         project.DatabaseName = "testdb";
         project.PostgresVersion = "16.1";
         project.SourceConnection = "Host=localhost;Database=testdb";
+        project.DefaultSchema = "reporting";
         project.DefaultOwner = "custom_owner";
         project.DefaultTablespace = "custom_tablespace";
 
@@ -47,6 +49,7 @@ public class PgProjectTests
         project.DatabaseName.Should().Be("testdb");
         project.PostgresVersion.Should().Be("16.1");
         project.SourceConnection.Should().Be("Host=localhost;Database=testdb");
+        project.DefaultSchema.Should().Be("reporting");
         project.DefaultOwner.Should().Be("custom_owner");
         project.DefaultTablespace.Should().Be("custom_tablespace");
     }
@@ -59,6 +62,7 @@ public class PgProjectTests
         {
             DatabaseName = "testdb",
             PostgresVersion = "16.1",
+            DefaultSchema = "reporting",
             Schemas = new()
             {
                 new PgSchema { Name = "public", Owner = "postgres" }
@@ -77,6 +81,7 @@ public class PgProjectTests
         
         json.Should().Contain("\"DatabaseName\": \"testdb\"");
         json.Should().Contain("\"PostgresVersion\": \"16.1\"");
+        json.Should().Contain("\"DefaultSchema\": \"reporting\"");
         json.Should().Contain("\"Schemas\"");
     }
 
@@ -88,6 +93,7 @@ public class PgProjectTests
         {
             "DatabaseName": "testdb",
             "PostgresVersion": "16.1",
+            "DefaultSchema": "reporting",
             "DefaultOwner": "postgres",
             "Schemas": [
                 {
@@ -111,6 +117,7 @@ public class PgProjectTests
         project.Should().NotBeNull();
         project.DatabaseName.Should().Be("testdb");
         project.PostgresVersion.Should().Be("16.1");
+        project.DefaultSchema.Should().Be("reporting");
         project.Schemas.Should().HaveCount(1);
         project.Schemas[0].Name.Should().Be("public");
     }
@@ -124,6 +131,7 @@ public class PgProjectTests
             DatabaseName = "testdb",
             PostgresVersion = "16.1",
             SourceConnection = "Host=localhost",
+            DefaultSchema = "reporting",
             DefaultOwner = "testowner",
             DefaultTablespace = "testtablespace",
             Schemas = new()
@@ -153,6 +161,7 @@ public class PgProjectTests
         loaded.DatabaseName.Should().Be(original.DatabaseName);
         loaded.PostgresVersion.Should().Be(original.PostgresVersion);
         loaded.SourceConnection.Should().Be(original.SourceConnection);
+        loaded.DefaultSchema.Should().Be(original.DefaultSchema);
         loaded.DefaultOwner.Should().Be(original.DefaultOwner);
         loaded.DefaultTablespace.Should().Be(original.DefaultTablespace);
         loaded.Schemas.Should().HaveCount(1);

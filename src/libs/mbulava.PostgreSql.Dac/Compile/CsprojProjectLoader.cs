@@ -33,7 +33,6 @@ public class CsprojProjectLoader
 {
     private readonly string _projectPath;
     private readonly string _projectDirectory;
-    private readonly Parser _parser = new();
 
     public CsprojProjectLoader(string projectPath)
     {
@@ -69,13 +68,8 @@ public class CsprojProjectLoader
             project.DatabaseName = dbNameElement.Value;
         }
 
-        // Get PostgreSQL version from project properties if specified
-        var pgVersionElement = doc.Descendants()
-            .FirstOrDefault(e => e.Name.LocalName == "PostgresVersion");
-        if (pgVersionElement != null && !string.IsNullOrWhiteSpace(pgVersionElement.Value))
-        {
-            project.PostgresVersion = pgVersionElement.Value;
-        }
+        project.PostgresVersion = GetRequiredPostgresVersion(doc);
+        project.DefaultSchema = GetDefaultSchema(doc);
 
         // Get default owner from project properties
         var defaultOwnerElement = doc.Descendants()
@@ -98,6 +92,7 @@ public class CsprojProjectLoader
 
         // Phase 1: Parse all SQL files and extract object information from AST
         var parsedObjects = new List<ParsedSqlObject>();
+        using var parser = CreateParser(project.PostgresVersion);
         foreach (var sqlFile in sqlFiles)
         {
             var fullPath = Path.Combine(_projectDirectory, sqlFile);
@@ -108,7 +103,7 @@ public class CsprojProjectLoader
             }
 
             var sql = await File.ReadAllTextAsync(fullPath);
-            var parsed = await ParseAndClassifySqlFileAsync(sql, sqlFile);
+            var parsed = await ParseAndClassifySqlFileAsync(parser, project.DefaultSchema, sql, sqlFile);
             if (parsed != null)
             {
                 parsedObjects.Add(parsed);
@@ -123,7 +118,7 @@ public class CsprojProjectLoader
         var schemaObjects = orderedObjects.Where(o => o.ObjectType != SqlObjectType.Role).ToList();
 
         // Phase 3: Group by schema (extracted from AST, not folder structure)
-        var schemaGroups = schemaObjects.GroupBy(o => o.SchemaName ?? "public");
+        var schemaGroups = schemaObjects.GroupBy(o => o.SchemaName ?? project.DefaultSchema);
 
         foreach (var schemaGroup in schemaGroups)
         {
@@ -168,11 +163,11 @@ public class CsprojProjectLoader
     /// <summary>
     /// Parses a SQL file and extracts object information from AST.
     /// </summary>
-    private async Task<ParsedSqlObject?> ParseAndClassifySqlFileAsync(string sql, string filePath)
+    private async Task<ParsedSqlObject?> ParseAndClassifySqlFileAsync(Parser parser, string defaultSchema, string sql, string filePath)
     {
         try
         {
-            var result = _parser.Parse(sql);
+            var result = parser.Parse(sql);
             if (!result.IsSuccess || result.ParseTree == null)
             {
                 Console.WriteLine($"Warning: Failed to parse {filePath}: {result.Error}");
@@ -192,15 +187,15 @@ public class CsprojProjectLoader
             {
                 var stmt = JsonSerializer.Deserialize<CreateSchemaStmt>(astJson);
                 parsed.ObjectType = SqlObjectType.Schema;
-                parsed.SchemaName = stmt?.Schemaname ?? "public";
-                parsed.ObjectName = stmt?.Schemaname ?? "public";
+                parsed.SchemaName = stmt?.Schemaname ?? defaultSchema;
+                parsed.ObjectName = stmt?.Schemaname ?? defaultSchema;
             }
             else if (sql.Contains("CREATE TABLE", StringComparison.OrdinalIgnoreCase))
             {
                 var stmt = JsonSerializer.Deserialize<CreateStmt>(astJson);
                 parsed.ObjectType = SqlObjectType.Table;
                 ExtractSchemaAndName(stmt?.Relation, out var schema, out var name);
-                parsed.SchemaName = schema ?? "public";
+                parsed.SchemaName = schema ?? defaultSchema;
                 parsed.ObjectName = name ?? "unknown";
                 parsed.Ast = stmt;
             }
@@ -210,7 +205,7 @@ public class CsprojProjectLoader
                 var stmt = JsonSerializer.Deserialize<IndexStmt>(astJson);
                 parsed.ObjectType = SqlObjectType.Index;
                 ExtractSchemaAndName(stmt?.Relation, out var schema, out var name);
-                parsed.SchemaName = schema ?? "public";
+                parsed.SchemaName = schema ?? defaultSchema;
                 parsed.ObjectName = stmt?.Idxname ?? name ?? "unknown";
                 parsed.Ast = stmt;
             }
@@ -219,7 +214,7 @@ public class CsprojProjectLoader
                 var stmt = JsonSerializer.Deserialize<ViewStmt>(astJson);
                 parsed.ObjectType = SqlObjectType.View;
                 ExtractSchemaAndName(stmt?.View, out var schema, out var name);
-                parsed.SchemaName = schema ?? "public";
+                parsed.SchemaName = schema ?? defaultSchema;
                 parsed.ObjectName = name ?? "unknown";
                 parsed.Ast = stmt;
             }
@@ -235,11 +230,11 @@ public class CsprojProjectLoader
                     parsed.ObjectName = nameNode?.String?.Sval ?? "unknown";
                     if (stmt.Funcname.Count > 1)
                     {
-                        parsed.SchemaName = stmt.Funcname[0]?.String?.Sval ?? "public";
+                        parsed.SchemaName = stmt.Funcname[0]?.String?.Sval ?? defaultSchema;
                     }
                     else
                     {
-                        parsed.SchemaName = "public";
+                        parsed.SchemaName = defaultSchema;
                     }
                 }
             }
@@ -248,7 +243,7 @@ public class CsprojProjectLoader
                 var stmt = JsonSerializer.Deserialize<CompositeTypeStmt>(astJson);
                 parsed.ObjectType = SqlObjectType.Type;
                 ExtractSchemaAndName(stmt?.Typevar, out var schema, out var name);
-                parsed.SchemaName = schema ?? "public";
+                parsed.SchemaName = schema ?? defaultSchema;
                 parsed.ObjectName = name ?? "unknown";
                 parsed.Ast = stmt;
             }
@@ -257,7 +252,7 @@ public class CsprojProjectLoader
                 var stmt = JsonSerializer.Deserialize<CreateSeqStmt>(astJson);
                 parsed.ObjectType = SqlObjectType.Sequence;
                 ExtractSchemaAndName(stmt?.Sequence, out var schema, out var name);
-                parsed.SchemaName = schema ?? "public";
+                parsed.SchemaName = schema ?? defaultSchema;
                 parsed.ObjectName = name ?? "unknown";
                 parsed.Ast = stmt;
             }
@@ -266,7 +261,7 @@ public class CsprojProjectLoader
                 var stmt = JsonSerializer.Deserialize<CreateTrigStmt>(astJson);
                 parsed.ObjectType = SqlObjectType.Trigger;
                 ExtractSchemaAndName(stmt?.Relation, out var schema, out var name);
-                parsed.SchemaName = schema ?? "public";
+                parsed.SchemaName = schema ?? defaultSchema;
                 parsed.ObjectName = stmt?.Trigname ?? "unknown";
                 parsed.Ast = stmt;
             }
@@ -281,19 +276,19 @@ public class CsprojProjectLoader
             else if (sql.Contains("GRANT", StringComparison.OrdinalIgnoreCase))
             {
                 parsed.ObjectType = SqlObjectType.Permission;
-                parsed.SchemaName = "public"; // Will be refined later
+                parsed.SchemaName = defaultSchema; // Will be refined later
                 parsed.ObjectName = "_permissions";
             }
             else if (sql.Contains("ALTER", StringComparison.OrdinalIgnoreCase) && sql.Contains("OWNER", StringComparison.OrdinalIgnoreCase))
             {
                 parsed.ObjectType = SqlObjectType.Owner;
-                parsed.SchemaName = "public"; // Will be refined later
+                parsed.SchemaName = defaultSchema; // Will be refined later
                 parsed.ObjectName = "_owners";
             }
             else if (sql.Contains("COMMENT ON", StringComparison.OrdinalIgnoreCase))
             {
                 parsed.ObjectType = SqlObjectType.Comment;
-                parsed.SchemaName = "public"; // Will be refined later
+                parsed.SchemaName = defaultSchema; // Will be refined later
                 parsed.ObjectName = "_comments";
             }
             else
@@ -309,6 +304,53 @@ public class CsprojProjectLoader
             Console.WriteLine($"Error parsing {filePath}: {ex.Message}");
             return null;
         }
+    }
+
+    private string GetRequiredPostgresVersion(XDocument doc)
+    {
+        var pgVersionElement = doc.Descendants()
+            .FirstOrDefault(e => e.Name.LocalName == "PostgresVersion");
+
+        if (pgVersionElement == null || string.IsNullOrWhiteSpace(pgVersionElement.Value))
+        {
+            throw new InvalidOperationException(
+                $"Project '{_projectPath}' must define a PostgresVersion property in the project file. Example: <PostgresVersion>16</PostgresVersion>.");
+        }
+
+        return pgVersionElement.Value.Trim();
+    }
+
+    private static string GetDefaultSchema(XDocument doc)
+    {
+        var defaultSchemaElement = doc.Descendants()
+            .FirstOrDefault(e => e.Name.LocalName == "DefaultSchema");
+
+        return string.IsNullOrWhiteSpace(defaultSchemaElement?.Value)
+            ? "public"
+            : defaultSchemaElement.Value.Trim();
+    }
+
+    private Parser CreateParser(string projectPostgresVersion)
+    {
+        var majorVersionText = projectPostgresVersion
+            .Split('.', 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault();
+
+        if (!int.TryParse(majorVersionText, out var majorVersion))
+        {
+            throw new InvalidOperationException(
+                $"Project '{_projectPath}' has an invalid PostgresVersion value '{projectPostgresVersion}'. Use a supported major version such as 16 or 17.");
+        }
+
+        var version = majorVersion switch
+        {
+            16 => PostgreSqlVersion.Postgres16,
+            17 => PostgreSqlVersion.Postgres17,
+            _ => throw new NotSupportedException(
+                $"Project '{_projectPath}' targets PostgreSQL {majorVersion}, but only PostgreSQL 16 and 17 are currently supported.")
+        };
+
+        return new Parser(version);
     }
 
     /// <summary>
@@ -552,7 +594,9 @@ public class CsprojProjectLoader
         try
         {
             // Parse with Npgquery
-            var result = _parser.Parse(sql);
+            using var parser = CreateParser(GetRequiredPostgresVersion(XDocument.Load(_projectPath)));
+            var defaultSchema = GetDefaultSchema(XDocument.Load(_projectPath));
+            var result = parser.Parse(sql);
 
             if (!result.IsSuccess)
             {
@@ -573,7 +617,7 @@ public class CsprojProjectLoader
                 if (!stmtWrapper.TryGetProperty("stmt", out var stmt))
                     continue;
 
-                await ProcessStatementAsync(stmt, sql, fileName, schema);
+                await ProcessStatementAsync(stmt, sql, fileName, schema, defaultSchema);
             }
         }
         catch (Exception ex)
@@ -585,7 +629,7 @@ public class CsprojProjectLoader
     /// <summary>
     /// Processes a single parsed statement and adds the appropriate object to the schema.
     /// </summary>
-    private async Task ProcessStatementAsync(JsonElement stmt, string fullSql, string fileName, PgSchema schema)
+    private async Task ProcessStatementAsync(JsonElement stmt, string fullSql, string fileName, PgSchema schema, string defaultSchema)
     {
         try
         {

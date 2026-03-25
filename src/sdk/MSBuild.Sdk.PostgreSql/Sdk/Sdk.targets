@@ -6,13 +6,18 @@
     This file is imported AFTER the project file
   -->
 
-  <!-- Define the build task -->
-  <UsingTask 
-    TaskName="MSBuild.Sdk.PostgreSql.Tasks.CompilePgProject" 
-    AssemblyFile="$(MSBuildThisFileDirectory)..\..\lib\net10.0\MSBuild.Sdk.PostgreSql.dll" />
+  <!-- Define the packaged compile host -->
+  <PropertyGroup>
+    <_PgPacToolTaskTfm>net10.0</_PgPacToolTaskTfm>
+    <_PgPacToolHostDirectory>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\tasks\$(_PgPacToolTaskTfm)\'))</_PgPacToolHostDirectory>
+    <_PgPacToolHostPath>$(_PgPacToolHostDirectory)MSBuild.Sdk.PostgreSql.dll</_PgPacToolHostPath>
+    <_PgPacToolHostDepsPath>$(_PgPacToolHostDirectory)MSBuild.Sdk.PostgreSql.deps.json</_PgPacToolHostDepsPath>
+    <_PgPacToolHostRuntimeConfigPath>$(_PgPacToolHostDirectory)MSBuild.Sdk.PostgreSql.runtimeconfig.json</_PgPacToolHostRuntimeConfigPath>
+  </PropertyGroup>
 
   <!-- Set the target path for the database package -->
   <PropertyGroup>
+    <PgPacFilePath Condition="'$(PgPacFilePath)' == ''">$(OutputPath)$(PgPacFileName)</PgPacFilePath>
     <TargetPath>$(PgPacFilePath)</TargetPath>
     <TargetFileName>$(PgPacFileName)</TargetFileName>
   </PropertyGroup>
@@ -39,23 +44,15 @@
     <Message Text="  Output: $(PgPacFilePath)" Importance="normal" />
     <Message Text="  Format: $(OutputFormat)" Importance="normal" />
 
-    <!-- Execute the compilation task -->
-    <CompilePgProject
-      ProjectFile="$(MSBuildProjectFullPath)"
-      OutputPath="$(PgPacFilePath)"
-      OutputFormat="$(OutputFormat)"
-      DatabaseName="$(DatabaseName)"
-      ValidateOnBuild="$(ValidateOnBuild)"
-      SqlFiles="@(SqlFile)"
-      PreDeploymentScripts="@(PreDeploy)"
-      PostDeploymentScripts="@(PostDeploy)">
-      
-      <Output TaskParameter="Success" PropertyName="CompilationSucceeded" />
-    </CompilePgProject>
+    <!-- Execute the packaged compilation host -->
+    <Exec
+      Command='dotnet exec --depsfile &quot;$(_PgPacToolHostDepsPath)&quot; --runtimeconfig &quot;$(_PgPacToolHostRuntimeConfigPath)&quot; &quot;$(_PgPacToolHostPath)&quot; &quot;$(MSBuildProjectFullPath)&quot; &quot;$(PgPacFilePath)&quot; &quot;$(OutputFormat)&quot; &quot;$(DatabaseName)&quot; &quot;$(ValidateOnBuild)&quot;'
+      ConsoleToMsBuild="true"
+      StandardOutputImportance="normal"
+      StandardErrorImportance="high" />
 
     <!-- Report compilation result -->
-    <Message Text="✅ PostgreSQL project compiled successfully!" Importance="high" Condition="'$(CompilationSucceeded)' == 'true'" />
-    <Error Text="❌ PostgreSQL project compilation failed!" Condition="'$(CompilationSucceeded)' != 'true'" />
+    <Message Text="✅ PostgreSQL project compiled successfully!" Importance="high" />
 
   </Target>
 

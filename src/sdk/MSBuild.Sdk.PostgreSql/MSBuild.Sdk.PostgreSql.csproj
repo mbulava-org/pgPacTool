@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
@@ -24,6 +25,13 @@
     <IsPackable>true</IsPackable>
     <IncludeBuildOutput>true</IncludeBuildOutput>
     <DevelopmentDependency>true</DevelopmentDependency>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <GenerateDependencyFile>true</GenerateDependencyFile>
+    <GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
+    <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);CopyTaskRuntimeDependenciesToPackage</TargetsForTfmSpecificBuildOutput>
+    <BuildOutputTargetFolder>tasks</BuildOutputTargetFolder>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <NoWarn>$(NoWarn);NU5100;NU5118</NoWarn>
 
     <!-- Version -->
     <Version>1.0.0-preview1</Version>
@@ -38,8 +46,8 @@
 
   <!-- Dependencies for build tasks -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.Build.Framework" Version="18.3.3" />
-    <PackageReference Include="Microsoft.Build.Utilities.Core" Version="18.3.3" />
+    <PackageReference Include="Microsoft.Build.Framework" Version="18.3.3" PrivateAssets="all" ExcludeAssets="Runtime" />
+    <PackageReference Include="Microsoft.Build.Utilities.Core" Version="18.3.3" PrivateAssets="all" ExcludeAssets="Runtime" />
   </ItemGroup>
 
   <!-- Reference to our DAC library -->
@@ -47,9 +55,22 @@
     <ProjectReference Include="..\..\libs\mbulava.PostgreSql.Dac\mbulava.PostgreSql.Dac.csproj" />
   </ItemGroup>
 
-  <!-- Copy build output to package lib folder -->
-  <ItemGroup>
-    <None Include="$(OutputPath)**\*.dll" Pack="true" PackagePath="lib\$(TargetFramework)\" />
-  </ItemGroup>
+  <!-- Include task runtime dependencies in the SDK package -->
+  <Target Name="CopyTaskRuntimeDependenciesToPackage" DependsOnTargets="ResolveReferences">
+    <ItemGroup>
+      <_TaskAssemblies Include="$(OutputPath)*.dll" Exclude="$(OutputPath)ref\**\*;$(OutputPath)refint\**\*" />
+      <_TaskRuntimeFiles Include="$(OutputPath)runtimes\**\*.*" />
+
+      <BuildOutputInPackage Include="@(_TaskAssemblies)" TargetPath="%(Filename)%(Extension)" />
+      <BuildOutputInPackage Include="@(_TaskRuntimeFiles)" TargetPath="runtimes\%(RecursiveDir)%(Filename)%(Extension)" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="AddTaskDependencyFilesToBuiltProjectOutputGroupOutput" BeforeTargets="BuiltProjectOutputGroup">
+    <ItemGroup>
+      <BuiltProjectOutputGroupOutput Include="$(ProjectDepsFilePath)" TargetPath="$(ProjectDepsFileName)" FinalOutputPath="$(ProjectDepsFilePath)" Condition="Exists('$(ProjectDepsFilePath)')" />
+      <BuiltProjectOutputGroupOutput Include="$(OutputPath)$(AssemblyName).runtimeconfig.json" TargetPath="$(AssemblyName).runtimeconfig.json" FinalOutputPath="$(OutputPath)$(AssemblyName).runtimeconfig.json" Condition="Exists('$(OutputPath)$(AssemblyName).runtimeconfig.json')" />
+    </ItemGroup>
+  </Target>
 
 </Project>

@@ -220,10 +220,9 @@ When extracting to `.csproj`, the following folder structure is created:
 **Generated .csproj File:**
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
+  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview1" />
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <OutputType>Library</OutputType>
-    <IsPackable>false</IsPackable>
     <DatabaseName>dvdrental</DatabaseName>
     <PostgresVersion>16</PostgresVersion>
     <DefaultOwner>postgres</DefaultOwner>

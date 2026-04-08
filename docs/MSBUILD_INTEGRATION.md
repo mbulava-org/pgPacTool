@@ -17,16 +17,14 @@ pgPacTool integrates into standard `.csproj` files using MSBuild SDK pattern.
 ### Standard .csproj with SDK
 
 ```xml
-<Project Sdk="MSBuild.Sdk.PgPacTool/1.0.0">
+<Project Sdk="Microsoft.NET.Sdk">
+  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview1" />
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <PostgreSqlVersion>16</PostgreSqlVersion>
+    <PostgresVersion>16</PostgresVersion>
     <DatabaseName>MyDatabase</DatabaseName>
   </PropertyGroup>
-
-  <ItemGroup>
-    <SqlFile Include="**/*.sql" />
-  </ItemGroup>
 </Project>
 ```
 
@@ -45,7 +43,7 @@ Just like [MSBuild.Sdk.SqlProj](https://github.com/rr-wfm/MSBuild.Sdk.SqlProj) d
 ### 1. MSBuild SDK Package
 
 ```bash
-dotnet add package MSBuild.Sdk.PgPacTool
+dotnet add package MSBuild.Sdk.PostgreSql --version 1.0.0-preview1
 ```
 
 ### 2. Build Tasks

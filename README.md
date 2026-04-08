@@ -103,6 +103,26 @@ pgPacTool brings **SQL Server-style database project workflow** to PostgreSQL. I
 - **.NET 10 SDK** - [Download here](https://dotnet.microsoft.com/download/dotnet/10.0)
 - **PostgreSQL 16 or 17** - Local or remote instance
 
+### Visual Studio / Solution Setup
+
+- **No separate project template install is required for `preview1`**. Create the `.csproj` manually or generate one with `pgpac extract --target-file output/mydb/mydb.csproj`.
+- **To load the custom SDK project in Visual Studio**, the SDK package must be restorable from a package source available to the solution:
+  - published preview: use `nuget.org`
+  - local SDK testing: add a `nuget.config` that points to your local package feed before opening the solution
+- If Visual Studio opens the project but cannot resolve `MSBuild.Sdk.PostgreSql`, run `dotnet restore` from the solution or project directory, then reload the project.
+
+**Example `nuget.config` for local SDK validation:**
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <add key="LocalFeed" value="C:\LocalNuGet" />
+    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+  </packageSources>
+</configuration>
+```
+
 ---
 
 ### 🎯 Option 1: Create New Database Project (MSBuild SDK)
@@ -121,7 +141,9 @@ cd MyDatabase
 
 ```xml
 <!-- MyDatabase.csproj -->
-<Project Sdk="MSBuild.Sdk.PostgreSql/1.0.0-preview1">
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview1" />
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -133,6 +155,8 @@ cd MyDatabase
 
 </Project>
 ```
+
+> **Visual Studio note:** open `MyDatabase.csproj` directly or add it to an existing `.sln` after restore succeeds. No separate template installation is required for the published SDK.
 
 #### Step 2: Add SQL Files
 
@@ -215,7 +239,7 @@ pgpac extract \
   --verbose
 ```
 
-**Result: Complete project with individual SQL files!**
+**Result: Complete project with individual SQL files and an SDK-style `.csproj` that Visual Studio can restore and load.**
 
 ```
 output/mydb/
@@ -754,11 +778,16 @@ cd tests/TestProjects/SampleDatabase
 <configuration>
   <packageSources>
     <add key="LocalFeed" value="$HOME/LocalNuGet" />
+    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
   </packageSources>
 </configuration>
 "@ | Out-File -FilePath nuget.config
 
 # Update .csproj to use local version
+# Restore so Visual Studio/dotnet can resolve the SDK from the local feed
+dotnet restore
+
+# Open SampleDatabase.csproj or SampleDatabase.sln in Visual Studio if desired
 # Then build
 dotnet build
 ```

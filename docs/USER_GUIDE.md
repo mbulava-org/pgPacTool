@@ -220,10 +220,9 @@ mydb/
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
+  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview1" />
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <OutputType>Library</OutputType>
-    <IsPackable>false</IsPackable>
 
     <!-- Database Properties -->
     <DatabaseName>mydb</DatabaseName>

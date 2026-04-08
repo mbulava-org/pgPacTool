@@ -399,7 +399,10 @@ public class CsprojProjectGenerator
 
         var csproj = new XDocument(
                 new XElement("Project",
-                    new XAttribute("Sdk", "MSBuild.Sdk.PostgreSql/1.0.0-preview1"),
+                    new XAttribute("Sdk", "Microsoft.NET.Sdk"),
+                    new XElement("Sdk",
+                        new XAttribute("Name", "MSBuild.Sdk.PostgreSql"),
+                        new XAttribute("Version", "1.0.0-preview1")),
 
                 // PropertyGroup
                 new XElement("PropertyGroup",

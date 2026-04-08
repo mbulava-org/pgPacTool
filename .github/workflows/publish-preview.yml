@@ -11,8 +11,12 @@ on:
       - '!.github/workflows/publish-preview.yml'
   workflow_dispatch:
     inputs:
+      preview_number:
+        description: 'Preview suffix number (e.g., 2 => 1.0.0-preview2)'
+        required: false
+        type: string
       version:
-        description: 'Preview version (e.g., 1.0.0-preview2)'
+        description: 'Full preview version override (e.g., 1.0.0-preview2)'
         required: false
         type: string
 
@@ -92,15 +96,25 @@ jobs:
       id: get_version
       shell: pwsh
       run: |
-        # Get version from manual input or extract from project file
+        # Get version from manual input, preview number, or extract from project file
+        $csprojPath = "src/libs/mbulava.PostgreSql.Dac/mbulava.PostgreSql.Dac.csproj"
+        [xml]$csproj = Get-Content $csprojPath
+        $projectVersion = $csproj.Project.PropertyGroup.Version | Select-Object -First 1
+
         if ("${{ github.event.inputs.version }}" -ne "") {
           $version = "${{ github.event.inputs.version }}"
           Write-Host "Using manual version: $version"
+        } elseif ("${{ github.event.inputs.preview_number }}" -ne "") {
+          if ($projectVersion -match '^(\d+\.\d+\.\d+)(?:-preview\d+)?$') {
+            $baseVersion = $Matches[1]
+            $version = "$baseVersion-preview${{ github.event.inputs.preview_number }}"
+            Write-Host "Using manual preview number: $version"
+          } else {
+            Write-Error "Could not derive base version from project version '$projectVersion'"
+            exit 1
+          }
         } else {
-          # Extract version from mbulava.PostgreSql.Dac.csproj
-          $csprojPath = "src/libs/mbulava.PostgreSql.Dac/mbulava.PostgreSql.Dac.csproj"
-          [xml]$csproj = Get-Content $csprojPath
-          $version = $csproj.Project.PropertyGroup.Version | Select-Object -First 1
+          $version = $projectVersion
           Write-Host "Extracted version from .csproj: $version"
         }
         
@@ -258,7 +272,8 @@ jobs:
           
           ### MSBuild SDK
           ```xml
-          <Project Sdk="MSBuild.Sdk.PostgreSql/${{ steps.get_version.outputs.VERSION }}">
+          <Project Sdk="Microsoft.NET.Sdk">
+            <Sdk Name="MSBuild.Sdk.PostgreSql" Version="${{ steps.get_version.outputs.VERSION }}" />
             <PropertyGroup>
               <TargetFramework>net10.0</TargetFramework>
             </PropertyGroup>

@@ -295,5 +295,11 @@ When working on this project:
 
 ---
 
+## README.md Maintenance
+
+When updating `README.md` in this repo, always keep the footer metadata lines for `Status`, `Version`, and `Last Updated` in sync with the current state of the document and release.
+
+---
+
 *Last Updated*: Current Session
 *Maintained By*: pgPacTool Contributors

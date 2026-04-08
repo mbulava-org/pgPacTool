@@ -15,10 +15,18 @@ Build SQL Server-style database projects for PostgreSQL! This SDK enables you to
 
 ## Quick Start
 
+### Before You Start
+
+- There is **no separate Visual Studio project template installer** for `preview1`.
+- Create the `.csproj` manually or generate one with `pgpac extract`.
+- To open the project in Visual Studio, make sure the solution can restore `MSBuild.Sdk.PostgreSql` from `nuget.org` or a local package feed.
+
 ### 1. Create a Database Project
 
 ```xml
-<Project Sdk="MSBuild.Sdk.PostgreSql/1.0.0-preview1">
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview1" />
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -95,7 +103,9 @@ Only these need explicit configuration:
 ### Example
 
 ```xml
-<Project Sdk="MSBuild.Sdk.PostgreSql/1.0.0-preview1">
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview1" />
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -130,7 +140,9 @@ dotnet rebuild
 
 ### Visual Studio
 
-- Open the `.csproj` in Visual Studio
+- Open the `.csproj` directly or add it to an existing solution
+- If you are testing a local packed SDK, add a `nuget.config` with your local feed before opening the project
+- Run `dotnet restore` if Visual Studio reports the SDK cannot be resolved
 - Press **Ctrl+Shift+B** to build
 - Output appears in `bin\Debug\net10.0\`
 

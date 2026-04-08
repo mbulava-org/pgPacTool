@@ -344,7 +344,8 @@ public class NugetPackageValidationTests : IDisposable
         Assert.True(File.Exists(projectPath), $"Expected extracted project at {projectPath}");
 
         var projectContent = await File.ReadAllTextAsync(projectPath);
-        Assert.Contains($"<Project Sdk=\"MSBuild.Sdk.PostgreSql/{ReadmePackageVersion}\">", projectContent, StringComparison.Ordinal);
+        Assert.Contains("<Project Sdk=\"Microsoft.NET.Sdk\">", projectContent, StringComparison.Ordinal);
+        Assert.Contains($"<Sdk Name=\"MSBuild.Sdk.PostgreSql\" Version=\"{ReadmePackageVersion}\" />", projectContent, StringComparison.Ordinal);
         Assert.Contains("<PostgresVersion>16</PostgresVersion>", projectContent, StringComparison.Ordinal);
         Assert.Contains("<DefaultSchema>public</DefaultSchema>", projectContent, StringComparison.Ordinal);
 
@@ -604,7 +605,9 @@ Console.WriteLine($""Created project: {project.DatabaseName}"");
         var projectFilePath = Path.Combine(projectDir, "MyDatabase.csproj");
 
         var projectContent = $"""
-            <Project Sdk="MSBuild.Sdk.PostgreSql/{sdkVersion}">
+            <Project Sdk="Microsoft.NET.Sdk">
+
+              <Sdk Name="MSBuild.Sdk.PostgreSql" Version="{sdkVersion}" />
 
               <PropertyGroup>
                 <TargetFramework>net10.0</TargetFramework>

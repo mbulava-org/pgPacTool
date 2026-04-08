@@ -145,13 +145,15 @@ MyDatabase/
 
 **Simple and Clean - Convention Over Configuration!**
 
+> **Template note:** there is no separate Visual Studio project template installer for `preview1`. Create the project file manually or generate one via `pgpac extract`, then open the `.csproj` or add it to a solution after restore succeeds.
+
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview1" />
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <OutputType>Library</OutputType>
-    <IsPackable>false</IsPackable>
 
     <!-- PostgreSQL Project Settings -->
     <DatabaseName>MyPostgresDB</DatabaseName>
@@ -323,9 +325,9 @@ pgPacTool scans your entire project directory for `.sql` files, automatically ex
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
+  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview1" />
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <OutputType>Library</OutputType>
     <DatabaseName>MyDB</DatabaseName>
   </PropertyGroup>
 
@@ -342,9 +344,9 @@ pgPacTool scans your entire project directory for `.sql` files, automatically ex
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
+  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview1" />
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <OutputType>Library</OutputType>
   </PropertyGroup>
 
   <!-- Specify deployment scripts -->

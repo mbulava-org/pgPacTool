@@ -280,6 +280,47 @@ public class NugetPackageValidationTests : IDisposable
     }
 
     [Fact]
+    public async Task MsBuildSdkPackage_LeavesTargetPathForProjectSystem_WhileUsingPgPacFilePath()
+    {
+        var packagePath = await BuildPackage("MSBuild.Sdk.PostgreSql");
+        await PublishPackageToLocalFeed(packagePath);
+
+        var version = GetPackageVersion(packagePath);
+
+        ClearNuGetPackageCache("MSBuild.Sdk.PostgreSql");
+
+        var projectDirectory = Path.Combine(_testWorkspace, "TargetPathRegression");
+        Directory.CreateDirectory(projectDirectory);
+
+        await CreateQuickStartNuGetConfigAsync(projectDirectory);
+        await CreateReadmeQuickStartProjectAsync(projectDirectory, version);
+
+        var projectFilePath = Path.Combine(projectDirectory, "MyDatabase.csproj");
+        var projectContent = await File.ReadAllTextAsync(projectFilePath);
+        projectContent = projectContent.Replace(
+            "</Project>",
+            """
+              <Target Name="PrintResolvedOutputPaths">
+                <Message Text="ResolvedTargetPath=$(TargetPath)" Importance="high" />
+                <Message Text="ResolvedPgPacFilePath=$(PgPacFilePath)" Importance="high" />
+              </Target>
+            </Project>
+            """);
+        await File.WriteAllTextAsync(projectFilePath, projectContent);
+
+        var buildResult = await RunDotNetCommand(projectDirectory, "build");
+        Assert.Equal(0, buildResult.ExitCode);
+
+        var inspectResult = await RunDotNetCommand(projectDirectory, "msbuild MyDatabase.csproj -target:PrintResolvedOutputPaths");
+        Assert.Equal(0, inspectResult.ExitCode);
+        Assert.Contains("ResolvedTargetPath=", inspectResult.Output, StringComparison.Ordinal);
+        Assert.Contains("ResolvedPgPacFilePath=", inspectResult.Output, StringComparison.Ordinal);
+        Assert.Contains("ResolvedTargetPath=" + Path.Combine(projectDirectory, "bin", "Debug", "net10.0", "MyDatabase.dll"), inspectResult.Output, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ResolvedTargetPath=" + Path.Combine(projectDirectory, "bin", "Debug", "net10.0", "MyDatabase.pgpac"), inspectResult.Output, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("MyDatabase.pgpac", inspectResult.Output, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task GlobalToolPackage_ReadmeQuickStartProject_CanCompileSuccessfully()
     {
         var toolPackagePath = await BuildPackage("postgresPacTools");

@@ -202,6 +202,8 @@ If you're familiar with SQL Server database projects:
 </PropertyGroup>
 ```
 
+> Use `PgPacFilePath` to control the generated database package location. The SDK intentionally does **not** override `TargetPath`, so Visual Studio and the .NET project system can continue to treat the project like a normal SDK-style .NET project.
+
 ### JSON Output
 
 ```xml

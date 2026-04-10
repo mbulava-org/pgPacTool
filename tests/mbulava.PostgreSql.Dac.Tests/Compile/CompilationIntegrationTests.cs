@@ -126,7 +126,9 @@ public class CompilationIntegrationTests
         // Assert
         Assert.That(result.IsSuccess, Is.False);
         Assert.That(result.Errors.Any(e => e.Code == "REF001"), Is.True);
-        Assert.That(result.Errors.Any(e => e.Location.Contains("Views\\BrokenView.sql", StringComparison.Ordinal)), Is.True);
+        Assert.That(
+            result.Errors.Any(e => e.Location.Replace('\\', '/').Contains("Views/BrokenView.sql", StringComparison.Ordinal)),
+            Is.True);
     }
 
     [Test]

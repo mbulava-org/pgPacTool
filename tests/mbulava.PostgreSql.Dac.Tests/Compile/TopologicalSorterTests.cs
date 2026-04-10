@@ -161,6 +161,25 @@ public class TopologicalSorterTests
         Assert.Throws<InvalidOperationException>(() => sorter.Sort(graph));
     }
 
+    [Test]
+    public void Sort_WithDependencyOutsideGraph_IgnoresMissingDependency()
+    {
+        // Arrange - users depends on an external object not represented in the graph
+        var graph = new DependencyGraph();
+        graph.AddObject("public.users", "TABLE");
+
+        graph.AddDependency("public.users", "public.users_id_seq");
+
+        var sorter = new TopologicalSorter();
+
+        // Act
+        var sorted = sorter.Sort(graph);
+
+        // Assert
+        Assert.That(sorted, Has.Count.EqualTo(1));
+        Assert.That(sorted[0], Is.EqualTo("public.users"));
+    }
+
     #endregion
 
     #region Complex Graphs

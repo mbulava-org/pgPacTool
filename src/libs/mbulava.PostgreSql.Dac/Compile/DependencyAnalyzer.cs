@@ -29,6 +29,12 @@ public class DependencyAnalyzer
     /// </summary>
     public DependencyGraph AnalyzeProject(PgProject project)
     {
+        var dependencies = CollectProjectDependencies(project);
+        return AnalyzeProject(project, dependencies);
+    }
+
+    internal DependencyGraph AnalyzeProject(PgProject project, IReadOnlyCollection<PgDependency> dependencies)
+    {
         var graph = new DependencyGraph();
         
         foreach (var schema in project.Schemas)
@@ -64,53 +70,46 @@ public class DependencyAnalyzer
                 graph.AddObject($"{schema.Name}.{sequence.Name}", "SEQUENCE");
             }
             
-            // Now extract and add dependencies
-            foreach (var table in schema.Tables)
-            {
-                var deps = ExtractTableDependencies(schema.Name, table);
-                foreach (var dep in deps)
-                {
-                    var fromName = $"{dep.ObjectSchema}.{dep.ObjectName}";
-                    var toName = $"{dep.DependsOnSchema}.{dep.DependsOnName}";
-                    graph.AddDependency(fromName, toName);
-                }
-            }
-            
-            foreach (var view in schema.Views)
-            {
-                var deps = ExtractViewDependencies(schema.Name, view);
-                foreach (var dep in deps)
-                {
-                    var fromName = $"{dep.ObjectSchema}.{dep.ObjectName}";
-                    var toName = $"{dep.DependsOnSchema}.{dep.DependsOnName}";
-                    graph.AddDependency(fromName, toName);
-                }
-            }
-            
-            foreach (var function in schema.Functions)
-            {
-                var deps = ExtractFunctionDependencies(schema.Name, function);
-                foreach (var dep in deps)
-                {
-                    var fromName = $"{dep.ObjectSchema}.{dep.ObjectName}";
-                    var toName = $"{dep.DependsOnSchema}.{dep.DependsOnName}";
-                    graph.AddDependency(fromName, toName);
-                }
-            }
-            
-            foreach (var trigger in schema.Triggers)
-            {
-                var deps = ExtractTriggerDependencies(schema.Name, trigger);
-                foreach (var dep in deps)
-                {
-                    var fromName = $"{dep.ObjectSchema}.{dep.ObjectName}";
-                    var toName = $"{dep.DependsOnSchema}.{dep.DependsOnName}";
-                    graph.AddDependency(fromName, toName);
-                }
-            }
+        }
+
+        foreach (var dep in dependencies)
+        {
+            var fromName = $"{dep.ObjectSchema}.{dep.ObjectName}";
+            var toName = $"{dep.DependsOnSchema}.{dep.DependsOnName}";
+            graph.AddDependency(fromName, toName);
         }
         
         return graph;
+    }
+
+    internal List<PgDependency> CollectProjectDependencies(PgProject project)
+    {
+        var dependencies = new List<PgDependency>();
+
+        foreach (var schema in project.Schemas)
+        {
+            foreach (var table in schema.Tables)
+            {
+                dependencies.AddRange(ExtractTableDependencies(schema.Name, table));
+            }
+
+            foreach (var view in schema.Views)
+            {
+                dependencies.AddRange(ExtractViewDependencies(schema.Name, view));
+            }
+
+            foreach (var function in schema.Functions)
+            {
+                dependencies.AddRange(ExtractFunctionDependencies(schema.Name, function));
+            }
+
+            foreach (var trigger in schema.Triggers)
+            {
+                dependencies.AddRange(ExtractTriggerDependencies(schema.Name, trigger));
+            }
+        }
+
+        return dependencies;
     }
     
     /// <summary>

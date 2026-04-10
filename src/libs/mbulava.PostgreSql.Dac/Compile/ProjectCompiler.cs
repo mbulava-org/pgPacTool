@@ -30,7 +30,8 @@ public class ProjectCompiler
         try
         {
             // Step 1: Build dependency graph
-            result.DependencyGraph = _analyzer.AnalyzeProject(project);
+            var dependencies = _analyzer.CollectProjectDependencies(project);
+            result.DependencyGraph = _analyzer.AnalyzeProject(project, dependencies);
 
             // Step 2: Detect circular dependencies
             result.CircularDependencies = _cycleDetector.DetectCycles(result.DependencyGraph);
@@ -77,7 +78,17 @@ public class ProjectCompiler
                 ));
             }
 
-            // Step 3: Topological sort for deployment order
+            // Step 3: Validate missing project references
+            var missingReferenceErrors = ValidateMissingReferences(project, result.DependencyGraph, dependencies);
+            if (missingReferenceErrors.Count > 0)
+            {
+                result.Errors.AddRange(missingReferenceErrors);
+                stopwatch.Stop();
+                result.CompilationTime = stopwatch.Elapsed;
+                return result;
+            }
+
+            // Step 4: Topological sort for deployment order
             try
             {
                 // For self-references (single-node cycles), we can still sort
@@ -95,7 +106,7 @@ public class ProjectCompiler
                 ));
             }
 
-            // Step 4: Additional validations could go here
+            // Step 5: Additional validations could go here
             // - Reference validation
             // - Type validation
             // - Privilege validation
@@ -160,6 +171,50 @@ public class ProjectCompiler
         }
 
         return newGraph;
+    }
+
+    private List<CompilerError> ValidateMissingReferences(PgProject project, DependencyGraph graph, IReadOnlyCollection<PgDependency> dependencies)
+    {
+        var knownObjects = new HashSet<string>(graph.GetAllObjects(), StringComparer.OrdinalIgnoreCase);
+
+        return dependencies
+            .Where(dep => IsRequiredProjectReference(dep))
+            .Where(dep => !knownObjects.Contains(dep.QualifiedDependsOnName))
+            .GroupBy(dep => dep.QualifiedDependsOnName, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .Select(dep => new CompilerError(
+                "REF001",
+                $"Missing reference to {FormatReferenceType(dep.DependsOnType)} '{dep.QualifiedDependsOnName}'",
+                GetFirstUsageLocation(project, dep)))
+            .ToList();
+    }
+
+    private static bool IsRequiredProjectReference(PgDependency dependency)
+    {
+        if (string.IsNullOrWhiteSpace(dependency.DependsOnSchema) || string.IsNullOrWhiteSpace(dependency.DependsOnName))
+        {
+            return false;
+        }
+
+        return !dependency.DependsOnSchema.Equals("pg_catalog", StringComparison.OrdinalIgnoreCase)
+            && !dependency.DependsOnSchema.Equals("information_schema", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string FormatReferenceType(string referenceType)
+    {
+        return referenceType.Equals("TABLE_OR_VIEW", StringComparison.OrdinalIgnoreCase)
+            ? "table or view"
+            : referenceType.ToLowerInvariant();
+    }
+
+    private static string GetFirstUsageLocation(PgProject project, PgDependency dependency)
+    {
+        var sourceObjectName = dependency.QualifiedObjectName;
+        var sourceLocation = project.GetSourceLocation(sourceObjectName);
+
+        return string.IsNullOrWhiteSpace(sourceLocation)
+            ? $"first usage in {dependency.ObjectType.ToLowerInvariant()} '{sourceObjectName}'"
+            : $"{sourceLocation} (first usage in {dependency.ObjectType.ToLowerInvariant()} '{sourceObjectName}')";
     }
 }
 

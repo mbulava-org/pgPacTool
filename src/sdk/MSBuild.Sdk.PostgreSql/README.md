@@ -78,6 +78,8 @@ MyDatabase/
 └── YourFolder/      ✅ Discovered
 ```
 
+These files and folders also stay visible in Visual Studio's Solution Explorer without needing explicit `<Content Include="**\*.sql" />` entries. Standard SDK excludes such as `bin/`, `obj/`, and `.vs/` remain hidden.
+
 ### Pre/Post Deployment Scripts
 
 Only these need explicit configuration:

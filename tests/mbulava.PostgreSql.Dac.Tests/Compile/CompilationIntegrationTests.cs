@@ -2,6 +2,8 @@ using mbulava.PostgreSql.Dac.Compile;
 using mbulava.PostgreSql.Dac.Models;
 using NUnit.Framework;
 using PgQuery;
+using System.IO;
+using System.Threading.Tasks;
 
 namespace mbulava.PostgreSql.Dac.Tests.Compile;
 
@@ -81,6 +83,50 @@ public class CompilationIntegrationTests
         VerifyDeploymentOrder(order, "public.users", "public.user_summary");
         VerifyDeploymentOrder(order, "public.orders", "public.user_summary");
         VerifyDeploymentOrder(order, "public.user_summary", "public.user_report");
+    }
+
+    [Test]
+    public async Task IntegrationTest_CsprojWithMissingReference_ReportsSourceFileLocation()
+    {
+        // Arrange
+        var projectDirectory = Path.Combine(Path.GetTempPath(), $"pgpac-missing-ref-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(projectDirectory);
+        TestContext.WriteLine($"Project directory: {projectDirectory}");
+
+        var projectPath = Path.Combine(projectDirectory, "MissingRefs.csproj");
+        await File.WriteAllTextAsync(projectPath,
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview2" />
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <DatabaseName>MissingRefs</DatabaseName>
+                <PostgresVersion>17</PostgresVersion>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        var viewsDirectory = Path.Combine(projectDirectory, "Views");
+        Directory.CreateDirectory(viewsDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(viewsDirectory, "BrokenView.sql"),
+            """
+            CREATE VIEW public.broken_view AS
+            SELECT *
+            FROM public.missing_table;
+            """);
+
+        var loader = new CsprojProjectLoader(projectPath);
+        var project = await loader.LoadProjectAsync();
+        var compiler = new ProjectCompiler();
+
+        // Act
+        var result = compiler.Compile(project);
+
+        // Assert
+        Assert.That(result.IsSuccess, Is.False);
+        Assert.That(result.Errors.Any(e => e.Code == "REF001"), Is.True);
+        Assert.That(result.Errors.Any(e => e.Location.Contains("Views\\BrokenView.sql", StringComparison.Ordinal)), Is.True);
     }
 
     [Test]

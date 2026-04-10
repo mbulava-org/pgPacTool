@@ -148,6 +148,7 @@ public class TopologicalSorter
     private Dictionary<string, int> CalculateInDegree(DependencyGraph graph, List<string> allObjects)
     {
         var inDegree = new Dictionary<string, int>();
+        var knownObjects = new HashSet<string>(allObjects);
         
         // Initialize all nodes with in-degree 0
         foreach (var obj in allObjects)
@@ -159,7 +160,7 @@ public class TopologicalSorter
         foreach (var obj in allObjects)
         {
             var dependencies = graph.GetDependencies(obj);
-            inDegree[obj] = dependencies.Count;
+            inDegree[obj] = dependencies.Count(knownObjects.Contains);
         }
         
         return inDegree;

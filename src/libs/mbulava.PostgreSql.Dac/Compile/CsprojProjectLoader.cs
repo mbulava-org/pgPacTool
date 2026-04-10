@@ -33,6 +33,7 @@ public class CsprojProjectLoader
 {
     private readonly string _projectPath;
     private readonly string _projectDirectory;
+    private PgProject? _currentProject;
 
     public CsprojProjectLoader(string projectPath)
     {
@@ -56,6 +57,7 @@ public class CsprojProjectLoader
         {
             DatabaseName = Path.GetFileNameWithoutExtension(_projectPath)
         };
+        _currentProject = project;
 
         // Parse .csproj XML
         var doc = XDocument.Load(_projectPath);
@@ -157,6 +159,7 @@ public class CsprojProjectLoader
             }
         }
 
+        _currentProject = null;
         return project;
     }
 
@@ -705,6 +708,7 @@ public class CsprojProjectLoader
             };
 
             schema.Tables.Add(table);
+            RegisterSourceLocation(schema.Name, table.Name, fileName);
         }
         catch (Exception ex)
         {
@@ -740,6 +744,7 @@ public class CsprojProjectLoader
             };
 
             schema.Views.Add(view);
+            RegisterSourceLocation(schema.Name, view.Name, fileName);
         }
         catch (Exception ex)
         {
@@ -770,6 +775,7 @@ public class CsprojProjectLoader
             };
 
             schema.Functions.Add(function);
+            RegisterSourceLocation(schema.Name, function.Name, fileName);
         }
         catch (Exception ex)
         {
@@ -801,6 +807,7 @@ public class CsprojProjectLoader
             };
 
             schema.Types.Add(type);
+            RegisterSourceLocation(schema.Name, type.Name, fileName);
         }
         catch (Exception ex)
         {
@@ -832,6 +839,7 @@ public class CsprojProjectLoader
             };
 
             schema.Types.Add(type);
+            RegisterSourceLocation(schema.Name, type.Name, fileName);
         }
         catch (Exception ex)
         {
@@ -863,6 +871,7 @@ public class CsprojProjectLoader
             };
 
             schema.Types.Add(type);
+            RegisterSourceLocation(schema.Name, type.Name, fileName);
         }
         catch (Exception ex)
         {
@@ -893,6 +902,7 @@ public class CsprojProjectLoader
             };
 
             schema.Sequences.Add(sequence);
+            RegisterSourceLocation(schema.Name, sequence.Name, fileName);
         }
         catch (Exception ex)
         {
@@ -931,6 +941,7 @@ public class CsprojProjectLoader
             };
 
             schema.Triggers.Add(trigger);
+            RegisterSourceLocation(schema.Name, trigger.Name, fileName);
         }
         catch (Exception ex)
         {
@@ -975,6 +986,16 @@ public class CsprojProjectLoader
         }
 
         return nameParts.Count > 0 ? nameParts[^1] : null; // Return last part (unqualified name)
+    }
+
+    private void RegisterSourceLocation(string schemaName, string objectName, string fileName)
+    {
+        if (_currentProject == null || string.IsNullOrWhiteSpace(schemaName) || string.IsNullOrWhiteSpace(objectName))
+        {
+            return;
+        }
+
+        _currentProject.RegisterSourceLocation($"{schemaName}.{objectName}", fileName);
     }
 
     /// <summary>

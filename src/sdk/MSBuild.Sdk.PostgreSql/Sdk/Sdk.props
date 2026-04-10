@@ -34,8 +34,8 @@
     <!-- Enable validation during build -->
     <ValidateOnBuild Condition="'$(ValidateOnBuild)' == ''">true</ValidateOnBuild>
     
-    <!-- SQL file discovery -->
-    <EnableDefaultItems Condition="'$(EnableDefaultItems)' == ''">false</EnableDefaultItems>
+    <!-- Keep normal SDK default items so Visual Studio shows folders/files in Solution Explorer -->
+    <EnableDefaultItems Condition="'$(EnableDefaultItems)' == ''">true</EnableDefaultItems>
   </PropertyGroup>
 
   <!-- Auto-include SQL files -->

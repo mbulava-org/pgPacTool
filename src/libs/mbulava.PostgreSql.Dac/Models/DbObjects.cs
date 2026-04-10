@@ -24,6 +24,26 @@ namespace mbulava.PostgreSql.Dac.Models
         public List<PgSchema> Schemas { get; set; } = new();
         public List<PgRole> Roles { get; set; } = new();   
 
+        [JsonIgnore]
+        internal Dictionary<string, string> SourceLocations { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        internal void RegisterSourceLocation(string qualifiedObjectName, string sourceLocation)
+        {
+            if (string.IsNullOrWhiteSpace(qualifiedObjectName) || string.IsNullOrWhiteSpace(sourceLocation))
+            {
+                return;
+            }
+
+            SourceLocations.TryAdd(qualifiedObjectName, sourceLocation);
+        }
+
+        internal string? GetSourceLocation(string qualifiedObjectName)
+        {
+            return SourceLocations.TryGetValue(qualifiedObjectName, out var sourceLocation)
+                ? sourceLocation
+                : null;
+        }
+
         public static async Task Save(PgProject project, Stream output)
         {
             var options = new JsonSerializerOptions

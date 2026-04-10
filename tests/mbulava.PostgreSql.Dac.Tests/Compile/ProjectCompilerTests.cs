@@ -97,6 +97,42 @@ public class ProjectCompilerTests
         Assert.That(usersIdx, Is.LessThan(ordersIdx), "users should come before orders");
     }
 
+    [Test]
+    public void Compile_ProjectWithMissingReference_ReturnsErrorWithFirstUsageLocation()
+    {
+        // Arrange
+        var project = new PgProject
+        {
+            DatabaseName = "test",
+            Schemas = new List<PgSchema>
+            {
+                new PgSchema
+                {
+                    Name = "public",
+                    Views = new List<PgView>
+                    {
+                        new PgView
+                        {
+                            Name = "active_orders",
+                            Dependencies = new List<string> { "missing_orders" }
+                        }
+                    }
+                }
+            }
+        };
+
+        var compiler = new ProjectCompiler();
+
+        // Act
+        var result = compiler.Compile(project);
+
+        // Assert
+        Assert.That(result.IsSuccess, Is.False);
+        Assert.That(result.Errors.Any(e => e.Code == "REF001"), Is.True);
+        Assert.That(result.Errors.Any(e => e.Message.Contains("public.missing_orders", StringComparison.Ordinal)), Is.True);
+        Assert.That(result.Errors.Any(e => e.Location.Contains("first usage in view 'public.active_orders'", StringComparison.Ordinal)), Is.True);
+    }
+
     #endregion
 
     #region Circular Dependency Detection

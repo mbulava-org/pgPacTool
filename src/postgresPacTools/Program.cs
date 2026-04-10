@@ -626,7 +626,7 @@ internal class Program
                 foreach (var error in result.Errors)
                 {
                     Console.WriteLine($"   ❌ [{error.Code}] {error.Message}");
-                    if (verbose && !string.IsNullOrEmpty(error.Location))
+                    if (!string.IsNullOrEmpty(error.Location))
                     {
                         Console.WriteLine($"      📍 {error.Location}");
                     }

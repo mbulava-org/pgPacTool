@@ -8,7 +8,7 @@
     <!-- Package Metadata -->
     <IsPackable>true</IsPackable>
     <PackageId>mbulava.PostgreSql.Dac</PackageId>
-    <Version>1.0.0-preview3</Version>
+    <Version>1.0.0-preview4</Version>
     <Title>PostgreSQL Data-Tier Application Library</Title>
     <Description>Core library for PostgreSQL database projects. Provides schema extraction, comparison, validation, and deployment capabilities. Build database-as-code with dependency tracking and circular reference detection. Supports PostgreSQL 16 and 17.</Description>
     <Authors>mbulava</Authors>

@@ -178,6 +178,12 @@ public class CsprojProjectLoader
             }
 
             var astJson = result.ParseTree.RootElement.GetRawText();
+            if (!TryGetFirstStatement(result.ParseTree.RootElement, out var stmtObject))
+            {
+                Console.WriteLine($"Warning: Could not find first statement in {filePath}");
+                return null;
+            }
+
             var parsed = new ParsedSqlObject
             {
                 Sql = sql,
@@ -186,109 +192,96 @@ public class CsprojProjectLoader
             };
 
             // Determine object type and extract schema/name from AST
-            if (sql.Contains("CREATE SCHEMA", StringComparison.OrdinalIgnoreCase))
+            if (stmtObject.TryGetProperty("CreateSchemaStmt", out var createSchemaStmt))
             {
-                var stmt = JsonSerializer.Deserialize<CreateSchemaStmt>(astJson);
                 parsed.ObjectType = SqlObjectType.Schema;
-                parsed.SchemaName = stmt?.Schemaname ?? defaultSchema;
-                parsed.ObjectName = stmt?.Schemaname ?? defaultSchema;
+                var schemaName = GetStringProperty(createSchemaStmt, "schemaname") ?? defaultSchema;
+                parsed.SchemaName = schemaName;
+                parsed.ObjectName = schemaName;
             }
-            else if (sql.Contains("CREATE TABLE", StringComparison.OrdinalIgnoreCase))
+            else if (stmtObject.TryGetProperty("CreateStmt", out var createStmt))
             {
-                var stmt = JsonSerializer.Deserialize<CreateStmt>(astJson);
                 parsed.ObjectType = SqlObjectType.Table;
-                ExtractSchemaAndName(stmt?.Relation, out var schema, out var name);
+                ExtractSchemaAndName(createStmt, "relation", defaultSchema, out var schema, out var name);
                 parsed.SchemaName = schema ?? defaultSchema;
                 parsed.ObjectName = name ?? "unknown";
-                parsed.Ast = stmt;
             }
-            else if (sql.Contains("CREATE INDEX", StringComparison.OrdinalIgnoreCase) || 
-                     sql.Contains("CREATE UNIQUE INDEX", StringComparison.OrdinalIgnoreCase))
+            else if (stmtObject.TryGetProperty("IndexStmt", out var indexStmt))
             {
-                var stmt = JsonSerializer.Deserialize<IndexStmt>(astJson);
                 parsed.ObjectType = SqlObjectType.Index;
-                ExtractSchemaAndName(stmt?.Relation, out var schema, out var name);
+                ExtractSchemaAndName(indexStmt, "relation", defaultSchema, out var schema, out var name);
                 parsed.SchemaName = schema ?? defaultSchema;
-                parsed.ObjectName = stmt?.Idxname ?? name ?? "unknown";
-                parsed.Ast = stmt;
+                parsed.ObjectName = GetStringProperty(indexStmt, "idxname") ?? name ?? "unknown";
             }
-            else if (sql.Contains("CREATE VIEW", StringComparison.OrdinalIgnoreCase))
+            else if (stmtObject.TryGetProperty("ViewStmt", out var viewStmt))
             {
-                var stmt = JsonSerializer.Deserialize<ViewStmt>(astJson);
                 parsed.ObjectType = SqlObjectType.View;
-                ExtractSchemaAndName(stmt?.View, out var schema, out var name);
+                ExtractSchemaAndName(viewStmt, "view", defaultSchema, out var schema, out var name);
                 parsed.SchemaName = schema ?? defaultSchema;
                 parsed.ObjectName = name ?? "unknown";
-                parsed.Ast = stmt;
             }
-            else if (sql.Contains("CREATE FUNCTION", StringComparison.OrdinalIgnoreCase) ||
-                     sql.Contains("CREATE PROCEDURE", StringComparison.OrdinalIgnoreCase))
+            else if (stmtObject.TryGetProperty("CreateFunctionStmt", out var functionStmt))
             {
-                var stmt = JsonSerializer.Deserialize<CreateFunctionStmt>(astJson);
                 parsed.ObjectType = SqlObjectType.Function;
-                // Function name is in Funcname array
-                if (stmt?.Funcname != null && stmt.Funcname.Any())
-                {
-                    var nameNode = stmt.Funcname.Last();
-                    parsed.ObjectName = nameNode?.String?.Sval ?? "unknown";
-                    if (stmt.Funcname.Count > 1)
-                    {
-                        parsed.SchemaName = stmt.Funcname[0]?.String?.Sval ?? defaultSchema;
-                    }
-                    else
-                    {
-                        parsed.SchemaName = defaultSchema;
-                    }
-                }
+                ExtractQualifiedName(functionStmt, "funcname", defaultSchema, out var schema, out var name);
+                parsed.SchemaName = schema ?? defaultSchema;
+                parsed.ObjectName = name ?? "unknown";
             }
-            else if (sql.Contains("CREATE TYPE", StringComparison.OrdinalIgnoreCase))
+            else if (stmtObject.TryGetProperty("CompositeTypeStmt", out var compositeTypeStmt))
             {
-                var stmt = JsonSerializer.Deserialize<CompositeTypeStmt>(astJson);
                 parsed.ObjectType = SqlObjectType.Type;
-                ExtractSchemaAndName(stmt?.Typevar, out var schema, out var name);
+                ExtractSchemaAndName(compositeTypeStmt, "typevar", defaultSchema, out var schema, out var name);
                 parsed.SchemaName = schema ?? defaultSchema;
                 parsed.ObjectName = name ?? "unknown";
-                parsed.Ast = stmt;
             }
-            else if (sql.Contains("CREATE SEQUENCE", StringComparison.OrdinalIgnoreCase))
+            else if (stmtObject.TryGetProperty("CreateEnumStmt", out var enumTypeStmt))
             {
-                var stmt = JsonSerializer.Deserialize<CreateSeqStmt>(astJson);
+                parsed.ObjectType = SqlObjectType.Type;
+                ExtractQualifiedName(enumTypeStmt, "typeName", defaultSchema, out var schema, out var name);
+                parsed.SchemaName = schema ?? defaultSchema;
+                parsed.ObjectName = name ?? "unknown";
+            }
+            else if (stmtObject.TryGetProperty("CreateDomainStmt", out var domainTypeStmt))
+            {
+                parsed.ObjectType = SqlObjectType.Type;
+                ExtractQualifiedName(domainTypeStmt, "domainname", defaultSchema, out var schema, out var name);
+                parsed.SchemaName = schema ?? defaultSchema;
+                parsed.ObjectName = name ?? "unknown";
+            }
+            else if (stmtObject.TryGetProperty("CreateSeqStmt", out var sequenceStmt))
+            {
                 parsed.ObjectType = SqlObjectType.Sequence;
-                ExtractSchemaAndName(stmt?.Sequence, out var schema, out var name);
+                ExtractSchemaAndName(sequenceStmt, "sequence", defaultSchema, out var schema, out var name);
                 parsed.SchemaName = schema ?? defaultSchema;
                 parsed.ObjectName = name ?? "unknown";
-                parsed.Ast = stmt;
             }
-            else if (sql.Contains("CREATE TRIGGER", StringComparison.OrdinalIgnoreCase))
+            else if (stmtObject.TryGetProperty("CreateTrigStmt", out var triggerStmt))
             {
-                var stmt = JsonSerializer.Deserialize<CreateTrigStmt>(astJson);
                 parsed.ObjectType = SqlObjectType.Trigger;
-                ExtractSchemaAndName(stmt?.Relation, out var schema, out var name);
+                ExtractSchemaAndName(triggerStmt, "relation", defaultSchema, out var schema, out var name);
                 parsed.SchemaName = schema ?? defaultSchema;
-                parsed.ObjectName = stmt?.Trigname ?? "unknown";
-                parsed.Ast = stmt;
+                parsed.ObjectName = GetStringProperty(triggerStmt, "trigname") ?? "unknown";
             }
-            else if (sql.Contains("CREATE ROLE", StringComparison.OrdinalIgnoreCase))
+            else if (stmtObject.TryGetProperty("CreateRoleStmt", out _))
             {
-                var stmt = JsonSerializer.Deserialize<CreateRoleStmt>(astJson);
                 parsed.ObjectType = SqlObjectType.Role;
                 parsed.SchemaName = ""; // Roles are not schema-scoped
-                parsed.ObjectName = stmt?.Role ?? "unknown";
-                parsed.Ast = stmt;
+                parsed.ObjectName = ExtractRoleName(sql) ?? "unknown";
             }
-            else if (sql.Contains("GRANT", StringComparison.OrdinalIgnoreCase))
+            else if (stmtObject.TryGetProperty("GrantStmt", out _) && sql.Contains("GRANT", StringComparison.OrdinalIgnoreCase))
             {
                 parsed.ObjectType = SqlObjectType.Permission;
                 parsed.SchemaName = defaultSchema; // Will be refined later
                 parsed.ObjectName = "_permissions";
             }
-            else if (sql.Contains("ALTER", StringComparison.OrdinalIgnoreCase) && sql.Contains("OWNER", StringComparison.OrdinalIgnoreCase))
+            else if (stmtObject.TryGetProperty("AlterOwnerStmt", out _) ||
+                     (stmtObject.TryGetProperty("AlterTableStmt", out _) && sql.Contains("OWNER", StringComparison.OrdinalIgnoreCase)))
             {
                 parsed.ObjectType = SqlObjectType.Owner;
                 parsed.SchemaName = defaultSchema; // Will be refined later
                 parsed.ObjectName = "_owners";
             }
-            else if (sql.Contains("COMMENT ON", StringComparison.OrdinalIgnoreCase))
+            else if (stmtObject.TryGetProperty("CommentStmt", out _))
             {
                 parsed.ObjectType = SqlObjectType.Comment;
                 parsed.SchemaName = defaultSchema; // Will be refined later
@@ -307,6 +300,96 @@ public class CsprojProjectLoader
             Console.WriteLine($"Error parsing {filePath}: {ex.Message}");
             return null;
         }
+    }
+
+    private static bool TryGetFirstStatement(JsonElement root, out JsonElement stmtObject)
+    {
+        stmtObject = default;
+
+        if (!root.TryGetProperty("stmts", out var stmts) || stmts.GetArrayLength() == 0)
+        {
+            return false;
+        }
+
+        var firstStmt = stmts[0];
+        if (!firstStmt.TryGetProperty("stmt", out stmtObject))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string? GetStringProperty(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var propertyValue))
+        {
+            return null;
+        }
+
+        var value = propertyValue.GetString();
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    private static void ExtractSchemaAndName(JsonElement element, string propertyName, string defaultSchema, out string? schema, out string? name)
+    {
+        schema = null;
+        name = null;
+
+        if (!element.TryGetProperty(propertyName, out var relation))
+        {
+            return;
+        }
+
+        schema = GetStringProperty(relation, "schemaname") ?? defaultSchema;
+        name = GetStringProperty(relation, "relname");
+    }
+
+    private static void ExtractQualifiedName(JsonElement element, string propertyName, string defaultSchema, out string? schema, out string? name)
+    {
+        schema = defaultSchema;
+        name = null;
+
+        if (!element.TryGetProperty(propertyName, out var nameArray))
+        {
+            return;
+        }
+
+        var nameParts = new List<string>();
+        foreach (var item in nameArray.EnumerateArray())
+        {
+            if (item.TryGetProperty("String", out var stringNode))
+            {
+                var part = GetStringProperty(stringNode, "sval");
+                if (!string.IsNullOrWhiteSpace(part))
+                {
+                    nameParts.Add(part);
+                }
+            }
+        }
+
+        if (nameParts.Count == 0)
+        {
+            return;
+        }
+
+        name = nameParts[^1];
+        if (nameParts.Count > 1)
+        {
+            schema = nameParts[^2];
+        }
+    }
+
+    private static string? ExtractRoleName(string sql)
+    {
+        var match = System.Text.RegularExpressions.Regex.Match(
+            sql,
+            @"CREATE\s+ROLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?<role>""[^""]+""|[a-zA-Z_][a-zA-Z0-9_]*)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        return match.Success
+            ? match.Groups["role"].Value.Trim('"')
+            : null;
     }
 
     private string GetRequiredPostgresVersion(XDocument doc)

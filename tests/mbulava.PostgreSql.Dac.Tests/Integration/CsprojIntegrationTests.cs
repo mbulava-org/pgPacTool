@@ -358,4 +358,47 @@ public class CsprojIntegrationTests
         actualOutputPath.Should().EndWith(".pgpac");
         actualOutputPath.Should().Contain("SampleDatabase");
     }
+
+    [Test]
+    public async Task LoadProjectAsync_WithSchemaFileAndQualifiedTables_PreservesSchemaName()
+    {
+        // Arrange
+        var projectDirectory = Path.Combine(_outputDir, "SchemaQualifiedProject");
+        Directory.CreateDirectory(projectDirectory);
+
+        var projectPath = Path.Combine(projectDirectory, "SchemaQualifiedProject.csproj");
+        await File.WriteAllTextAsync(projectPath,
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview2" />
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <DatabaseName>SchemaQualifiedProject</DatabaseName>
+                <PostgresVersion>17</PostgresVersion>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        await File.WriteAllTextAsync(Path.Combine(projectDirectory, "schemas.sql"), "CREATE SCHEMA core;");
+
+        var tablesDirectory = Path.Combine(projectDirectory, "Tables");
+        Directory.CreateDirectory(tablesDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(tablesDirectory, "Users.sql"),
+            """
+            CREATE TABLE core.users (
+                id integer PRIMARY KEY
+            );
+            """);
+
+        var loader = new CsprojProjectLoader(projectPath);
+
+        // Act
+        var project = await loader.LoadProjectAsync();
+
+        // Assert
+        project.Schemas.Should().ContainSingle(s => s.Name == "core");
+        var schema = project.Schemas.Single(s => s.Name == "core");
+        schema.Tables.Should().ContainSingle(t => t.Name == "users");
+    }
 }

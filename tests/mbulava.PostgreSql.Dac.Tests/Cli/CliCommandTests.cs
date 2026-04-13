@@ -179,6 +179,7 @@ public class CliCommandTests
         var optionNames = compileCommand.Options.Select(o => o.Name).ToList();
         optionNames.Should().Contain("source-file");
         optionNames.Should().Contain("verbose");
+        optionNames.Should().Contain("skip-validation");
     }
 
     [Test]
@@ -217,6 +218,25 @@ public class CliCommandTests
             "extract",
             "--source-connection-string", "Host=localhost;Database=test",
             "--target-file", "test.pgproj.json"
+        };
+
+        // Act
+        var parseResult = rootCommand.Parse(args);
+
+        // Assert
+        parseResult.Errors.Should().BeEmpty();
+    }
+
+    [Test]
+    public void CompileCommand_ParseValidArgumentsWithSkipValidation_Succeeds()
+    {
+        // Arrange
+        var rootCommand = CreateRootCommand();
+        var args = new[]
+        {
+            "compile",
+            "--source-file", "test.csproj",
+            "--skip-validation"
         };
 
         // Act
@@ -459,12 +479,20 @@ public class CliCommandTests
 
         // Compile command
         var compileCommand = new Command("compile", "Compile and validate project dependencies");
-        var compileSourceOption = new Option<string>("--source-file", "Source .pgproj.json file") { IsRequired = true };
+        var compileSourceOption = new Option<string>("--source-file", "Source .pgproj.json or .csproj file") { IsRequired = true };
         compileSourceOption.AddAlias("-sf");
+        var compileOutputPathOption = new Option<string?>("--output-path", "Output file path");
+        compileOutputPathOption.AddAlias("-o");
+        var compileOutputFormatOption = new Option<string>("--output-format", () => "pgpac");
+        compileOutputFormatOption.AddAlias("-of");
         var compileVerboseOption = new Option<bool>("--verbose", () => false);
         compileVerboseOption.AddAlias("-v");
+        var compileSkipValidationOption = new Option<bool>("--skip-validation", () => false);
         compileCommand.AddOption(compileSourceOption);
+        compileCommand.AddOption(compileOutputPathOption);
+        compileCommand.AddOption(compileOutputFormatOption);
         compileCommand.AddOption(compileVerboseOption);
+        compileCommand.AddOption(compileSkipValidationOption);
         rootCommand.AddCommand(compileCommand);
 
         // Deploy-report command

@@ -6,13 +6,13 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%2B-336791)](https://www.postgresql.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Tests](https://img.shields.io/badge/tests-201%20passing-success)
-[![Version](https://img.shields.io/badge/version-1.0.0--preview1-orange)](https://github.com/mbulava-org/pgPacTool/releases)
+[![Version](https://img.shields.io/badge/version-1.0.0--preview5-orange)](https://github.com/mbulava-org/pgPacTool/releases)
 
-> **📦 Release Status (v1.0.0-preview1)**:
-> - ✅ **MSBuild SDK** - Published! Install: `MSBuild.Sdk.PostgreSql/1.0.0-preview1`
-> - ✅ **CLI Tool (pgpac)** - Published! Install: `dotnet tool install -g postgresPacTools`
+> **📦 Current Preview Target (v1.0.0-preview5)**:
+> - ✅ **MSBuild SDK** - Package version ready: `MSBuild.Sdk.PostgreSql/1.0.0-preview5`
+> - ✅ **CLI Tool (pgpac)** - Package version ready: `postgresPacTools/1.0.0-preview5`
 
-> - ✅ **Core Library** - Published! `dotnet add package mbulava.PostgreSql.Dac` (includes Npgquery)
+> - ✅ **Core Library** - Package version ready: `mbulava.PostgreSql.Dac/1.0.0-preview5` (includes Npgquery)
 >
 > **💡 PostgreSQL Version Support**: Currently supports **PostgreSQL 16 and 17**. Older versions (14, 15) may be added in the future based on demand. See [Multi-Version Support Documentation](docs/features/multi-version-support/README.md) for details.
 
@@ -1241,9 +1241,9 @@ See [docs/PUBLISHING.md](docs/PUBLISHING.md) for detailed publishing instruction
 
 | Area | Status | Notes |
 |------|--------|-------|
-| Core DAC library | ✅ Published | `mbulava.PostgreSql.Dac` `1.0.0-preview1` |
-| MSBuild SDK | ✅ Published | `MSBuild.Sdk.PostgreSql/1.0.0-preview1` |
-| CLI tool | ✅ Published | `dotnet tool install -g postgresPacTools --version 1.0.0-preview1` |
+| Core DAC library | ✅ Ready | `mbulava.PostgreSql.Dac` `1.0.0-preview5` |
+| MSBuild SDK | ✅ Ready | `MSBuild.Sdk.PostgreSql/1.0.0-preview5` |
+| CLI tool | ✅ Ready | `dotnet tool install -g postgresPacTools --version 1.0.0-preview5` |
 | PostgreSQL support | ✅ Active | Supported versions: PostgreSQL 16 and 17 |
 | Current development branch | ✅ Active | `preview1` |
 
@@ -1526,6 +1526,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-**Status:** Preview 1 published and validated ✅  
-**Version:** 1.0.0-preview1  
-**Last Updated:** 2026-03-25
+**Status:** Preview 5 ready for local validation ✅  
+**Version:** 1.0.0-preview5  
+**Last Updated:** 2026-04-13

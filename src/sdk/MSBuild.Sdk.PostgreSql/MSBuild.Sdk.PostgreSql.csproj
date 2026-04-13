@@ -34,7 +34,7 @@
     <NoWarn>$(NoWarn);NU5100;NU5118</NoWarn>
 
     <!-- Version -->
-    <Version>1.0.0-preview1</Version>
+    <Version>1.0.0-preview5</Version>
   </PropertyGroup>
 
   <!-- Include SDK files in package -->
@@ -53,16 +53,24 @@
   <!-- Reference to our DAC library -->
   <ItemGroup>
     <ProjectReference Include="..\..\libs\mbulava.PostgreSql.Dac\mbulava.PostgreSql.Dac.csproj" />
+    <ProjectReference Include="..\..\postgresPacTools\postgresPacTools.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <!-- Include task runtime dependencies in the SDK package -->
   <Target Name="CopyTaskRuntimeDependenciesToPackage" DependsOnTargets="ResolveReferences">
+    <PropertyGroup>
+      <_CliOutputDirectory>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..\postgresPacTools\bin\$(Configuration)\$(TargetFramework)\'))</_CliOutputDirectory>
+    </PropertyGroup>
+
     <ItemGroup>
       <_TaskAssemblies Include="$(OutputPath)*.dll" Exclude="$(OutputPath)ref\**\*;$(OutputPath)refint\**\*" />
       <_TaskRuntimeFiles Include="$(OutputPath)runtimes\**\*.*" />
+      <_CliHostFiles Include="$(_CliOutputDirectory)**\*.*"
+                     Exclude="$(_CliOutputDirectory)ref\**\*;$(_CliOutputDirectory)refint\**\*;$(_CliOutputDirectory)**\*.pdb" />
 
       <BuildOutputInPackage Include="@(_TaskAssemblies)" TargetPath="%(Filename)%(Extension)" />
       <BuildOutputInPackage Include="@(_TaskRuntimeFiles)" TargetPath="runtimes\%(RecursiveDir)%(Filename)%(Extension)" />
+      <BuildOutputInPackage Include="@(_CliHostFiles)" TargetPath="cli\%(RecursiveDir)%(Filename)%(Extension)" />
     </ItemGroup>
   </Target>
 

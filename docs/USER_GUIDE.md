@@ -220,7 +220,7 @@ mydb/
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
-  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview1" />
+  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview5" />
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
 

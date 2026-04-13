@@ -17,7 +17,7 @@ Build SQL Server-style database projects for PostgreSQL! This SDK enables you to
 
 ### Before You Start
 
-- There is **no separate Visual Studio project template installer** for `preview1`.
+- There is **no separate Visual Studio project template installer** for `preview5`.
 - Create the `.csproj` manually or generate one with `pgpac extract`.
 - To open the project in Visual Studio, make sure the solution can restore `MSBuild.Sdk.PostgreSql` from `nuget.org` or a local package feed.
 
@@ -26,7 +26,7 @@ Build SQL Server-style database projects for PostgreSQL! This SDK enables you to
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview1" />
+  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview5" />
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -100,6 +100,7 @@ Only these need explicit configuration:
 | `DatabaseName` | Project name | Database name in .pgpac |
 | `OutputFormat` | `pgpac` | Output format: `pgpac` or `json` |
 | `ValidateOnBuild` | `true` | Validate SQL during build |
+| `PgPacToolVerbose` | `false` | Route verbose `pgpac compile` logging into the build output |
 | `PgPacFileName` | `{DatabaseName}.pgpac` | Output file name |
 
 ### Example
@@ -107,13 +108,14 @@ Only these need explicit configuration:
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview1" />
+  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview5" />
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <DatabaseName>ProductionDB</DatabaseName>
     <OutputFormat>pgpac</OutputFormat>
     <ValidateOnBuild>true</ValidateOnBuild>
+    <PgPacToolVerbose>false</PgPacToolVerbose>
   </PropertyGroup>
 
   <!-- Optional: Pre/Post deployment -->
@@ -133,6 +135,9 @@ Only these need explicit configuration:
 # Build
 dotnet build
 
+# Build with detailed pgpac CLI logging
+dotnet build /p:PgPacToolVerbose=true
+
 # Clean
 dotnet clean
 
@@ -147,6 +152,11 @@ dotnet rebuild
 - Run `dotnet restore` if Visual Studio reports the SDK cannot be resolved
 - Press **Ctrl+Shift+B** to build
 - Output appears in `bin\Debug\net10.0\`
+- Set `PgPacToolVerbose=true` in the project or pass it as an MSBuild property when you need the build to show verbose `pgpac compile` diagnostics
+
+### Shared Build Engine
+
+SDK builds now run through the packaged `pgpac compile` host instead of calling the DAC library directly. This keeps MSBuild builds aligned with the CLI behavior and makes verbose compile diagnostics easier to enable consistently.
 
 ### CI/CD
 

@@ -301,5 +301,11 @@ When updating `README.md` in this repo, always keep the footer metadata lines fo
 
 ---
 
+## Preferred Architecture
+
+In this repo, the preferred architecture is for `MSBuild.Sdk.PostgreSql` to invoke `postgresPacTool.exe` rather than call `mbulava.PostgreSql.Dac.dll` directly, so verbose logging can be used consistently for compile, compare, and script generation diagnostics.
+
+---
+
 *Last Updated*: Current Session
 *Maintained By*: pgPacTool Contributors

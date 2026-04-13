@@ -220,7 +220,7 @@ When extracting to `.csproj`, the following folder structure is created:
 **Generated .csproj File:**
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
-  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview1" />
+  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview5" />
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <DatabaseName>dvdrental</DatabaseName>
@@ -427,6 +427,7 @@ postgresPacTools compile [options]
 | `--output-path` | `-o` | ❌ | Output file path (default: `bin/Debug/net10.0/{DatabaseName}.pgpac`) |
 | `--output-format` | `-of` | ❌ | Output format: `pgpac` (default) or `json` |
 | `--verbose` | `-v` | ❌ | Show detailed compilation output (default: `false`) |
+| `--skip-validation` |  | ❌ | Skip dependency validation and only load/generate project output |
 
 **Note:** Output options only apply to `.csproj` projects. For `.pgproj.json` files, only validation is performed.
 
@@ -447,6 +448,9 @@ postgresPacTools compile -sf MyDatabase.csproj -o ../artifacts/MyDB.pgpac
 
 # Verbose output
 postgresPacTools compile -sf MyDatabase.csproj --verbose
+
+# Generate output without validation
+postgresPacTools compile -sf MyDatabase.csproj --skip-validation
 ```
 
 #### Output (.csproj → .pgpac)

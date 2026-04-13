@@ -10,6 +10,7 @@ namespace mbulava.PostgreSql.Dac.Extract;
 /// </summary>
 public class CsprojProjectGenerator
 {
+    private const string MsBuildSdkPackageVersion = "1.0.0-preview5";
     private readonly string _projectDirectory;
     private readonly string _projectName;
 
@@ -402,7 +403,7 @@ public class CsprojProjectGenerator
                     new XAttribute("Sdk", "Microsoft.NET.Sdk"),
                     new XElement("Sdk",
                         new XAttribute("Name", "MSBuild.Sdk.PostgreSql"),
-                        new XAttribute("Version", "1.0.0-preview1")),
+                        new XAttribute("Version", MsBuildSdkPackageVersion)),
 
                 // PropertyGroup
                 new XElement("PropertyGroup",

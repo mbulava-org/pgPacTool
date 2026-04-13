@@ -6,13 +6,17 @@
     This file is imported AFTER the project file
   -->
 
-  <!-- Define the packaged compile host -->
+  <!-- Define the packaged CLI host used during build -->
   <PropertyGroup>
     <_PgPacToolTaskTfm>net10.0</_PgPacToolTaskTfm>
-    <_PgPacToolHostDirectory>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\tasks\$(_PgPacToolTaskTfm)\'))</_PgPacToolHostDirectory>
-    <_PgPacToolHostPath>$(_PgPacToolHostDirectory)MSBuild.Sdk.PostgreSql.dll</_PgPacToolHostPath>
-    <_PgPacToolHostDepsPath>$(_PgPacToolHostDirectory)MSBuild.Sdk.PostgreSql.deps.json</_PgPacToolHostDepsPath>
-    <_PgPacToolHostRuntimeConfigPath>$(_PgPacToolHostDirectory)MSBuild.Sdk.PostgreSql.runtimeconfig.json</_PgPacToolHostRuntimeConfigPath>
+    <_PgPacToolCliDirectory>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\tasks\$(_PgPacToolTaskTfm)\cli\'))</_PgPacToolCliDirectory>
+    <_PgPacToolCliPath>$(_PgPacToolCliDirectory)postgresPacTools.dll</_PgPacToolCliPath>
+    <_PgPacToolCliDepsPath>$(_PgPacToolCliDirectory)postgresPacTools.deps.json</_PgPacToolCliDepsPath>
+    <_PgPacToolCliRuntimeConfigPath>$(_PgPacToolCliDirectory)postgresPacTools.runtimeconfig.json</_PgPacToolCliRuntimeConfigPath>
+    <_PgPacToolSkipValidationArg Condition="'$(ValidateOnBuild)' == 'false'"> --skip-validation</_PgPacToolSkipValidationArg>
+    <_PgPacToolVerboseArg Condition="'$(PgPacToolVerbose)' == 'true'"> --verbose</_PgPacToolVerboseArg>
+    <_PgPacToolStdOutImportance Condition="'$(PgPacToolVerbose)' == 'true'">high</_PgPacToolStdOutImportance>
+    <_PgPacToolStdOutImportance Condition="'$(_PgPacToolStdOutImportance)' == ''">normal</_PgPacToolStdOutImportance>
   </PropertyGroup>
 
   <!-- Set the target path for the database package -->
@@ -42,11 +46,14 @@
     <Message Text="  Output: $(PgPacFilePath)" Importance="normal" />
     <Message Text="  Format: $(OutputFormat)" Importance="normal" />
 
-    <!-- Execute the packaged compilation host -->
+    <Message Text="  ValidateOnBuild: $(ValidateOnBuild)" Importance="normal" />
+    <Message Text="  PgPacToolVerbose: $(PgPacToolVerbose)" Importance="normal" />
+
+    <!-- Execute the packaged pgpac CLI so MSBuild and the global tool share the same compile flow -->
     <Exec
-      Command='dotnet exec --depsfile &quot;$(_PgPacToolHostDepsPath)&quot; --runtimeconfig &quot;$(_PgPacToolHostRuntimeConfigPath)&quot; &quot;$(_PgPacToolHostPath)&quot; &quot;$(MSBuildProjectFullPath)&quot; &quot;$(PgPacFilePath)&quot; &quot;$(OutputFormat)&quot; &quot;$(DatabaseName)&quot; &quot;$(ValidateOnBuild)&quot;'
+      Command='dotnet exec --depsfile &quot;$(_PgPacToolCliDepsPath)&quot; --runtimeconfig &quot;$(_PgPacToolCliRuntimeConfigPath)&quot; &quot;$(_PgPacToolCliPath)&quot; compile --source-file &quot;$(MSBuildProjectFullPath)&quot; --output-path &quot;$(PgPacFilePath)&quot; --output-format &quot;$(OutputFormat)&quot;$(_PgPacToolSkipValidationArg)$(_PgPacToolVerboseArg)'
       ConsoleToMsBuild="true"
-      StandardOutputImportance="normal"
+      StandardOutputImportance="$(_PgPacToolStdOutImportance)"
       StandardErrorImportance="high" />
 
     <!-- Report compilation result -->

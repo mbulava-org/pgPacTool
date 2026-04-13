@@ -200,13 +200,13 @@ dotnet build
 
 ## Version Numbering
 
-### Preview Releases (preview1 branch)
+### Preview Releases (`preview1` branch)
 
 Format: `MAJOR.MINOR.PATCH-previewN`
 
 Examples:
-- `1.0.0-preview1` - First preview
-- `1.0.0-preview2` - Second preview (bug fixes)
+- `1.0.0-preview5` - Current preview release
+- `1.0.0-preview4` - Prior preview release
 - `1.1.0-preview1` - New features preview
 
 ### Stable Releases (main branch, future)

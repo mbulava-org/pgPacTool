@@ -237,15 +237,21 @@ internal class Program
             getDefaultValue: () => false);
         verboseOption.AddAlias("-v");
 
+        var skipValidationOption = new Option<bool>(
+            name: "--skip-validation",
+            description: "Skip dependency validation and only load/generate project output",
+            getDefaultValue: () => false);
+
         command.AddOption(sourceFileOption);
         command.AddOption(outputPathOption);
         command.AddOption(outputFormatOption);
         command.AddOption(verboseOption);
+        command.AddOption(skipValidationOption);
 
-        command.SetHandler(async (sourceFile, outputPath, outputFormat, verbose) =>
+        command.SetHandler(async (sourceFile, outputPath, outputFormat, verbose, skipValidation) =>
         {
-            await CompileAction(sourceFile, outputPath, outputFormat, verbose);
-        }, sourceFileOption, outputPathOption, outputFormatOption, verboseOption);
+            await CompileAction(sourceFile, outputPath, outputFormat, verbose, skipValidation);
+        }, sourceFileOption, outputPathOption, outputFormatOption, verboseOption, skipValidationOption);
 
         return command;
     }
@@ -536,7 +542,7 @@ internal class Program
         }
     }
 
-    static async Task CompileAction(string sourceFile, string? outputPath, string outputFormatStr, bool verbose)
+    static async Task CompileAction(string sourceFile, string? outputPath, string outputFormatStr, bool verbose, bool skipValidation)
     {
         Console.WriteLine("╔════════════════════════════════════════════════════════════╗");
         Console.WriteLine("║  PostgreSQL Project Compilation                            ║");
@@ -558,6 +564,7 @@ internal class Program
 
             // Determine file type and load project
             PgProject project;
+            CsprojProjectLoader? sdkProjectLoader = null;
             string? generatedOutputPath = null;
             var extension = Path.GetExtension(sourceFile).ToLowerInvariant();
 
@@ -565,15 +572,9 @@ internal class Program
             {
                 // Load from .csproj (SDK-style project)
                 Console.WriteLine("📖 Loading .csproj project (SDK-style)...");
-                var loader = new CsprojProjectLoader(sourceFile);
-                project = await loader.LoadProjectAsync();
+                sdkProjectLoader = new CsprojProjectLoader(sourceFile);
+                project = await sdkProjectLoader.LoadProjectAsync();
                 Console.WriteLine($"✅ Loaded {project.Schemas.Count} schema(s) from SDK project");
-
-                // Generate output file for .csproj projects
-                Console.WriteLine();
-                Console.WriteLine($"📦 Generating output ({format})...");
-                generatedOutputPath = await loader.CompileAndGenerateOutputAsync(outputPath, format);
-                Console.WriteLine($"✅ Generated: {generatedOutputPath}");
             }
             else if (extension == ".json")
             {
@@ -591,61 +592,78 @@ internal class Program
                 return;
             }
 
-            // Compile
-            Console.WriteLine();
-            Console.WriteLine("⚙️  Compiling and validating...");
-            var compiler = new ProjectCompiler();
-            var result = compiler.Compile(project);
+            CompilerResult? result = null;
 
-            Console.WriteLine();
-            if (result.IsSuccess)
+            if (!skipValidation)
             {
-                Console.WriteLine("✅ Compilation successful!");
-                Console.WriteLine($"   📊 Objects: {result.DeploymentOrder.Count}");
-                Console.WriteLine($"   📦 Levels: {result.DeploymentLevels.Count}");
-                Console.WriteLine($"   ⏱️  Time: {result.CompilationTime.TotalMilliseconds:F0}ms");
+                Console.WriteLine();
+                Console.WriteLine("⚙️  Compiling and validating...");
+                var compiler = new ProjectCompiler();
+                result = compiler.Compile(project);
 
-                if (verbose && result.DeploymentOrder.Count > 0)
+                Console.WriteLine();
+                if (result.IsSuccess)
+                {
+                    Console.WriteLine("✅ Compilation successful!");
+                    Console.WriteLine($"   📊 Objects: {result.DeploymentOrder.Count}");
+                    Console.WriteLine($"   📦 Levels: {result.DeploymentLevels.Count}");
+                    Console.WriteLine($"   ⏱️  Time: {result.CompilationTime.TotalMilliseconds:F0}ms");
+
+                    if (verbose && result.DeploymentOrder.Count > 0)
+                    {
+                        Console.WriteLine();
+                        Console.WriteLine("📋 Deployment order:");
+                        var count = 0;
+                        foreach (var obj in result.DeploymentOrder.Take(20))
+                        {
+                            Console.WriteLine($"   {++count}. {obj}");
+                        }
+                        if (result.DeploymentOrder.Count > 20)
+                        {
+                            Console.WriteLine($"   ... and {result.DeploymentOrder.Count - 20} more");
+                        }
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("❌ Compilation failed!");
+                    foreach (var error in result.Errors)
+                    {
+                        Console.WriteLine($"   ❌ [{error.Code}] {error.Message}");
+                        if (!string.IsNullOrEmpty(error.Location))
+                        {
+                            Console.WriteLine($"      📍 {error.Location}");
+                        }
+                    }
+                    Environment.Exit(1);
+                }
+
+                if (result.Warnings.Count > 0)
                 {
                     Console.WriteLine();
-                    Console.WriteLine("📋 Deployment order:");
-                    var count = 0;
-                    foreach (var obj in result.DeploymentOrder.Take(20))
+                    Console.WriteLine("⚠️  Warnings:");
+                    foreach (var warning in result.Warnings)
                     {
-                        Console.WriteLine($"   {++count}. {obj}");
-                    }
-                    if (result.DeploymentOrder.Count > 20)
-                    {
-                        Console.WriteLine($"   ... and {result.DeploymentOrder.Count - 20} more");
+                        Console.WriteLine($"   ⚠️  [{warning.Code}] {warning.Message}");
+                        if (verbose && !string.IsNullOrEmpty(warning.Location))
+                        {
+                            Console.WriteLine($"      📍 {warning.Location}");
+                        }
                     }
                 }
             }
             else
             {
-                Console.WriteLine("❌ Compilation failed!");
-                foreach (var error in result.Errors)
-                {
-                    Console.WriteLine($"   ❌ [{error.Code}] {error.Message}");
-                    if (!string.IsNullOrEmpty(error.Location))
-                    {
-                        Console.WriteLine($"      📍 {error.Location}");
-                    }
-                }
-                Environment.Exit(1);
+                Console.WriteLine();
+                Console.WriteLine("⏭️  Validation skipped.");
             }
 
-            if (result.Warnings.Count > 0)
+            if (extension == ".csproj" && sdkProjectLoader != null)
             {
                 Console.WriteLine();
-                Console.WriteLine("⚠️  Warnings:");
-                foreach (var warning in result.Warnings)
-                {
-                    Console.WriteLine($"   ⚠️  [{warning.Code}] {warning.Message}");
-                    if (verbose && !string.IsNullOrEmpty(warning.Location))
-                    {
-                        Console.WriteLine($"      📍 {warning.Location}");
-                    }
-                }
+                Console.WriteLine($"📦 Generating output ({format})...");
+                generatedOutputPath = await sdkProjectLoader.CompileAndGenerateOutputAsync(outputPath, format);
+                Console.WriteLine($"✅ Generated: {generatedOutputPath}");
             }
 
             // Show output file information for .csproj projects

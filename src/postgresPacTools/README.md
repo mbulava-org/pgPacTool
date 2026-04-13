@@ -17,7 +17,7 @@ dotnet tool install --global postgresPacTools
 ### Verify Installation
 ```
 pgpac --version
-Output: 1.0.0-preview1
+Output: 1.0.0-preview5
 ```
 
 ## 📚 Commands
@@ -68,18 +68,22 @@ Compile a project file to validate dependencies and generate a `.pgpac` package.
 ```
 pgpac compile 
 --source-file mydb.csproj 
---target-file bin/mydb.pgpac
+--output-path bin/mydb.pgpac
 ```
 **From JSON:**
+```
 pgpac compile 
 --source-file mydb.pgproj.json 
---target-file mydb.pgpac
+--verbose
+```
 
 
 **Options:**
 - `-sf` / `--source-file` - Source project file (.csproj or .pgproj.json)
-- `-tf` / `--target-file` - Output package file (.pgpac or .json)
+- `-o` / `--output-path` - Output package file for `.csproj` sources (.pgpac or .json)
+- `-of` / `--output-format` - Output format for `.csproj` sources (`pgpac` or `json`)
 - `-v` / `--verbose` - Show detailed validation output
+- `--skip-validation` - Load and generate output without dependency validation
 
 **Validation Checks:**
 - ✅ Dependency resolution
@@ -133,7 +137,7 @@ pgpac extract -scs "Host=dev;Database=mydb;..." -tf mydb/mydb.csproj
 2. Commit to git
 git add mydb/ git commit -m "Initial database schema"
 3. Build and validate
-pgpac compile -sf mydb/mydb.csproj -tf mydb.pgpac
+pgpac compile -sf mydb/mydb.csproj -o mydb.pgpac
 4. Deploy to staging
 pgpac publish -sf mydb.pgpac -tcs "Host=staging;Database=mydb;..."
 5. Generate production deployment script
@@ -142,7 +146,7 @@ pgpac script -sf mydb.pgpac -tcs "Host=prod;Database=mydb;..." -o prod-deploy.sq
 ### CI/CD Pipeline Workflow
 GitHub Actions example
 •	name: Extract Schema run: pgpac extract -scs "$CONNECTION_STRING" -tf schema.pgproj.json
-•	name: Validate Schema run: pgpac compile -sf schema.pgproj.json -tf schema.pgpac
+•	name: Validate Schema run: pgpac compile -sf schema.pgproj.json -v
 •	name: Deploy to Test run: pgpac publish -sf schema.pgpac -tcs "$TEST_CONNECTION_STRING"
 
 ### Schema Comparison Workflow
@@ -209,7 +213,7 @@ MIT License - see [LICENSE](https://github.com/mbulava-org/pgPacTool/blob/main/L
 
 ---
 
-**⚠️ Preview Release** - v1.0.0-preview1 is a preview release. Please provide feedback!
+**⚠️ Preview Release** - v1.0.0-preview5 is a preview release. Please provide feedback!
 
 **Requirements:**
 - .NET 10 SDK or later

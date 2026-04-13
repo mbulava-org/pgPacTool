@@ -16,7 +16,7 @@ namespace NugetPackage.Tests;
 /// </summary>
 public class NugetPackageValidationTests : IDisposable
 {
-    private const string ReadmePackageVersion = "1.0.0-preview1";
+    private const string ReadmePackageVersion = "1.0.0-preview5";
 
     private readonly ITestOutputHelper _output;
     private readonly string _solutionRoot;
@@ -277,6 +277,19 @@ public class NugetPackageValidationTests : IDisposable
 
         var packageOutputPath = Path.Combine(projectDirectory, "bin", "Debug", "net10.0", "MyDatabase.pgpac");
         Assert.True(File.Exists(packageOutputPath), $"Expected quick start package output at {packageOutputPath}");
+    }
+
+    [Fact]
+    public async Task MsBuildSdkPackage_ShouldContainCliCompileHost()
+    {
+        var packagePath = await BuildPackage("MSBuild.Sdk.PostgreSql");
+
+        using var reader = new PackageArchiveReader(packagePath);
+        var files = reader.GetFiles().ToList();
+
+        Assert.Contains(files, f => f.Contains("tasks/net10.0/cli/postgresPacTools.dll", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(files, f => f.Contains("tasks/net10.0/cli/postgresPacTools.deps.json", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(files, f => f.Contains("tasks/net10.0/cli/postgresPacTools.runtimeconfig.json", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

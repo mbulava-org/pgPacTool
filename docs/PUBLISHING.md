@@ -205,8 +205,8 @@ dotnet build
 Format: `MAJOR.MINOR.PATCH-previewN`
 
 Examples:
-- `1.0.0-preview5` - Current preview release
-- `1.0.0-preview4` - Prior preview release
+- `1.0.0-preview6` - Current preview release
+- `1.0.0-preview5` - Prior preview release
 - `1.1.0-preview1` - New features preview
 
 ### Stable Releases (main branch, future)
@@ -220,6 +220,12 @@ Examples:
 - `2.0.0` - Major version with breaking changes
 
 ## Workflow Configuration
+
+## Runtime Dependency Packaging Rule
+
+- The global tool package and the MSBuild SDK package must carry all runtime-critical managed dependencies required after install/restore.
+- Do not rely on downstream machines already having assemblies such as `Google.Protobuf`, `Npgsql`, `Npgquery`, `System.CommandLine`, or `mbulava.PostgreSql.Dac` available globally.
+- Package-validation tests should verify both the `.nupkg` contents and the files laid down by `dotnet tool install`.
 
 ### Trigger Conditions
 

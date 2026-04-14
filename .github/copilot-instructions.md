@@ -305,6 +305,10 @@ When updating `README.md` in this repo, always keep the footer metadata lines fo
 
 In this repo, the preferred architecture is for `MSBuild.Sdk.PostgreSql` to invoke `postgresPacTool.exe` rather than call `mbulava.PostgreSql.Dac.dll` directly, so verbose logging can be used consistently for compile, compare, and script generation diagnostics.
 
+### Compile Operation Requirements
+- The `compile` operation should print each database object's name, type, and source definition location.
+- On compile errors, it should identify impacted source files and provide a useful schema/type object count summary at the end.
+
 ---
 
 *Last Updated*: Current Session

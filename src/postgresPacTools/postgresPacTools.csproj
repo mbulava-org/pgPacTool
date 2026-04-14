@@ -10,10 +10,13 @@
 	<PackAsTool>true</PackAsTool>
 	<ToolCommandName>pgpac</ToolCommandName>
 	<IsPackable>true</IsPackable>
+	<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+	<GenerateDependencyFile>true</GenerateDependencyFile>
+	<GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
 
 	<!-- Package Metadata -->
 	<PackageId>postgresPacTools</PackageId>
-   <Version>1.0.0-preview5</Version>
+    <Version>1.0.0-preview6</Version>
 	<Title>PostgreSQL Data-Tier Application Tools (CLI)</Title>
 	<Description>Command-line tools for PostgreSQL database lifecycle management. Extract, compile, validate, and deploy database schemas as code. SqlPackage equivalent for PostgreSQL. Supports PostgreSQL 16 and 17.</Description>
 	<Authors>mbulava</Authors>

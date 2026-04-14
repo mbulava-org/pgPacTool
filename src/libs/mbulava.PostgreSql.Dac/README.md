@@ -162,4 +162,4 @@ MIT License - see [LICENSE](https://github.com/mbulava-org/pgPacTool/blob/main/L
 
 ---
 
-**⚠️ Preview Release** - v1.0.0-preview5 is a preview release. Not recommended for production use yet. Please provide feedback!
+**⚠️ Preview Release** - v1.0.0-preview6 is a preview release. Not recommended for production use yet. Please provide feedback!

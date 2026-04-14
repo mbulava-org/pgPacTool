@@ -16,7 +16,7 @@ namespace NugetPackage.Tests;
 /// </summary>
 public class NugetPackageValidationTests : IDisposable
 {
-    private const string ReadmePackageVersion = "1.0.0-preview5";
+    private const string ReadmePackageVersion = "1.0.0-preview6";
 
     private readonly ITestOutputHelper _output;
     private readonly string _solutionRoot;
@@ -169,6 +169,11 @@ public class NugetPackageValidationTests : IDisposable
         // Check for Npgquery.dll
         Assert.Contains(files, f => f.Contains("tools/net10.0/any/Npgquery.dll"));
 
+        // Check for managed runtime dependencies required by extraction/compile flows
+        Assert.Contains(files, f => f.Contains("tools/net10.0/any/Google.Protobuf.dll"));
+        Assert.Contains(files, f => f.Contains("tools/net10.0/any/Npgsql.dll"));
+        Assert.Contains(files, f => f.Contains("tools/net10.0/any/System.CommandLine.dll"));
+
         // Check for native libraries in tools directory
         Assert.Contains(files, f => f.Contains("tools/net10.0/any/runtimes/win-x64/native/"));
         Assert.Contains(files, f => f.Contains("tools/net10.0/any/runtimes/linux-x64/native/"));
@@ -232,6 +237,7 @@ public class NugetPackageValidationTests : IDisposable
         Assert.Equal(0, installResult.ExitCode);
 
         // Verify the tool can be executed
+        var toolDirectory = Path.Combine(_testWorkspace, "tools");
         var toolPath = Path.Combine(_testWorkspace, "tools", "pgpac");
         if (OperatingSystem.IsWindows())
         {
@@ -239,6 +245,13 @@ public class NugetPackageValidationTests : IDisposable
         }
 
         Assert.True(File.Exists(toolPath), $"Tool executable not found at: {toolPath}");
+        Assert.True(File.Exists(Path.Combine(toolDirectory, "Google.Protobuf.dll")), "Google.Protobuf.dll should be installed beside the tool host");
+        Assert.True(File.Exists(Path.Combine(toolDirectory, "Npgsql.dll")), "Npgsql.dll should be installed beside the tool host");
+        Assert.True(File.Exists(Path.Combine(toolDirectory, "Npgquery.dll")), "Npgquery.dll should be installed beside the tool host");
+        Assert.True(File.Exists(Path.Combine(toolDirectory, "mbulava.PostgreSql.Dac.dll")), "mbulava.PostgreSql.Dac.dll should be installed beside the tool host");
+        Assert.True(File.Exists(Path.Combine(toolDirectory, "System.CommandLine.dll")), "System.CommandLine.dll should be installed beside the tool host");
+        Assert.True(File.Exists(Path.Combine(toolDirectory, "postgresPacTools.deps.json")), "The tool deps file should be installed beside the tool host");
+        Assert.True(File.Exists(Path.Combine(toolDirectory, "postgresPacTools.runtimeconfig.json")), "The tool runtimeconfig should be installed beside the tool host");
 
         var versionResult = await RunCommand(toolPath, "--version");
         Assert.Equal(0, versionResult.ExitCode);
@@ -287,9 +300,18 @@ public class NugetPackageValidationTests : IDisposable
         using var reader = new PackageArchiveReader(packagePath);
         var files = reader.GetFiles().ToList();
 
+        Assert.Contains(files, f => f.Contains("tasks/net10.0/mbulava.PostgreSql.Dac.dll", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(files, f => f.Contains("tasks/net10.0/Google.Protobuf.dll", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(files, f => f.Contains("tasks/net10.0/Npgsql.dll", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(files, f => f.Contains("tasks/net10.0/Npgquery.dll", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(files, f => f.Contains("tasks/net10.0/cli/postgresPacTools.dll", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(files, f => f.Contains("tasks/net10.0/cli/postgresPacTools.deps.json", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(files, f => f.Contains("tasks/net10.0/cli/postgresPacTools.runtimeconfig.json", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(files, f => f.Contains("tasks/net10.0/cli/mbulava.PostgreSql.Dac.dll", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(files, f => f.Contains("tasks/net10.0/cli/Google.Protobuf.dll", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(files, f => f.Contains("tasks/net10.0/cli/Npgsql.dll", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(files, f => f.Contains("tasks/net10.0/cli/Npgquery.dll", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(files, f => f.Contains("tasks/net10.0/cli/System.CommandLine.dll", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

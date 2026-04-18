@@ -599,41 +599,117 @@ public class CsprojProjectLoader
     /// </summary>
     private List<string> GetSqlFilesFromProject(XDocument doc)
     {
-        var sqlFiles = new List<string>();
+        var sqlFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // Get pre/post deployment scripts to exclude them from main objects
         var prePostScripts = GetPrePostDeploymentScripts(doc);
         var excludeFiles = new HashSet<string>(prePostScripts.Select(s => s.FilePath), StringComparer.OrdinalIgnoreCase);
 
-        // Scan all .sql files recursively in project directory
-        if (Directory.Exists(_projectDirectory))
+        var configuredSqlFiles = GetConfiguredSqlFiles(doc);
+        foreach (var configuredFile in configuredSqlFiles)
         {
-            var allSqlFiles = Directory.GetFiles(_projectDirectory, "*.sql", SearchOption.AllDirectories);
-
-            foreach (var file in allSqlFiles)
+            if (ShouldIncludeProjectFile(configuredFile, excludeFiles))
             {
-                var relativePath = Path.GetRelativePath(_projectDirectory, file);
-
-                // Exclude bin, obj, and other build directories
-                if (relativePath.Contains("bin") || 
-                    relativePath.Contains("obj") || 
-                    relativePath.Contains(".vs") ||
-                    relativePath.StartsWith("."))
-                {
-                    continue;
-                }
-
-                // Exclude pre/post deployment scripts
-                if (excludeFiles.Contains(relativePath))
-                {
-                    continue;
-                }
-
-                sqlFiles.Add(relativePath);
+                sqlFiles.Add(configuredFile);
             }
         }
 
-        return sqlFiles.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        // Scan convention-based SQL files recursively in project directory
+        if (Directory.Exists(_projectDirectory))
+        {
+            foreach (var pattern in new[] { "*.sql", "*.pgsql" })
+            {
+                foreach (var file in Directory.GetFiles(_projectDirectory, pattern, SearchOption.AllDirectories))
+                {
+                    var relativePath = Path.GetRelativePath(_projectDirectory, file);
+                    if (ShouldIncludeProjectFile(relativePath, excludeFiles))
+                    {
+                        sqlFiles.Add(relativePath);
+                    }
+                }
+            }
+        }
+
+        return sqlFiles.ToList();
+    }
+
+    private List<string> GetConfiguredSqlFiles(XDocument doc)
+    {
+        return doc.Descendants()
+            .Where(e => e.Attribute("Include") != null)
+            .Where(e => IsSupportedSqlElement(e.Name.LocalName))
+            .Select(e => e.Attribute("Include")?.Value)
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .SelectMany(value => ExpandConfiguredSqlFiles(value!))
+            .ToList();
+    }
+
+    private IEnumerable<string> ExpandConfiguredSqlFiles(string includeValue)
+    {
+        if (!includeValue.Contains('*') && !includeValue.Contains('?'))
+        {
+            yield return includeValue;
+            yield break;
+        }
+
+        var normalizedPattern = includeValue.Replace('/', Path.DirectorySeparatorChar)
+            .Replace('\\', Path.DirectorySeparatorChar);
+
+        var regexPattern = "^" + System.Text.RegularExpressions.Regex.Escape(normalizedPattern)
+            .Replace(@"\*\*", "__DOUBLE_WILDCARD__")
+            .Replace(@"\*", $"[^{System.Text.RegularExpressions.Regex.Escape(Path.DirectorySeparatorChar.ToString())}]*")
+            .Replace(@"\?", ".")
+            .Replace("__DOUBLE_WILDCARD__", ".*") + "$";
+
+        var matcher = new System.Text.RegularExpressions.Regex(regexPattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        foreach (var file in Directory.EnumerateFiles(_projectDirectory, "*", SearchOption.AllDirectories))
+        {
+            var relativePath = Path.GetRelativePath(_projectDirectory, file);
+            var normalizedRelativePath = relativePath.Replace('/', Path.DirectorySeparatorChar)
+                .Replace('\\', Path.DirectorySeparatorChar);
+
+            if (matcher.IsMatch(normalizedRelativePath))
+            {
+                yield return relativePath;
+            }
+        }
+    }
+
+    private static bool IsSupportedSqlElement(string elementName)
+    {
+        return elementName is "None" or "Content" or "SqlFile";
+    }
+
+    private static bool ShouldIncludeProjectFile(string relativePath, HashSet<string> excludeFiles)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath))
+        {
+            return false;
+        }
+
+        var normalizedPath = relativePath.Replace('/', Path.DirectorySeparatorChar)
+            .Replace('\\', Path.DirectorySeparatorChar);
+
+        var extension = Path.GetExtension(normalizedPath);
+        if (!string.Equals(extension, ".sql", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(extension, ".pgsql", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (normalizedPath.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
+            normalizedPath.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
+            normalizedPath.Contains($"{Path.DirectorySeparatorChar}.vs{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
+            normalizedPath.StartsWith($".{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
+            normalizedPath.StartsWith("bin" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+            normalizedPath.StartsWith("obj" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+            normalizedPath.StartsWith(".vs" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return !excludeFiles.Contains(relativePath) && !excludeFiles.Contains(normalizedPath);
     }
 
     /// <summary>

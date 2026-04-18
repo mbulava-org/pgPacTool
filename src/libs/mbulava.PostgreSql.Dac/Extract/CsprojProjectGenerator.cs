@@ -10,7 +10,7 @@ namespace mbulava.PostgreSql.Dac.Extract;
 /// </summary>
 public class CsprojProjectGenerator
 {
-    private const string MsBuildSdkPackageVersion = "1.0.0-preview6";
+    private const string MsBuildSdkPackageVersion = "1.0.0-preview7";
     private readonly string _projectDirectory;
     private readonly string _projectName;
 

@@ -370,7 +370,7 @@ public class CsprojIntegrationTests
         await File.WriteAllTextAsync(projectPath,
             """
             <Project Sdk="Microsoft.NET.Sdk">
-              <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview2" />
+              <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview7" />
               <PropertyGroup>
                 <TargetFramework>net10.0</TargetFramework>
                 <DatabaseName>SchemaQualifiedProject</DatabaseName>
@@ -400,5 +400,70 @@ public class CsprojIntegrationTests
         project.Schemas.Should().ContainSingle(s => s.Name == "core");
         var schema = project.Schemas.Single(s => s.Name == "core");
         schema.Tables.Should().ContainSingle(t => t.Name == "users");
+    }
+
+    [Test]
+    public async Task LoadProjectAsync_WithPgsqlFilesIncludedAsNone_LoadsObjects()
+    {
+        // Arrange
+        var projectDirectory = Path.Combine(_outputDir, "PgsqlProject");
+        Directory.CreateDirectory(projectDirectory);
+
+        var projectPath = Path.Combine(projectDirectory, "PgsqlProject.csproj");
+        await File.WriteAllTextAsync(projectPath,
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <PostgresVersion>17</PostgresVersion>
+                <EnableDefaultNoneItems>false</EnableDefaultNoneItems>
+              </PropertyGroup>
+              <ItemGroup>
+                <None Include="autopilot\**\*.pgsql" />
+                <None Include="identity\**\*.pgsql" />
+              </ItemGroup>
+            </Project>
+            """);
+
+        var autopilotSchemaDirectory = Path.Combine(projectDirectory, "autopilot", "Schemas");
+        var autopilotTablesDirectory = Path.Combine(projectDirectory, "autopilot", "Tables");
+        var identitySchemaDirectory = Path.Combine(projectDirectory, "identity", "Schemas");
+        var identityTablesDirectory = Path.Combine(projectDirectory, "identity", "Tables");
+
+        Directory.CreateDirectory(autopilotSchemaDirectory);
+        Directory.CreateDirectory(autopilotTablesDirectory);
+        Directory.CreateDirectory(identitySchemaDirectory);
+        Directory.CreateDirectory(identityTablesDirectory);
+
+        await File.WriteAllTextAsync(Path.Combine(autopilotSchemaDirectory, "autopilot.pgsql"), "CREATE SCHEMA IF NOT EXISTS autopilot;");
+        await File.WriteAllTextAsync(
+            Path.Combine(autopilotTablesDirectory, "automation_sessions.pgsql"),
+            """
+            CREATE TABLE IF NOT EXISTS autopilot.automation_sessions
+            (
+                automation_session_id bigint PRIMARY KEY
+            );
+            """);
+
+        await File.WriteAllTextAsync(Path.Combine(identitySchemaDirectory, "identity.pgsql"), "CREATE SCHEMA IF NOT EXISTS identity;");
+        await File.WriteAllTextAsync(
+            Path.Combine(identityTablesDirectory, "accounts.pgsql"),
+            """
+            CREATE TABLE IF NOT EXISTS identity.accounts
+            (
+                account_id bigint PRIMARY KEY
+            );
+            """);
+
+        var loader = new CsprojProjectLoader(projectPath);
+
+        // Act
+        var project = await loader.LoadProjectAsync();
+
+        // Assert
+        project.Schemas.Should().ContainSingle(s => s.Name == "autopilot");
+        project.Schemas.Should().ContainSingle(s => s.Name == "identity");
+        project.Schemas.Single(s => s.Name == "autopilot").Tables.Should().ContainSingle(t => t.Name == "automation_sessions");
+        project.Schemas.Single(s => s.Name == "identity").Tables.Should().ContainSingle(t => t.Name == "accounts");
     }
 }

@@ -59,7 +59,7 @@ This directory contains GitHub Actions workflows for automated CI/CD.
 ```bash
 # Update version in .csproj files, then:
 git add .
-git commit -m "chore: bump version to 1.0.0-preview2"
+git commit -m "chore: bump version to 1.0.0-preview7"
 git push origin preview1
 ```
 

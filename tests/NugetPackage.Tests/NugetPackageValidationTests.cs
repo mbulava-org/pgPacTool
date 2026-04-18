@@ -16,7 +16,7 @@ namespace NugetPackage.Tests;
 /// </summary>
 public class NugetPackageValidationTests : IDisposable
 {
-    private const string ReadmePackageVersion = "1.0.0-preview6";
+    private const string ReadmePackageVersion = "1.0.0-preview7";
 
     private readonly ITestOutputHelper _output;
     private readonly string _solutionRoot;

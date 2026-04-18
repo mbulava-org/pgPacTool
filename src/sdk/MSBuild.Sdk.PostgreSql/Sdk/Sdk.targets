@@ -6,6 +6,21 @@
     This file is imported AFTER the project file
   -->
 
+  <!--
+    Separate pre/post deployment scripts from SqlFile items.
+    They are validated but injected separately into the compiled output.
+    This must happen in targets (not props) because the user sets
+    PreDeploymentScript / PostDeploymentScript in their project file.
+  -->
+  <ItemGroup Condition="'$(PreDeploymentScript)' != ''">
+    <SqlFile Remove="$(PreDeploymentScript)" />
+    <PreDeploy Include="$(PreDeploymentScript)" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(PostDeploymentScript)' != ''">
+    <SqlFile Remove="$(PostDeploymentScript)" />
+    <PostDeploy Include="$(PostDeploymentScript)" />
+  </ItemGroup>
+
   <!-- Define the packaged CLI host used during build -->
   <PropertyGroup>
     <_PgPacToolTaskTfm>net10.0</_PgPacToolTaskTfm>

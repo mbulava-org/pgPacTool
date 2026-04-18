@@ -41,12 +41,17 @@
     <EnableDefaultItems Condition="'$(EnableDefaultItems)' == ''">true</EnableDefaultItems>
   </PropertyGroup>
 
-  <!-- Auto-include SQL files -->
+  <!-- Standard exclusion pattern for database projects -->
+  <PropertyGroup>
+    <DefaultSqlExcludes>$(DefaultItemExcludes);bin\**;obj\**;.vs\**</DefaultSqlExcludes>
+  </PropertyGroup>
+
+  <!-- Auto-include .sql and .pgsql files for compilation -->
   <ItemGroup Condition="'$(EnableDefaultSqlItems)' != 'false'">
-    <SqlFile Include="**\*.sql" Exclude="$(DefaultItemExcludes);bin\**;obj\**;.vs\**" />
+    <SqlFile Include="**\*.sql;**\*.pgsql" Exclude="$(DefaultSqlExcludes)" />
   </ItemGroup>
 
-  <!-- Properties for pre/post deployment scripts -->
+  <!-- Pre/post deployment script properties (only items requiring manual csproj edits) -->
   <PropertyGroup>
     <PreDeploymentScript Condition="'$(PreDeploymentScript)' == ''"></PreDeploymentScript>
     <PostDeploymentScript Condition="'$(PostDeploymentScript)' == ''"></PostDeploymentScript>

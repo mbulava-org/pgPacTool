@@ -15,7 +15,7 @@
     Output directory for packages (default: ./packages)
 
 .PARAMETER Version
-    Package version (default: 1.0.0-preview6)
+    Package version (default: 1.0.0-preview7)
 
 .PARAMETER SkipBuild
     Skip building the solution before packing
@@ -32,7 +32,7 @@
     Packs all packages and tests local installation
 
 .EXAMPLE
-    .\Pack-PreviewRelease.ps1 -Version "1.0.0-preview6" -OutputPath "./preview6"
+    .\Pack-PreviewRelease.ps1 -Version "1.0.0-preview7" -OutputPath "./preview7"
     Packs with custom version and output path
 #>
 
@@ -45,7 +45,7 @@ param(
     [string]$OutputPath = "./packages",
     
     [Parameter()]
-    [string]$Version = "1.0.0-preview6",
+    [string]$Version = "1.0.0-preview7",
     
     [Parameter()]
     [switch]$SkipBuild,

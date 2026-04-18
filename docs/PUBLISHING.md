@@ -46,13 +46,13 @@ The project uses GitHub Actions to automate package publishing to NuGet.org:
 
 1. Update version in all `.csproj` files:
    ```xml
-   <Version>1.0.0-preview2</Version>
+   <Version>1.0.0-preview7</Version>
    ```
 
 2. Commit and push to `preview1` branch:
    ```bash
    git add .
-   git commit -m "chore: bump version to 1.0.0-preview2"
+   git commit -m "chore: bump version to 1.0.0-preview7"
    git push origin preview1
    ```
 
@@ -69,7 +69,7 @@ The project uses GitHub Actions to automate package publishing to NuGet.org:
 1. Go to https://github.com/mbulava-org/pgPacTool/actions/workflows/publish-preview.yml
 2. Click **Run workflow**
 3. Select branch: `preview1`
-4. (Optional) Enter custom version: `1.0.0-preview2`
+4. (Optional) Enter custom version: `1.0.0-preview7`
 5. Click **Run workflow**
 
 ## Monitoring the Workflow
@@ -107,7 +107,7 @@ The workflow automatically verifies:
 
 ```bash
 # Install globally
-dotnet tool install --global postgresPacTools --version 1.0.0-preview1
+dotnet tool install --global postgresPacTools --version 1.0.0-preview7
 
 # Verify installation
 pgpac --version
@@ -124,7 +124,7 @@ dotnet new console -n TestPgPac
 cd TestPgPac
 
 # Add package
-dotnet add package mbulava.PostgreSql.Dac --version 1.0.0-preview1
+dotnet add package mbulava.PostgreSql.Dac --version 1.0.0-preview7
 
 # Build and verify no dependency errors
 dotnet build
@@ -141,7 +141,7 @@ cd MyDatabase
 ```
 
 ```xml
-<Project Sdk="MSBuild.Sdk.PostgreSql/1.0.0-preview1">
+<Project Sdk="MSBuild.Sdk.PostgreSql/1.0.0-preview7">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
@@ -205,8 +205,8 @@ dotnet build
 Format: `MAJOR.MINOR.PATCH-previewN`
 
 Examples:
-- `1.0.0-preview6` - Current preview release
-- `1.0.0-preview5` - Prior preview release
+- `1.0.0-preview7` - Current preview release
+- `1.0.0-preview7` - Prior preview release
 - `1.1.0-preview1` - New features preview
 
 ### Stable Releases (main branch, future)

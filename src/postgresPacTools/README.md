@@ -17,7 +17,7 @@ dotnet tool install --global postgresPacTools
 ### Verify Installation
 ```
 pgpac --version
-Output: 1.0.0-preview6
+Output: 1.0.0-preview7
 ```
 
 ## 📚 Commands
@@ -213,7 +213,7 @@ MIT License - see [LICENSE](https://github.com/mbulava-org/pgPacTool/blob/main/L
 
 ---
 
-**⚠️ Preview Release** - v1.0.0-preview6 is a preview release. Please provide feedback!
+**⚠️ Preview Release** - v1.0.0-preview7 is a preview release. Please provide feedback!
 
 **Requirements:**
 - .NET 10 SDK or later

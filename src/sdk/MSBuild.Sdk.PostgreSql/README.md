@@ -17,7 +17,7 @@ Build SQL Server-style database projects for PostgreSQL! This SDK enables you to
 
 ### Before You Start
 
-- There is **no separate Visual Studio project template installer** for `preview6`.
+- There is **no separate Visual Studio project template installer** for `preview7`.
 - Create the `.csproj` manually or generate one with `pgpac extract`.
 - To open the project in Visual Studio, make sure the solution can restore `MSBuild.Sdk.PostgreSql` from `nuget.org` or a local package feed.
 
@@ -26,7 +26,7 @@ Build SQL Server-style database projects for PostgreSQL! This SDK enables you to
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview6" />
+  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview7" />
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -108,7 +108,7 @@ Only these need explicit configuration:
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview6" />
+  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview7" />
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>

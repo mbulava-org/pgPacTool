@@ -111,6 +111,18 @@ public class PublishOptions
     public string? TargetDatabase { get; set; }
 
     /// <summary>
+    /// Source database name before target override is applied.
+    /// </summary>
+    [JsonPropertyName("sourceDatabase")]
+    public string? SourceDatabase { get; set; }
+
+    /// <summary>
+    /// Ownership handling policy during publish/deploy.
+    /// </summary>
+    [JsonPropertyName("ownershipMode")]
+    public OwnershipMode OwnershipMode { get; set; } = OwnershipMode.Ignore;
+
+    /// <summary>
     /// Whether to generate a script file instead of executing directly.
     /// </summary>
     [JsonPropertyName("generateScriptOnly")]
@@ -181,6 +193,23 @@ public class PublishOptions
     /// </summary>
     [JsonPropertyName("commandTimeout")]
     public int CommandTimeout { get; set; } = 300; // 5 minutes default
+}
+
+/// <summary>
+/// Controls how database and object ownership are handled during publish/deploy.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum OwnershipMode
+{
+    /// <summary>
+    /// Ignore database and object ownership differences.
+    /// </summary>
+    Ignore,
+
+    /// <summary>
+    /// Enforce database and object ownership differences from source.
+    /// </summary>
+    Enforce
 }
 
 /// <summary>

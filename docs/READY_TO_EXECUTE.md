@@ -34,11 +34,6 @@
 
 ### Step 1: Commit & Push (30 seconds)
 ```powershell
-.\scripts\commit-final-fixes.ps1
-```
-
-Or manually:
-```bash
 git add .github/workflows/build-native-libraries.yml
 git commit -m "fix(ci): Final fixes - Windows DLL + macOS strchrnul"
 git push origin feature/multi-postgres-version-support
@@ -193,7 +188,6 @@ strchrnul(const char *s, int c)  // Custom implementation
 ### New Files
 - ✅ `docs/GITHUB_ACTIONS_FINAL_FIXES.md` - Technical details
 - ✅ `docs/READY_TO_EXECUTE.md` - This file (quick start)
-- ✅ `scripts/commit-final-fixes.ps1` - Automated commit script
 
 ### Related Files
 - `docs/EXECUTE_NOW.md` - Quick execution guide
@@ -246,7 +240,7 @@ var result17 = parser17.Parse("SELECT * FROM JSON_TABLE(...)");
 ---
 
 **Time to Complete:** ~15 minutes total  
-**Next Action:** Run `.\scripts\commit-final-fixes.ps1`  
+**Next Action:** Commit and push the workflow changes manually  
 **Then:** Trigger workflow on GitHub  
 
 🚀 **Let's get those libraries built!**

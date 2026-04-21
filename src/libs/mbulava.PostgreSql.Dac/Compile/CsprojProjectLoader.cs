@@ -149,7 +149,7 @@ public class CsprojProjectLoader
         // Phase 4: Add roles to project (roles are database-level, not schema-scoped)
         foreach (var roleObj in roles)
         {
-            if (roleObj.Ast is CreateRoleStmt createRole)
+            if (!string.IsNullOrWhiteSpace(roleObj.ObjectName))
             {
                 project.Roles.Add(new PgRole
                 {
@@ -392,6 +392,29 @@ public class CsprojProjectLoader
             : null;
     }
 
+    private static (string? ObjectType, string? QualifiedName, string? Owner) ExtractExplicitOwner(string sql)
+    {
+        if (string.IsNullOrWhiteSpace(sql))
+        {
+            return (null, null, null);
+        }
+
+        var match = System.Text.RegularExpressions.Regex.Match(
+            sql,
+            @"ALTER\s+(?<type>SCHEMA|TABLE|VIEW|MATERIALIZED\s+VIEW|FUNCTION|PROCEDURE|SEQUENCE|TYPE)\s+(?<name>.+?)\s+OWNER\s+TO\s+(?<owner>""[^""]+""|[a-zA-Z_][a-zA-Z0-9_]*)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline);
+
+        if (!match.Success)
+        {
+            return (null, null, null);
+        }
+
+        return (
+            match.Groups["type"].Value.Trim(),
+            match.Groups["name"].Value.Trim().TrimEnd(';'),
+            match.Groups["owner"].Value.Trim().Trim('"'));
+    }
+
     private string GetRequiredPostgresVersion(XDocument doc)
     {
         var pgVersionElement = doc.Descendants()
@@ -509,8 +532,117 @@ public class CsprojProjectLoader
     /// </summary>
     private async Task AddObjectToSchemaAsync(PgSchema schema, ParsedSqlObject obj)
     {
-        // For now, just parse and add - full implementation would use AST
+        if (obj.ObjectType == SqlObjectType.Owner)
+        {
+            ApplyOwnerStatement(schema, obj.Sql);
+            return;
+        }
+
         await ParseSqlFileAsync(obj.Sql, obj.FilePath, schema);
+    }
+
+    private static void ApplyOwnerStatement(PgSchema schema, string sql)
+    {
+        ArgumentNullException.ThrowIfNull(schema);
+
+        var (objectType, qualifiedName, owner) = ExtractExplicitOwner(sql);
+        if (string.IsNullOrWhiteSpace(objectType) || string.IsNullOrWhiteSpace(qualifiedName) || string.IsNullOrWhiteSpace(owner))
+        {
+            return;
+        }
+
+        var normalizedType = objectType.ToUpperInvariant();
+        var normalizedName = qualifiedName.Trim();
+
+        switch (normalizedType)
+        {
+            case "SCHEMA":
+                if (NameEquals(schema.Name, normalizedName))
+                {
+                    schema.Owner = owner;
+                }
+                break;
+
+            case "TABLE":
+                ApplyOwner(schema.Tables, normalizedName, owner);
+                break;
+
+            case "VIEW":
+            case "MATERIALIZED VIEW":
+                ApplyOwner(schema.Views, normalizedName, owner);
+                break;
+
+            case "FUNCTION":
+            case "PROCEDURE":
+                ApplyOwner(schema.Functions, normalizedName, owner);
+                break;
+
+            case "SEQUENCE":
+                ApplyOwner(schema.Sequences, normalizedName, owner);
+                break;
+
+            case "TYPE":
+                ApplyOwner(schema.Types, normalizedName, owner);
+                break;
+        }
+    }
+
+    private static void ApplyOwner<T>(IEnumerable<T> objects, string qualifiedName, string owner) where T : class
+    {
+        var name = ExtractObjectName(qualifiedName);
+        var target = objects.FirstOrDefault(obj => NameEquals(GetName(obj), qualifiedName) || NameEquals(GetName(obj), name));
+        if (target == null)
+        {
+            return;
+        }
+
+        SetOwner(target, owner);
+    }
+
+    private static string ExtractObjectName(string qualifiedName)
+    {
+        var parts = qualifiedName.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return parts.Length == 0 ? qualifiedName : parts[^1].Trim('"');
+    }
+
+    private static bool NameEquals(string? left, string? right)
+    {
+        return string.Equals(left?.Trim('"'), right?.Trim('"'), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? GetName<T>(T obj) where T : class
+    {
+        return obj switch
+        {
+            PgTable table => table.Name,
+            PgView view => view.Name,
+            PgFunction function => function.Name,
+            PgSequence sequence => sequence.Name,
+            PgType type => type.Name,
+            _ => null
+        };
+    }
+
+    private static void SetOwner<T>(T obj, string owner) where T : class
+    {
+        switch (obj)
+        {
+            case PgTable table:
+                table.Owner = owner;
+                break;
+            case PgView view:
+                view.Owner = owner;
+                break;
+            case PgFunction function:
+                function.Owner = owner;
+                break;
+            case PgSequence sequence:
+                sequence.Owner = owner;
+                break;
+            case PgType type:
+                type.Owner = owner;
+                break;
+        }
     }
 
     /// <summary>
@@ -862,8 +994,7 @@ public class CsprojProjectLoader
             var table = new PgTable
             {
                 Name = tableName,
-                Definition = tableDefinition ?? fullSql.Trim(),
-                Owner = "postgres"
+                Definition = tableDefinition ?? fullSql.Trim()
             };
 
             schema.Tables.Add(table);
@@ -898,7 +1029,6 @@ public class CsprojProjectLoader
             {
                 Name = viewName,
                 Definition = viewDefinition ?? fullSql.Trim(),
-                Owner = "postgres",
                 IsMaterialized = isMaterialized
             };
 
@@ -929,8 +1059,7 @@ public class CsprojProjectLoader
             var function = new PgFunction
             {
                 Name = functionName,
-                Definition = functionDefinition ?? fullSql.Trim(),
-                Owner = "postgres"
+                Definition = functionDefinition ?? fullSql.Trim()
             };
 
             schema.Functions.Add(function);
@@ -961,7 +1090,6 @@ public class CsprojProjectLoader
             {
                 Name = typeName,
                 Definition = typeDefinition ?? fullSql.Trim(),
-                Owner = "postgres",
                 Kind = PgTypeKind.Composite
             };
 
@@ -993,7 +1121,6 @@ public class CsprojProjectLoader
             {
                 Name = typeName,
                 Definition = typeDefinition ?? fullSql.Trim(),
-                Owner = "postgres",
                 Kind = PgTypeKind.Enum
             };
 
@@ -1025,7 +1152,6 @@ public class CsprojProjectLoader
             {
                 Name = typeName,
                 Definition = typeDefinition ?? fullSql.Trim(),
-                Owner = "postgres",
                 Kind = PgTypeKind.Domain
             };
 
@@ -1056,8 +1182,7 @@ public class CsprojProjectLoader
             var sequence = new PgSequence
             {
                 Name = sequenceName,
-                Definition = sequenceDefinition ?? fullSql.Trim(),
-                Owner = "postgres"
+                Definition = sequenceDefinition ?? fullSql.Trim()
             };
 
             schema.Sequences.Add(sequence);
@@ -1095,8 +1220,7 @@ public class CsprojProjectLoader
             {
                 Name = triggerName,
                 TableName = tableName,
-                Definition = triggerDefinition ?? fullSql.Trim(),
-                Owner = "postgres"
+                Definition = triggerDefinition ?? fullSql.Trim()
             };
 
             schema.Triggers.Add(trigger);

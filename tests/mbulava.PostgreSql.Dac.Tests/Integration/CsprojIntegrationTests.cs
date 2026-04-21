@@ -370,7 +370,7 @@ public class CsprojIntegrationTests
         await File.WriteAllTextAsync(projectPath,
             """
             <Project Sdk="Microsoft.NET.Sdk">
-              <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview7" />
+              <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview8" />
               <PropertyGroup>
                 <TargetFramework>net10.0</TargetFramework>
                 <DatabaseName>SchemaQualifiedProject</DatabaseName>
@@ -465,5 +465,90 @@ public class CsprojIntegrationTests
         project.Schemas.Should().ContainSingle(s => s.Name == "identity");
         project.Schemas.Single(s => s.Name == "autopilot").Tables.Should().ContainSingle(t => t.Name == "automation_sessions");
         project.Schemas.Single(s => s.Name == "identity").Tables.Should().ContainSingle(t => t.Name == "accounts");
+    }
+
+    [Test]
+    public async Task LoadProjectAsync_WithoutExplicitOwner_LeavesOwnersEmpty()
+    {
+        // Arrange
+        var projectDirectory = Path.Combine(_outputDir, "OwnerlessProject");
+        Directory.CreateDirectory(projectDirectory);
+
+        var projectPath = Path.Combine(projectDirectory, "OwnerlessProject.csproj");
+        await File.WriteAllTextAsync(projectPath,
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview8" />
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <PostgresVersion>17</PostgresVersion>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        var tablesDirectory = Path.Combine(projectDirectory, "Tables");
+        Directory.CreateDirectory(tablesDirectory);
+        await File.WriteAllTextAsync(Path.Combine(tablesDirectory, "Users.sql"),
+            """
+            CREATE TABLE public.users (
+                id integer PRIMARY KEY
+            );
+            """);
+
+        var loader = new CsprojProjectLoader(projectPath);
+
+        // Act
+        var project = await loader.LoadProjectAsync();
+
+        // Assert
+        project.DefaultOwner.Should().BeEmpty();
+        project.Schemas.Should().ContainSingle();
+        project.Schemas[0].Owner.Should().BeEmpty();
+        project.Schemas[0].Tables.Should().ContainSingle();
+        project.Schemas[0].Tables[0].Owner.Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task LoadProjectAsync_WithExplicitOwnerStatement_AppliesOwnerToTable()
+    {
+        // Arrange
+        var projectDirectory = Path.Combine(_outputDir, "ExplicitOwnerProject");
+        Directory.CreateDirectory(projectDirectory);
+
+        var projectPath = Path.Combine(projectDirectory, "ExplicitOwnerProject.csproj");
+        await File.WriteAllTextAsync(projectPath,
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview8" />
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <PostgresVersion>17</PostgresVersion>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        var securityDirectory = Path.Combine(projectDirectory, "Security", "Roles");
+        Directory.CreateDirectory(securityDirectory);
+        await File.WriteAllTextAsync(Path.Combine(securityDirectory, "app_owner.sql"), "CREATE ROLE app_owner;");
+
+        var tablesDirectory = Path.Combine(projectDirectory, "Tables");
+        Directory.CreateDirectory(tablesDirectory);
+        await File.WriteAllTextAsync(Path.Combine(tablesDirectory, "Users.sql"),
+            """
+            CREATE TABLE public.users (
+                id integer PRIMARY KEY
+            );
+            """);
+
+        await File.WriteAllTextAsync(Path.Combine(projectDirectory, "_owners.sql"), "ALTER TABLE public.users OWNER TO app_owner;");
+
+        var loader = new CsprojProjectLoader(projectPath);
+
+        // Act
+        var project = await loader.LoadProjectAsync();
+
+        // Assert
+        project.Roles.Should().ContainSingle(role => role.Name == "app_owner");
+        project.Schemas[0].Tables[0].Owner.Should().Be("app_owner");
     }
 }

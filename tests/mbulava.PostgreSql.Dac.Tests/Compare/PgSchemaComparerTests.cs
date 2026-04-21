@@ -74,6 +74,29 @@ public class PgSchemaComparerTests
     }
 
     [Test]
+    public void Compare_EmptySourceOwner_DoesNotDetectOwnerChange()
+    {
+        // Arrange
+        var source = new PgSchema
+        {
+            Name = "public",
+            Owner = string.Empty
+        };
+
+        var target = new PgSchema
+        {
+            Name = "public",
+            Owner = "postgres"
+        };
+
+        // Act
+        var diff = _comparer.Compare(source, target, _options);
+
+        // Assert
+        diff.OwnerChanged.Should().BeNull();
+    }
+
+    [Test]
     public void Compare_MissingPrivilege_DetectsDifference()
     {
         // Arrange

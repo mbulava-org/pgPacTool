@@ -10,7 +10,7 @@ namespace mbulava.PostgreSql.Dac.Extract;
 /// </summary>
 public class CsprojProjectGenerator
 {
-    private const string MsBuildSdkPackageVersion = "1.0.0-preview7";
+    private const string MsBuildSdkPackageVersion = "1.0.0-preview8";
     private readonly string _projectDirectory;
     private readonly string _projectName;
 
@@ -413,8 +413,8 @@ public class CsprojProjectGenerator
                     new XComment(" PostgreSQL target version (major version only) - used for compilation and deployment validation "),
                     new XElement("DefaultSchema", GetProjectDefaultSchema(project.DefaultSchema)),
                     new XComment(" Default schema for objects that omit schema qualification "),
-                    new XElement("DefaultOwner", project.DefaultOwner ?? "postgres"),
-                    new XComment(" Default owner for objects that don't explicitly specify one "),
+                    new XElement("DefaultOwner", project.DefaultOwner ?? string.Empty),
+                    new XComment(" Default owner metadata for extracted projects; source-owned objects should use explicit ALTER ... OWNER statements "),
                     new XElement("DefaultTablespace", project.DefaultTablespace ?? "pg_default"),
                     new XComment(" Default tablespace for tables/indexes that don't explicitly specify one ")
                 ),
@@ -439,8 +439,8 @@ public class CsprojProjectGenerator
     - Security/Roles/              (CREATE ROLE statements)
     - Security/Permissions/        (GRANT statements per schema)
 
-    Default values (used if SQL doesn't specify):
-    - DefaultOwner: Applied to objects without explicit OWNER clause
+    Default values:
+    - DefaultOwner: Metadata only; ownership should be expressed with explicit ALTER ... OWNER statements when required
     - DefaultTablespace: Applied to tables/indexes without TABLESPACE clause
 
     Files are deployed in dependency order automatically.

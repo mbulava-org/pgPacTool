@@ -107,10 +107,7 @@ public class ProjectCompiler
             }
 
             // Step 5: Additional validations could go here
-            // - Reference validation
-            // - Type validation
-            // - Privilege validation
-            // - Schema validation
+            result.Errors.AddRange(ValidateExplicitOwners(project));
 
             stopwatch.Stop();
             result.CompilationTime = stopwatch.Elapsed;
@@ -215,6 +212,67 @@ public class ProjectCompiler
         return string.IsNullOrWhiteSpace(sourceLocation)
             ? $"first usage in {dependency.ObjectType.ToLowerInvariant()} '{sourceObjectName}'"
             : $"{sourceLocation} (first usage in {dependency.ObjectType.ToLowerInvariant()} '{sourceObjectName}')";
+    }
+
+    private static List<CompilerError> ValidateExplicitOwners(PgProject project)
+    {
+        var definedRoles = project.Roles
+            .Select(role => role.Name)
+            .Where(static name => !string.IsNullOrWhiteSpace(name))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var errors = new List<CompilerError>();
+
+        foreach (var schema in project.Schemas)
+        {
+            ValidateOwner(errors, definedRoles, $"schema '{schema.Name}'", schema.Owner, schema.Name, project);
+
+            foreach (var table in schema.Tables)
+            {
+                ValidateOwner(errors, definedRoles, $"table '{schema.Name}.{table.Name}'", table.Owner, $"{schema.Name}.{table.Name}", project);
+            }
+
+            foreach (var view in schema.Views)
+            {
+                ValidateOwner(errors, definedRoles, $"view '{schema.Name}.{view.Name}'", view.Owner, $"{schema.Name}.{view.Name}", project);
+            }
+
+            foreach (var function in schema.Functions)
+            {
+                ValidateOwner(errors, definedRoles, $"function '{function.Name}'", function.Owner, function.Name, project);
+            }
+
+            foreach (var sequence in schema.Sequences)
+            {
+                ValidateOwner(errors, definedRoles, $"sequence '{schema.Name}.{sequence.Name}'", sequence.Owner, $"{schema.Name}.{sequence.Name}", project);
+            }
+
+            foreach (var type in schema.Types)
+            {
+                ValidateOwner(errors, definedRoles, $"type '{schema.Name}.{type.Name}'", type.Owner, $"{schema.Name}.{type.Name}", project);
+            }
+
+            foreach (var trigger in schema.Triggers)
+            {
+                ValidateOwner(errors, definedRoles, $"trigger '{schema.Name}.{trigger.TableName}.{trigger.Name}'", trigger.Owner, $"{schema.Name}.{trigger.Name}", project);
+            }
+        }
+
+        return errors;
+    }
+
+    private static void ValidateOwner(List<CompilerError> errors, HashSet<string> definedRoles, string displayName, string? owner, string sourceObjectName, PgProject project)
+    {
+        if (string.IsNullOrWhiteSpace(owner) || definedRoles.Contains(owner))
+        {
+            return;
+        }
+
+        var location = project.GetSourceLocation(sourceObjectName) ?? displayName;
+        errors.Add(new CompilerError(
+            "OWN001",
+            $"Explicit owner '{owner}' for {displayName} is not defined in the source project's roles",
+            location));
     }
 }
 

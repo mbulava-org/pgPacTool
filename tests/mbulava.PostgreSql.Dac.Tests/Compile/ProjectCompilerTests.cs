@@ -232,6 +232,40 @@ public class ProjectCompilerTests
     }
 
     [Test]
+    public void Compile_ProjectWithExplicitOwnerWithoutRole_ReturnsOwnerError()
+    {
+        // Arrange
+        var project = new PgProject
+        {
+            DatabaseName = "test",
+            Schemas = new List<PgSchema>
+            {
+                new PgSchema
+                {
+                    Name = "public",
+                    Tables = new List<PgTable>
+                    {
+                        new PgTable
+                        {
+                            Name = "users",
+                            Owner = "app_owner"
+                        }
+                    }
+                }
+            }
+        };
+
+        var compiler = new ProjectCompiler();
+
+        // Act
+        var result = compiler.Compile(project);
+
+        // Assert
+        Assert.That(result.IsSuccess, Is.False);
+        Assert.That(result.Errors.Any(e => e.Code == "OWN001"), Is.True);
+    }
+
+    [Test]
     public void Compile_WithAllowedSelfReference_SucceedsWithWarning()
     {
         // Arrange - Self-referential FK (allowed)

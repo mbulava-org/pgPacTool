@@ -14,11 +14,15 @@ public class ProjectPublisher
 {
     private readonly PgSchemaComparer _comparer;
     private readonly ProjectCompiler _compiler;
+    private readonly PublishOwnershipPolicyService _ownershipPolicyService;
+    private readonly PublishTargetDatabaseContextService _targetDatabaseContextService;
 
     public ProjectPublisher()
     {
         _comparer = new PgSchemaComparer();
         _compiler = new ProjectCompiler();
+        _ownershipPolicyService = new PublishOwnershipPolicyService();
+        _targetDatabaseContextService = new PublishTargetDatabaseContextService();
     }
 
     /// <summary>
@@ -42,6 +46,16 @@ public class ProjectPublisher
 
         try
         {
+            _targetDatabaseContextService.Apply(sourceProject, targetConnectionString, options);
+            _ownershipPolicyService.Apply(options);
+            var ownershipErrors = _ownershipPolicyService.ValidateExplicitOwners(sourceProject);
+            if (ownershipErrors.Count > 0)
+            {
+                result.Success = false;
+                result.Errors.AddRange(ownershipErrors);
+                return result;
+            }
+
             // Step 1: Compile source project (validate dependencies)
             var compilationResult = _compiler.Compile(sourceProject);
             if (!compilationResult.IsSuccess)
@@ -55,8 +69,9 @@ public class ProjectPublisher
             result.Warnings.AddRange(compilationResult.Warnings.Select(w => $"[{w.Code}] {w.Message}: {w.Location}"));
 
             // Step 2: Extract target database schema
-            var extractor = new PgProjectExtractor(targetConnectionString);
-            var targetProject = await extractor.ExtractPgProject(options.TargetDatabase ?? "target");
+            var effectiveConnectionString = _targetDatabaseContextService.BuildTargetConnectionString(targetConnectionString, options.TargetDatabase);
+            var extractor = new PgProjectExtractor(effectiveConnectionString);
+            var targetProject = await extractor.ExtractPgProject(options.TargetDatabase ?? _targetDatabaseContextService.GetDatabaseName(targetConnectionString) ?? "target");
 
             // Step 3: Compare schemas
             var differences = new List<PgSchemaDiff>();

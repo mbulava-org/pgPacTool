@@ -101,6 +101,7 @@ public class CliCommandTests
         optionNames.Should().Contain("drop-objects-not-in-source");
         optionNames.Should().Contain("transactional");
         optionNames.Should().Contain("script-output");
+        optionNames.Should().Contain("ownership-mode");
     }
 
     [Test]
@@ -138,6 +139,18 @@ public class CliCommandTests
         // Assert
         scriptOutputOption.IsRequired.Should().BeFalse();
         scriptOutputOption.Aliases.Should().Contain("-so");
+    }
+
+    [Test]
+    public void PublishCommand_OwnershipModeIsOptional()
+    {
+        // Arrange
+        var rootCommand = CreateRootCommand();
+        var publishCommand = rootCommand.Subcommands.First(c => c.Name == "publish");
+        var ownershipModeOption = publishCommand.Options.First(o => o.Name == "ownership-mode");
+
+        // Assert
+        ownershipModeOption.IsRequired.Should().BeFalse();
     }
 
     [Test]
@@ -218,6 +231,26 @@ public class CliCommandTests
             "extract",
             "--source-connection-string", "Host=localhost;Database=test",
             "--target-file", "test.pgproj.json"
+        };
+
+        // Act
+        var parseResult = rootCommand.Parse(args);
+
+        // Assert
+        parseResult.Errors.Should().BeEmpty();
+    }
+
+    [Test]
+    public void PublishCommand_ParseValidArgumentsWithOwnershipMode_Succeeds()
+    {
+        // Arrange
+        var rootCommand = CreateRootCommand();
+        var args = new[]
+        {
+            "publish",
+            "--source-file", "test.pgproj.json",
+            "--target-connection-string", "Host=localhost;Database=test",
+            "--ownership-mode", "Enforce"
         };
 
         // Act
@@ -450,12 +483,14 @@ public class CliCommandTests
         var publishTransOption = new Option<bool>("--transactional", () => true);
         var publishScriptOutputOption = new Option<string?>("--script-output", "Optional path for the generated deployment script");
         publishScriptOutputOption.AddAlias("-so");
+        var publishOwnershipModeOption = new Option<string>("--ownership-mode", () => "Ignore");
         publishCommand.AddOption(publishSourceOption);
         publishCommand.AddOption(publishTargetOption);
         publishCommand.AddOption(publishVariablesOption);
         publishCommand.AddOption(publishDropOption);
         publishCommand.AddOption(publishTransOption);
         publishCommand.AddOption(publishScriptOutputOption);
+        publishCommand.AddOption(publishOwnershipModeOption);
         rootCommand.AddCommand(publishCommand);
 
         // Script command

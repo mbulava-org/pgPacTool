@@ -46,13 +46,13 @@ The project uses GitHub Actions to automate package publishing to NuGet.org:
 
 1. Update version in all `.csproj` files:
    ```xml
-   <Version>1.0.0-preview7</Version>
+   <Version>1.0.0-preview8</Version>
    ```
 
 2. Commit and push to `preview1` branch:
    ```bash
    git add .
-   git commit -m "chore: bump version to 1.0.0-preview7"
+   git commit -m "chore: bump version to 1.0.0-preview8"
    git push origin preview1
    ```
 
@@ -69,7 +69,7 @@ The project uses GitHub Actions to automate package publishing to NuGet.org:
 1. Go to https://github.com/mbulava-org/pgPacTool/actions/workflows/publish-preview.yml
 2. Click **Run workflow**
 3. Select branch: `preview1`
-4. (Optional) Enter custom version: `1.0.0-preview7`
+4. (Optional) Enter custom version: `1.0.0-preview8`
 5. Click **Run workflow**
 
 ## Monitoring the Workflow
@@ -107,7 +107,7 @@ The workflow automatically verifies:
 
 ```bash
 # Install globally
-dotnet tool install --global postgresPacTools --version 1.0.0-preview7
+dotnet tool install --global postgresPacTools --version 1.0.0-preview8
 
 # Verify installation
 pgpac --version
@@ -115,6 +115,21 @@ pgpac --version
 # Test commands
 pgpac --help
 ```
+
+### Deployment Security Model
+
+Published packages and generated scripts should not require the default `postgres` superuser.
+
+Recommended deployment model:
+- use a dedicated database owner role for the target database and schemas
+- use a separate deployment login for CI/CD or operator-driven publishes
+- grant that deployment login the minimum rights required to create, alter, and drop the managed objects in the target schemas
+
+For SDK-style source projects, ownership is omitted by default unless it is explicitly declared in source. This keeps deployments portable across environments where the effective owner is not `postgres`. During publish, use `--ownership-mode Ignore` to ignore ownership differences or `--ownership-mode Enforce` to apply explicit source ownership.
+
+If an object or schema explicitly sets an owner in source, that owner must also be defined in the source project's roles. Compilation and publish validation fail when an explicit owner references a role that is not defined in source.
+
+During publish, the target database from the connection string becomes the effective `DatabaseName` and is written into the generated script as SQLCMD-style metadata so the script can validate the intended target database before applying changes.
 
 ### Test Library Package
 
@@ -124,7 +139,7 @@ dotnet new console -n TestPgPac
 cd TestPgPac
 
 # Add package
-dotnet add package mbulava.PostgreSql.Dac --version 1.0.0-preview7
+dotnet add package mbulava.PostgreSql.Dac --version 1.0.0-preview8
 
 # Build and verify no dependency errors
 dotnet build
@@ -141,7 +156,7 @@ cd MyDatabase
 ```
 
 ```xml
-<Project Sdk="MSBuild.Sdk.PostgreSql/1.0.0-preview7">
+<Project Sdk="MSBuild.Sdk.PostgreSql/1.0.0-preview8">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
@@ -205,7 +220,7 @@ dotnet build
 Format: `MAJOR.MINOR.PATCH-previewN`
 
 Examples:
-- `1.0.0-preview7` - Current preview release
+- `1.0.0-preview8` - Current preview release
 - `1.0.0-preview7` - Prior preview release
 - `1.1.0-preview1` - New features preview
 

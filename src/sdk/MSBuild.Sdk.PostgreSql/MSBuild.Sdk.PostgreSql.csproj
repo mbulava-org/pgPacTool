@@ -34,7 +34,7 @@
     <NoWarn>$(NoWarn);NU5100;NU5118</NoWarn>
 
     <!-- Version -->
-    <Version>1.0.0-preview7</Version>
+    <Version>1.0.0-preview8</Version>
   </PropertyGroup>
 
   <!-- Include SDK files in package -->

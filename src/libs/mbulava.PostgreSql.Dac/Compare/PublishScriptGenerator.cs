@@ -31,8 +31,21 @@ public static class PublishScriptGenerator
             sb.AppendLine($"-- PostgreSQL Deployment Script");
             sb.AppendLine($"-- Schema: {diff.SchemaName}");
             sb.AppendLine($"-- Generated: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
+            if (!string.IsNullOrWhiteSpace(options.SourceDatabase))
+            {
+                sb.AppendLine($"-- Source Database: {options.SourceDatabase}");
+            }
+            if (!string.IsNullOrWhiteSpace(options.TargetDatabase))
+            {
+                sb.AppendLine($"-- Target Database: {options.TargetDatabase}");
+            }
             sb.AppendLine("-- ============================================================================");
             sb.AppendLine();
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.TargetDatabase))
+        {
+            AppendPublishMetadata(sb, options);
         }
 
         // Transaction begin
@@ -143,6 +156,21 @@ public static class PublishScriptGenerator
     {
         var sql = AstSqlGenerator.Generate(ast);
         sb.AppendLine(sql);
+    }
+
+    private static void AppendPublishMetadata(StringBuilder sb, PublishOptions options)
+    {
+        sb.AppendLine("-- SQLCMD-style deployment metadata");
+        sb.AppendLine("--   $(TargetDatabase) validates the publish target");
+        sb.AppendLine("--   $(DatabaseName) resolves to the effective target database name");
+        sb.AppendLine();
+        sb.AppendLine("DO $$");
+        sb.AppendLine("BEGIN");
+        sb.AppendLine("    IF current_database() <> '$(TargetDatabase)' THEN");
+        sb.AppendLine("        RAISE EXCEPTION 'Deployment target database mismatch. Expected %, actual %.', '$(TargetDatabase)', current_database();");
+        sb.AppendLine("    END IF;");
+        sb.AppendLine("END $$;");
+        sb.AppendLine();
     }
 
     /// <summary>

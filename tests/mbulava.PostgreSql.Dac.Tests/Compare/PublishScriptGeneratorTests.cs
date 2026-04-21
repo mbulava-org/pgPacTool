@@ -382,6 +382,30 @@ public class PublishScriptGeneratorTests
     }
 
     [Test]
+    public void Generate_WithTargetDatabaseMetadata_EmitsValidationBlock()
+    {
+        // Arrange
+        var diff = new PgSchemaDiff { SchemaName = "public" };
+        var options = new PublishOptions
+        {
+            TargetDatabase = "dev-elite-dangerous",
+            SourceDatabase = "EliteAutopilot.Database",
+            Variables = new List<SqlCmdVariable>
+            {
+                new() { Name = "TargetDatabase", Value = "dev-elite-dangerous" },
+                new() { Name = "DatabaseName", Value = "dev-elite-dangerous" }
+            }
+        };
+
+        // Act
+        var result = PublishScriptGenerator.Generate(diff, options);
+
+        // Assert
+        result.Should().Contain("Target Database: dev-elite-dangerous");
+        result.Should().Contain("current_database() <> 'dev-elite-dangerous'");
+    }
+
+    [Test]
     public void Generate_PrivilegeChanges_CreatesGrantRevoke()
     {
         // Arrange

@@ -154,9 +154,6 @@ filefilters: '-**/obj/**;-**/Protos/**'
 
 ### Local Development
 ```powershell
-# Get accurate coverage report
-.\scripts\Get-AccurateCoverage.ps1 -Project "Npgquery"
-
 # Run tests with coverage
 dotnet test --settings coverlet.runsettings --collect:"XPlat Code Coverage"
 

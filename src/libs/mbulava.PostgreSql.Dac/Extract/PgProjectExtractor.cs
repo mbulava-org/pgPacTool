@@ -170,24 +170,14 @@ namespace mbulava.PostgreSql.Dac.Extract
             // Sanitize connection string for documentation (remove password)
             var sourceConnection = SanitizeConnectionString(_conn);
 
-            // Extract username from connection string for default owner
-            var defaultOwner = "postgres"; // fallback
-            try
-            {
-                var connBuilder = new NpgsqlConnectionStringBuilder(_conn);
-                defaultOwner = connBuilder.Username ?? "postgres";
-            }
-            catch
-            {
-                // If parsing fails, use default
-            }
+            var defaultOwner = await ExtractDatabaseOwnerAsync(databaseName);
 
             var project = new PgProject
             {
                 DatabaseName = databaseName,
                 PostgresVersion = majorVersion, // Only major version
                 SourceConnection = sourceConnection, // Sanitized connection string
-                DefaultOwner = defaultOwner, // Use connection user as default
+                DefaultOwner = defaultOwner,
                 DefaultTablespace = "pg_default"
             };
 
@@ -219,6 +209,24 @@ namespace mbulava.PostgreSql.Dac.Extract
             project.Roles = roles;
 
             return project;
+        }
+
+        private async Task<string> ExtractDatabaseOwnerAsync(string databaseName)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(databaseName);
+
+            return await ExecuteQueryAsync(
+                "SELECT pg_catalog.pg_get_userbyid(datdba) FROM pg_database WHERE datname = @databaseName;",
+                async reader =>
+                {
+                    if (await reader.ReadAsync() && !reader.IsDBNull(0))
+                    {
+                        return reader.GetString(0);
+                    }
+
+                    return string.Empty;
+                },
+                ("databaseName", databaseName));
         }
 
         private async Task<List<PgSchema>> ExtractSchemasAsync()

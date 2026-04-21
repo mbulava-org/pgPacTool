@@ -239,9 +239,6 @@ These settings work locally too!
 ```powershell
 # Run tests with same coverage settings as CI
 dotnet test --settings coverlet.runsettings --collect:"XPlat Code Coverage"
-
-# Get accurate coverage report
-.\scripts\Get-AccurateCoverage.ps1 -Project "Npgquery"
 ```
 
 **Result**: Local coverage matches CI coverage

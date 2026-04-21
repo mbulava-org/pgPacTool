@@ -21,7 +21,7 @@ namespace mbulava.PostgreSql.Dac.Compare
             };
 
             // Compare ownership
-            if (source.Owner != target.Owner)
+            if (HasExplicitOwner(source.Owner) && source.Owner != target.Owner)
             {
                 diff.OwnerChanged = (source.Owner, target.Owner);
             }
@@ -117,7 +117,7 @@ namespace mbulava.PostgreSql.Dac.Compare
                 var tableDiff = new PgTableDiff { TableName = src.Name };
 
                 // Owner change
-                if (src.Owner != tgt.Owner)
+                if (HasExplicitOwner(src.Owner) && src.Owner != tgt.Owner)
                     tableDiff.OwnerChanged = (src.Owner, tgt.Owner);
 
                 // Definition change (compare SQL text)
@@ -181,7 +181,7 @@ namespace mbulava.PostgreSql.Dac.Compare
                 }
 
                 // Owner change
-                if (src.Owner != tgt.Owner)
+                if (HasExplicitOwner(src.Owner) && src.Owner != tgt.Owner)
                     typeDiff.OwnerChanged = (src.Owner, tgt.Owner);
 
                 // Definition change (compare SQL text)
@@ -256,7 +256,7 @@ namespace mbulava.PostgreSql.Dac.Compare
                 };
 
                 // Owner
-                if (options.CompareOwners && src.Owner != tgt.Owner)
+                if (options.CompareOwners && HasExplicitOwner(src.Owner) && src.Owner != tgt.Owner)
                     seqDiff.OwnerChanged = (src.Owner, tgt.Owner);
 
                 // Options
@@ -479,7 +479,7 @@ namespace mbulava.PostgreSql.Dac.Compare
                 var viewDiff = new PgViewDiff { ViewName = src.Name };
 
                 // Owner change
-                if (options.CompareOwners && src.Owner != tgt.Owner)
+                if (options.CompareOwners && HasExplicitOwner(src.Owner) && src.Owner != tgt.Owner)
                     viewDiff.OwnerChanged = (src.Owner, tgt.Owner);
 
                 // Materialized flag change
@@ -548,7 +548,7 @@ namespace mbulava.PostgreSql.Dac.Compare
                 var funcDiff = new PgFunctionDiff { FunctionName = src.Name };
 
                 // Owner change
-                if (options.CompareOwners && src.Owner != tgt.Owner)
+                if (options.CompareOwners && HasExplicitOwner(src.Owner) && src.Owner != tgt.Owner)
                     funcDiff.OwnerChanged = (src.Owner, tgt.Owner);
 
                 // Definition change (compare SQL text)
@@ -585,6 +585,11 @@ namespace mbulava.PostgreSql.Dac.Compare
             return diffs;
         }
 
+        private static bool HasExplicitOwner(string? owner)
+        {
+            return !string.IsNullOrWhiteSpace(owner);
+        }
+
         private List<PgTriggerDiff> CompareTriggers(List<PgTrigger> sourceTriggers, List<PgTrigger> targetTriggers, CompareOptions options)
         {
             var diffs = new List<PgTriggerDiff>();
@@ -612,7 +617,7 @@ namespace mbulava.PostgreSql.Dac.Compare
                 };
 
                 // Owner change (triggers inherit table ownership)
-                if (options.CompareOwners && src.Owner != tgt.Owner)
+                if (options.CompareOwners && HasExplicitOwner(src.Owner) && src.Owner != tgt.Owner)
                     triggerDiff.OwnerChanged = (src.Owner, tgt.Owner);
 
                 // Definition change (compare SQL text)

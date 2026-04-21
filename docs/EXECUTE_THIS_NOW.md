@@ -53,7 +53,10 @@ gcc -dynamiclib -o libpg_query.dylib *.o -pthread
 
 ### STEP 1: Commit (30 sec)
 ```powershell
-.\scripts\commit-final-fixes.ps1
+git add .github/workflows/build-native-libraries.yml
+git add docs/WINDOWS_DLL_DEF_FIX.md
+git commit -m "fix(ci): Windows DLL - use DEF file with pg_query.lib"
+git push origin feature/multi-postgres-version-support
 ```
 
 ### STEP 2: Trigger (2 min)
@@ -138,10 +141,6 @@ ls -lh src/libs/Npgquery/Npgquery/runtimes/*/native/
 - **All Fixes:** `docs/GITHUB_ACTIONS_FINAL_FIXES.md`
 - **Linux Tests:** `tests/LinuxContainer.Tests/README.md`
 - **Multi-Version:** `docs/features/multi-version-support/README.md`
-
-### Scripts
-- **Commit:** `scripts/commit-final-fixes.ps1`
-- **Usage:** `.\scripts\commit-final-fixes.ps1`
 
 ---
 

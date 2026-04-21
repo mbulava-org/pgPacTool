@@ -17,7 +17,7 @@ dotnet tool install --global postgresPacTools
 ### Verify Installation
 ```
 pgpac --version
-Output: 1.0.0-preview7
+Output: 1.0.0-preview8
 ```
 
 ## 📚 Commands
@@ -109,6 +109,10 @@ pgpac publish
 
 Every `publish` run also writes the generated SQL deployment script to disk for troubleshooting. By default the script is written beside the source package using `deployment_{TargetDatabase}_{TimeStamp}.sql`.
 
+Deployment uses the target database from the target connection string by default. That target database name overrides the package project's `DatabaseName` during publish and is encoded into the generated script through `$(TargetDatabase)` and `$(DatabaseName)` metadata so the script can validate that it is running against the expected database.
+
+When ownership is not explicitly defined in source, compiled packages leave object owners unset so deployment can run under a delegated database owner or deployment principal instead of assuming the default `postgres` superuser. Use `--ownership-mode Ignore` to keep that behavior during publish, or `--ownership-mode Enforce` to apply explicit source ownership.
+
 ### `script` - Generate Deployment SQL
 
 Generate deployment SQL script without executing it.
@@ -142,6 +146,17 @@ pgpac compile -sf mydb/mydb.csproj -o mydb.pgpac
 pgpac publish -sf mydb.pgpac -tcs "Host=staging;Database=mydb;..."
 5. Generate production deployment script
 pgpac script -sf mydb.pgpac -tcs "Host=prod;Database=mydb;..." -o prod-deploy.sql
+
+### Minimum Deployment Access
+
+Do not assume the deployment user is `postgres`.
+
+Recommended model:
+- a dedicated database owner role owns the database and schema objects
+- a separate deployment login connects to the database
+- the deployment login is granted the rights needed to create and alter objects in the target schemas
+
+If your source project does not explicitly define ownership statements, pgPacTool leaves owners unset in compiled output so deployment can succeed under the target environment's owner model. If your source does explicitly define ownership statements, the owning role must also be defined in the source project.
 
 ### CI/CD Pipeline Workflow
 GitHub Actions example
@@ -213,7 +228,7 @@ MIT License - see [LICENSE](https://github.com/mbulava-org/pgPacTool/blob/main/L
 
 ---
 
-**⚠️ Preview Release** - v1.0.0-preview7 is a preview release. Please provide feedback!
+**⚠️ Preview Release** - v1.0.0-preview8 is a preview release. Please provide feedback!
 
 **Requirements:**
 - .NET 10 SDK or later

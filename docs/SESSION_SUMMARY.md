@@ -107,16 +107,6 @@
    - Automatic test project setup
    - Applied to entire solution
 
-3. **`scripts/Get-AccurateCoverage.ps1`**
-   - Calculates real source coverage
-   - Filters out generated files
-   - Color-coded reporting
-   - Returns percentage for CI
-
-4. **`scripts/Add-CoverageExclusions.ps1`**
-   - Adds [ExcludeFromCodeCoverage] to generated files
-   - Post-build script option
-
 ---
 
 ### 5. CI/CD Updates ✅
@@ -193,12 +183,6 @@ Total Tests: 654
 4. `.github/workflows/build-and-test.yml` - CI exclusions
 5. `src/libs/Npgquery/Npgquery/Npgquery.csproj` - InternalsVisibleTo
 
-### Scripts (2 files)
-1. `scripts/Get-AccurateCoverage.ps1` - Accurate coverage reporting
-2. `scripts/Add-CoverageExclusions.ps1` - Add exclusion attributes
-
----
-
 ## 🎓 Key Achievements
 
 ### 1. Accurate Coverage Metrics ✅
@@ -227,9 +211,6 @@ Total Tests: 654
 
 ### Local Development
 ```powershell
-# Get accurate coverage
-.\scripts\Get-AccurateCoverage.ps1 -Project "Npgquery"
-
 # Run tests with coverage (excluding generated code)
 dotnet test --settings coverlet.runsettings --collect:"XPlat Code Coverage"
 

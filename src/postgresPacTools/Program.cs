@@ -127,17 +127,23 @@ internal class Program
             description: "Optional path for the generated deployment script. Defaults to deployment_{TargetDatabase}_{TimeStamp}.sql beside the source package.");
         scriptOutputOption.AddAlias("-so");
 
+        var ownershipModeOption = new Option<string>(
+            name: "--ownership-mode",
+            description: "Ownership handling during publish: Ignore (default) or Enforce",
+            getDefaultValue: () => "Ignore");
+
         command.AddOption(sourceFileOption);
         command.AddOption(targetConnectionOption);
         command.AddOption(variablesOption);
         command.AddOption(dropObjectsOption);
         command.AddOption(transactionalOption);
         command.AddOption(scriptOutputOption);
+        command.AddOption(ownershipModeOption);
 
-        command.SetHandler(async (sourceFile, targetConnection, variables, dropObjects, transactional, scriptOutput) =>
+        command.SetHandler(async (sourceFile, targetConnection, variables, dropObjects, transactional, scriptOutput, ownershipMode) =>
         {
-            await PublishAction(sourceFile, targetConnection, variables, dropObjects, transactional, scriptOutput);
-        }, sourceFileOption, targetConnectionOption, variablesOption, dropObjectsOption, transactionalOption, scriptOutputOption);
+            await PublishAction(sourceFile, targetConnection, variables, dropObjects, transactional, scriptOutput, ownershipMode);
+        }, sourceFileOption, targetConnectionOption, variablesOption, dropObjectsOption, transactionalOption, scriptOutputOption, ownershipModeOption);
 
         return command;
     }
@@ -393,7 +399,7 @@ internal class Program
     }
 
     static async Task PublishAction(string sourceFile, string targetConnection, string[]? variables,
-        bool dropObjects, bool transactional, string? scriptOutput)
+        bool dropObjects, bool transactional, string? scriptOutput, string ownershipMode)
     {
         Console.WriteLine("╔════════════════════════════════════════════════════════════╗");
         Console.WriteLine("║  PostgreSQL Schema Publishing                              ║");
@@ -406,6 +412,7 @@ internal class Program
             Console.WriteLine($"🎯 Target: {MaskPassword(targetConnection)}");
             Console.WriteLine($"🔄 Transactional: {transactional}");
             Console.WriteLine($"🗑️  Drop extra objects: {dropObjects}");
+            Console.WriteLine($"👤 Ownership mode: {ownershipMode}");
             var resolvedScriptOutput = ResolveDeploymentScriptOutputPath(sourceFile, targetConnection, scriptOutput);
             Console.WriteLine($"💾 Deployment script: {resolvedScriptOutput}");
             Console.WriteLine();
@@ -433,7 +440,8 @@ internal class Program
                 OutputScriptPath = resolvedScriptOutput,
                 DropObjectsNotInSource = dropObjects,
                 Transactional = transactional,
-                Variables = sqlCmdVars
+                Variables = sqlCmdVars,
+                OwnershipMode = ParseOwnershipMode(ownershipMode)
             };
 
             var result = await publisher.PublishAsync(sourceProject, targetConnection, options);
@@ -575,6 +583,8 @@ internal class Program
                 sdkProjectLoader = new CsprojProjectLoader(sourceFile);
                 project = await sdkProjectLoader.LoadProjectAsync();
                 Console.WriteLine($"✅ Loaded {project.Schemas.Count} schema(s) from SDK project");
+                Console.WriteLine();
+                Console.WriteLine(CompileObjectTreeFormatter.Format(project));
             }
             else if (extension == ".json")
             {
@@ -839,4 +849,14 @@ internal class Program
 
         return string.IsNullOrWhiteSpace(sanitized) ? "unknown" : sanitized;
     }
+
+    static OwnershipMode ParseOwnershipMode(string ownershipMode)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownershipMode);
+
+        return Enum.TryParse<OwnershipMode>(ownershipMode, ignoreCase: true, out var parsed)
+            ? parsed
+            : throw new ArgumentException($"Unsupported ownership mode '{ownershipMode}'. Supported values: Ignore, Enforce.", nameof(ownershipMode));
+    }
+
 }

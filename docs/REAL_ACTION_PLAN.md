@@ -26,33 +26,32 @@ These functions might:
 
 ## How to Diagnose LOCALLY
 
-### Step 1: Run the Diagnostic Script
+### Step 1: Run the Windows Build Test
 
 1. Open **Developer Command Prompt for VS 2022**
 2. Run:
    ```batch
    cd C:\Users\mbula\source\repos\mbulava-org\pgPacTool
-   scripts\diagnose-windows-build.bat 16
+   scripts\test-windows-build.bat 16
    ```
 
 This will show you:
-- What's actually in pg_query.lib
-- If those .obj files exist
-- What symbols are in the .obj files
-- If the source files exist
-- What the Makefile says
+- whether `pg_query.lib` builds successfully
+- whether the object files can be extracted
+- whether `pg_query.dll` can be linked
+- whether the expected exports are present
 
 ### Step 2: Compare PG 16 vs 17
 
 The PG 17 build had only 1 unresolved symbol (`pg_query_split`), but PG 16 has 3. This suggests these features were added in different PostgreSQL versions.
 
-Run the diagnostic for both:
+Run the test for both:
 ```batch
-scripts\diagnose-windows-build.bat 16 > pg16-diag.txt
-scripts\diagnose-windows-build.bat 17 > pg17-diag.txt
+scripts\test-windows-build.bat 16
+scripts\test-windows-build.bat 17
 ```
 
-Then compare them.
+Then compare the output.
 
 ## Likely Solution
 

@@ -150,7 +150,7 @@ MyDatabase/
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview7" />
+  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview8" />
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -325,7 +325,7 @@ pgPacTool scans your entire project directory for `.sql` files, automatically ex
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
-  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview7" />
+  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview8" />
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <DatabaseName>MyDB</DatabaseName>
@@ -344,7 +344,7 @@ pgPacTool scans your entire project directory for `.sql` files, automatically ex
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
-  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview7" />
+  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview8" />
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>

@@ -6,7 +6,7 @@ pgPacTool is a PostgreSQL Data-Tier Application tool that brings SQL Server-styl
 
 **Key Technologies**:
 - .NET 10
-- PostgreSQL 16+ (currently 16 and 17)
+- PostgreSQL 15–18 (15 and 16 are baseline; 17 adds pg_maintain; 18 adds OAuth auth)
 - libpg_query native library integration
 - MSBuild SDK for database projects
 
@@ -17,11 +17,13 @@ pgPacTool is a PostgreSQL Data-Tier Application tool that brings SQL Server-styl
 ### 1. PostgreSQL Version Support
 
 **Currently Supported**:
+- ✅ PostgreSQL 15 (roles/security baseline)
 - ✅ PostgreSQL 16 (default version)
-- ✅ PostgreSQL 17 (with JSON_TABLE and new features)
+- ✅ PostgreSQL 17 (with JSON_TABLE, pg_maintain, and new features)
+- ✅ PostgreSQL 18 (OAuth auth, latest built-in roles)
 
 **Not Yet Supported**:
-- ❌ PostgreSQL 14 and 15 (may be added in future if there is demand)
+- ❌ PostgreSQL 14 and earlier (may be added in future if there is demand)
 
 **When Writing Documentation or Code Examples**:
 
@@ -292,6 +294,50 @@ When working on this project:
 7. ✅ **Link documentation clearly**
 
 **Key Principle**: PostgreSQL versions have breaking changes - always analyze and test!
+
+---
+
+## Roles, Permissions & Security — Version Rules
+
+> **Full reference**: [`docs/version-differences/PG_ROLES_PERMISSIONS_SECURITY.md`](../docs/version-differences/PG_ROLES_PERMISSIONS_SECURITY.md)
+
+### Quick Rules for Code Generation
+
+1. **Never generate `CREATE ROLE` for any `pg_*` built-in role or Azure reserved role.**
+   - Built-in roles to skip: `pg_monitor`, `pg_read_all_data`, `pg_write_all_data`,
+     `pg_database_owner`, `pg_maintain` (17+), `pg_use_reserved_connections` (17+),
+     `pg_create_subscription` (16+), `pg_checkpoint`, `pg_signal_backend`, and all other
+     `pg_*` prefixed roles.
+   - Azure-reserved roles to skip: `azure_pg_admin`, `azuresu`, `replication`, `localadmin`.
+
+2. **`CREATEROLE` behavior changed in PG 16** — on PG 16+, only roles with `ADMIN OPTION` can
+   grant that role's membership to others. Scripts must reflect this; do not assume unrestricted
+   grant ability.
+
+3. **`BYPASSRLS` is version-gated**:
+   - PG 15: requires superuser to grant — emit a warning if non-superuser context is used.
+   - PG 16+: non-superuser admins can grant `BYPASSRLS`.
+
+4. **`WITH INHERIT`/`WITH SET` on GRANT** is PG 16+ only — omit these clauses in scripts
+   targeting PG 15.
+
+5. **`pg_maintain` (PG 17+)** — the correct way to delegate `VACUUM`/`ANALYZE`/`REINDEX`
+   without ownership. Use it; do not grant ownership as a workaround.
+
+6. **Public schema on PG 15+**: `CREATE` is revoked from `PUBLIC` by default. New DB setup
+   scripts must include `REVOKE CREATE ON SCHEMA public FROM PUBLIC`.
+
+7. **Password handling**: Never store or emit plaintext passwords in DDL. `PgRole.Password`
+   must always be `null` in compare output.
+
+8. **`pg_write_all_data` is blocked on Azure** — do not generate grants for it on Azure targets.
+
+9. **Role DDL emit order**: `CREATE ROLE` → memberships (`GRANT role TO member`) → db-level
+   grants → schema-level grants → object-level grants → default privileges → RLS → policies.
+
+10. **`PgRole` model requires `CreateDb`, `CreateRole`, `ConnectionLimit`, `ValidUntil`,
+    `IsBuiltIn`, `Comment`, and `Memberships` (list of `PgRoleMembership`) properties.**
+    See full model spec in the reference document above.
 
 ---
 

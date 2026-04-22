@@ -5,9 +5,9 @@ on:
   workflow_dispatch:
     inputs:
       pg_versions:
-        description: 'PostgreSQL versions to build (comma-separated, e.g., "15,16,17")'
+        description: 'PostgreSQL versions to build (comma-separated, e.g., "15,16,17,18")'
         required: true
-        default: '16,17'
+        default: '15,16,17,18'
       force_rebuild:
         description: 'Force rebuild even if files exist'
         type: boolean
@@ -21,17 +21,17 @@ on:
 env:
   NPGQUERY_PROJECT_PATH: src/libs/Npgquery/Npgquery
   # Default versions for non-workflow_dispatch triggers
-  # Currently: PG16 & PG17 (active), PG15 (built but not yet implemented in code)
-  DEFAULT_PG_VERSIONS: '16,17'
+  # Supported versions: PostgreSQL 15, 16, 17, 18
+  DEFAULT_PG_VERSIONS: '15,16,17,18'
 
 jobs:
   build-matrix:
     name: Build libpg_query
     # Supported PostgreSQL versions:
-    # - PG15: Critical fixes only (libpg_query 15-latest) - Built but not yet implemented in C# code
-    # - PG16: Active support (libpg_query 16-latest) - Default version
-    # - PG17: Active development (libpg_query 17-latest) - Latest features
-    # To build PG15: Run workflow with input "15" or "15,16,17"
+    # - PG15: Supported for legacy compatibility
+    # - PG16: Supported, default version
+    # - PG17: Supported with JSON_TABLE and newer parser features
+    # - PG18: Supported, but integration/container coverage may require version-specific setup
     strategy:
       fail-fast: false
       matrix:
@@ -39,7 +39,7 @@ jobs:
           - windows-latest
           - ubuntu-latest
           - macos-latest  # Changed from macos-13 - uses latest stable
-        pg_version: ${{ fromJson(format('[{0}]', github.event.inputs.pg_versions || '16,17')) }}
+        pg_version: ${{ fromJson(format('[{0}]', github.event.inputs.pg_versions || '15,16,17,18')) }}
 
     runs-on: ${{ matrix.os }}
 
@@ -53,7 +53,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: pganalyze/libpg_query
-          ref: ${{ matrix.pg_version }}-latest
+          ref: ${{ matrix.pg_version == 18 && '18-latest-dev' || format('{0}-latest', matrix.pg_version) }}
           path: libpg_query
 
       - name: Set up build environment (Windows)
@@ -98,7 +98,7 @@ jobs:
           Write-Host "Creating DEF file for PostgreSQL $pgVersion..."
 
           if ($pgVersion -eq "15") {
-            # PostgreSQL 15 - older API, some functions don't exist yet
+            # PostgreSQL 15 baseline export set required by managed interop
             $defContent = "LIBRARY pg_query`nEXPORTS`n"
             $defContent += "    pg_query_deparse_protobuf`n"
             $defContent += "    pg_query_fingerprint`n"
@@ -107,14 +107,16 @@ jobs:
             $defContent += "    pg_query_free_normalize_result`n"
             $defContent += "    pg_query_free_parse_result`n"
             $defContent += "    pg_query_free_plpgsql_parse_result`n"
+            $defContent += "    pg_query_free_protobuf_parse_result`n"
             $defContent += "    pg_query_free_scan_result`n"
             $defContent += "    pg_query_free_split_result`n"
             $defContent += "    pg_query_normalize`n"
             $defContent += "    pg_query_parse`n"
             $defContent += "    pg_query_parse_plpgsql`n"
+            $defContent += "    pg_query_parse_protobuf`n"
             $defContent += "    pg_query_scan`n"
           } elseif ($pgVersion -eq "16") {
-            # PostgreSQL 16 - some functions don't exist yet
+            # PostgreSQL 16 baseline export set required by managed interop
             $defContent = "LIBRARY pg_query`nEXPORTS`n"
             $defContent += "    pg_query_deparse_protobuf`n"
             $defContent += "    pg_query_fingerprint`n"
@@ -123,14 +125,16 @@ jobs:
             $defContent += "    pg_query_free_normalize_result`n"
             $defContent += "    pg_query_free_parse_result`n"
             $defContent += "    pg_query_free_plpgsql_parse_result`n"
+            $defContent += "    pg_query_free_protobuf_parse_result`n"
             $defContent += "    pg_query_free_scan_result`n"
             $defContent += "    pg_query_free_split_result`n"
             $defContent += "    pg_query_normalize`n"
             $defContent += "    pg_query_parse`n"
             $defContent += "    pg_query_parse_plpgsql`n"
+            $defContent += "    pg_query_parse_protobuf`n"
             $defContent += "    pg_query_scan`n"
-          } else {
-            # PostgreSQL 17+ - all functions except pg_query_split
+          } elseif ($pgVersion -eq "17") {
+            # PostgreSQL 17 adds utility and summary APIs
             $defContent = "LIBRARY pg_query`nEXPORTS`n"
             $defContent += "    pg_query_deparse_protobuf`n"
             $defContent += "    pg_query_fingerprint`n"
@@ -139,14 +143,49 @@ jobs:
             $defContent += "    pg_query_free_normalize_result`n"
             $defContent += "    pg_query_free_parse_result`n"
             $defContent += "    pg_query_free_plpgsql_parse_result`n"
+            $defContent += "    pg_query_free_protobuf_parse_result`n"
             $defContent += "    pg_query_free_scan_result`n"
             $defContent += "    pg_query_free_split_result`n"
             $defContent += "    pg_query_is_utility_stmt`n"
             $defContent += "    pg_query_normalize`n"
             $defContent += "    pg_query_parse`n"
             $defContent += "    pg_query_parse_plpgsql`n"
+            $defContent += "    pg_query_parse_protobuf`n"
             $defContent += "    pg_query_scan`n"
             $defContent += "    pg_query_summary`n"
+          } elseif ($pgVersion -eq "18") {
+            # PostgreSQL 18 currently uses the same managed export surface as PG17
+            $defContent = "LIBRARY pg_query`nEXPORTS`n"
+            $defContent += "    pg_query_deparse_protobuf`n"
+            $defContent += "    pg_query_fingerprint`n"
+            $defContent += "    pg_query_free_deparse_result`n"
+            $defContent += "    pg_query_free_fingerprint_result`n"
+            $defContent += "    pg_query_free_normalize_result`n"
+            $defContent += "    pg_query_free_parse_result`n"
+            $defContent += "    pg_query_free_plpgsql_parse_result`n"
+            $defContent += "    pg_query_free_protobuf_parse_result`n"
+            $defContent += "    pg_query_free_scan_result`n"
+            $defContent += "    pg_query_free_split_result`n"
+            $defContent += "    pg_query_is_utility_stmt`n"
+            $defContent += "    pg_query_normalize`n"
+            $defContent += "    pg_query_parse`n"
+            $defContent += "    pg_query_parse_plpgsql`n"
+            $defContent += "    pg_query_parse_protobuf`n"
+            $defContent += "    pg_query_scan`n"
+            $defContent += "    pg_query_summary`n"
+          } else {
+            Write-Host "❌ Unsupported PostgreSQL version for DEF generation: $pgVersion"
+            exit 1
+          }
+
+          # Add split exports when they exist in the static library for the selected version.
+          # This keeps the DEF file aligned to the actual libpg_query branch output.
+          $availableSymbols = & dumpbin /LINKERMEMBER:1 pg_query.lib 2>&1 | Out-String
+          if ($availableSymbols -match "pg_query_split_with_parser") {
+            $defContent += "    pg_query_split_with_parser`n"
+          }
+          if ($availableSymbols -match "pg_query_split_with_scanner") {
+            $defContent += "    pg_query_split_with_scanner`n"
           }
           $defContent | Out-File -FilePath pg_query.def -Encoding ASCII
 
@@ -168,7 +207,7 @@ jobs:
           $extractedObjs | ForEach-Object { "`"$_`"" } | Out-File -FilePath objs.rsp -Encoding ASCII
 
           Write-Host "Linking DLL..."
-          & link /DLL /OUT:pg_query.dll /DEF:pg_query.def "@objs.rsp" MSVCRT.lib
+          & link /DLL /OUT:libpg_query.dll /DEF:pg_query.def "@objs.rsp" MSVCRT.lib
 
           if ($LASTEXITCODE -ne 0) {
             Write-Host "❌ Link failed with exit code $LASTEXITCODE"
@@ -177,11 +216,11 @@ jobs:
             exit 1
           }
 
-          if (Test-Path pg_query.dll) {
-            Write-Host "✓ Built pg_query.dll"
-            Get-Item pg_query.dll | Format-Table Name, Length
+          if (Test-Path libpg_query.dll) {
+            Write-Host "✓ Built libpg_query.dll"
+            Get-Item libpg_query.dll | Format-Table Name, Length
           } else {
-            Write-Host "❌ Failed to build pg_query.dll"
+            Write-Host "❌ Failed to build libpg_query.dll"
             Get-Content *.log -ErrorAction SilentlyContinue
             exit 1
           }
@@ -239,7 +278,7 @@ jobs:
           # Determine platform and architecture
           if [ "${{ runner.os }}" == "Windows" ]; then
             RID="win-x64"
-            SRC_FILE="libpg_query/pg_query.dll"
+            SRC_FILE="libpg_query/libpg_query.dll"
             DEST_FILE="libpg_query_${{ matrix.pg_version }}.dll"
           elif [ "${{ runner.os }}" == "Linux" ]; then
             RID="linux-x64"
@@ -385,14 +424,14 @@ jobs:
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: 'chore: Update native libpg_query libraries (PG ${{ github.event.inputs.pg_versions || ''16,17'' }})'
+          commit-message: 'chore: Update native libpg_query libraries (PG ${{ github.event.inputs.pg_versions || ''15,16,17,18'' }})'
           title: 'Update native libpg_query libraries'
           body: |
             ## 🔄 Native Library Update
             
             This PR updates the native libpg_query libraries.
             
-            **PostgreSQL Versions**: ${{ github.event.inputs.pg_versions || '16,17' }}
+            **PostgreSQL Versions**: ${{ github.event.inputs.pg_versions || '15,16,17,18' }}
             
             ### Changes
             - Built libraries for Windows x64, Linux x64, macOS x64, and macOS ARM64
@@ -407,11 +446,11 @@ jobs:
             ### Testing
             After merge, verify with:
             ```csharp
-            using var parser = new Parser(PostgreSqlVersion.Postgres16);
-            Console.WriteLine(parser.Parse("SELECT 1").IsSuccess);
-            
-            using var parser17 = new Parser(PostgreSqlVersion.Postgres17);
-            Console.WriteLine(parser17.Parse("SELECT 1").IsSuccess);
+             using var parser15 = new Parser(PostgreSqlVersion.Postgres15);
+             Console.WriteLine(parser15.Parse("SELECT 1").IsSuccess);
+
+             using var parser18 = new Parser(PostgreSqlVersion.Postgres18);
+             Console.WriteLine(parser18.Parse("SELECT 1").IsSuccess);
             ```
             
             ---

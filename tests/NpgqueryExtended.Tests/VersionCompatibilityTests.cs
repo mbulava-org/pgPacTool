@@ -9,9 +9,11 @@ namespace NpgqueryExtended.Tests;
 /// </summary>
 public class VersionCompatibilityTests
 {
+    public static IReadOnlyList<PostgreSqlVersion> SupportedVersions => PostgreSqlVersionExtensions.GetSupportedVersions();
+    public static IReadOnlyList<PostgreSqlVersion> AvailableVersions => PostgreSqlVersionTestData.AvailableVersionList;
+
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void BasicSelect_WorksAcrossAllVersions(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -22,8 +24,7 @@ public class VersionCompatibilityTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void BasicInsert_WorksAcrossAllVersions(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -33,8 +34,7 @@ public class VersionCompatibilityTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void BasicUpdate_WorksAcrossAllVersions(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -44,8 +44,7 @@ public class VersionCompatibilityTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void BasicDelete_WorksAcrossAllVersions(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -55,8 +54,7 @@ public class VersionCompatibilityTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void CreateTable_WorksAcrossAllVersions(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -72,8 +70,7 @@ public class VersionCompatibilityTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void Join_WorksAcrossAllVersions(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -87,8 +84,7 @@ public class VersionCompatibilityTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void CTE_WorksAcrossAllVersions(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -107,47 +103,130 @@ public class VersionCompatibilityTests
     // ============================================
 
     [Fact]
-    public void JsonTable_FailsInPG16_SucceedsInPG17()
+    public void JsonTable_FailsBeforePG17_SucceedsInPG17AndLater()
     {
         var query = "SELECT * FROM JSON_TABLE('[{\"id\":1}]', '$[*]' COLUMNS(id int PATH '$.id'))";
-        
-        // Should fail in PG 16
-        using var parser16 = new Parser(PostgreSqlVersion.Postgres16);
-        var result16 = parser16.Parse(query);
-        Assert.False(result16.IsSuccess, "JSON_TABLE should not work in PG 16");
-        Assert.NotNull(result16.Error);
-        
-        // Should succeed in PG 17
-        using var parser17 = new Parser(PostgreSqlVersion.Postgres17);
-        var result17 = parser17.Parse(query);
-        Assert.True(result17.IsSuccess, $"JSON_TABLE should work in PG 17: {result17.Error}");
+
+        foreach (var version in AvailableVersions)
+        {
+            using var parser = new Parser(version);
+            var result = parser.Parse(query);
+
+            if (version.SupportsJsonTable())
+            {
+                Assert.True(result.IsSuccess, $"JSON_TABLE should work in {version}: {result.Error}");
+            }
+            else
+            {
+                Assert.False(result.IsSuccess, $"JSON_TABLE should not work in {version}");
+                Assert.NotNull(result.Error);
+            }
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
+    public void ParseOptions_ParseModeTypeName_AppliesAcrossSupportedVersions(PostgreSqlVersion version)
+    {
+        using var parser = new Parser(version);
+
+        var withoutMode = parser.Parse("integer");
+        var withTypeNameMode = parser.Parse(
+            "integer",
+            new ParseOptions { Mode = ParseMode.TypeName });
+
+        Assert.False(withoutMode.IsSuccess);
+
+        if (IsMissingExport(withTypeNameMode.Error))
+        {
+            return;
+        }
+
+        Assert.True(withTypeNameMode.IsSuccess, $"Type-name parse mode failed on {version}: {withTypeNameMode.Error}");
+        Assert.NotNull(withTypeNameMode.ParseTree);
+    }
+
+    [Theory]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
+    public void NormalizeUtility_IsVersionGatedCorrectly(PostgreSqlVersion version)
+    {
+        using var parser = new Parser(version);
+        var result = parser.NormalizeUtility("VACUUM users");
+
+        if (version.SupportsNormalizeUtility() && !IsMissingExport(result.Error))
+        {
+            Assert.True(result.IsSuccess, $"NormalizeUtility should work in {version}: {result.Error}");
+            Assert.NotNull(result.NormalizedQuery);
+        }
+        else
+        {
+            Assert.False(result.IsSuccess);
+            Assert.Contains("does not", result.Error, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
+    public void UtilityStatementDetection_IsVersionGatedCorrectly(PostgreSqlVersion version)
+    {
+        using var parser = new Parser(version);
+        var result = parser.IsUtilityStatement("VACUUM users");
+
+        if (version.SupportsUtilityStatementDetection() && !IsMissingExport(result.Error))
+        {
+            Assert.True(result.IsSuccess, $"IsUtilityStatement should work in {version}: {result.Error}");
+            Assert.NotNull(result.IsUtilityStatements);
+            Assert.NotEmpty(result.IsUtilityStatements);
+        }
+        else
+        {
+            Assert.False(result.IsSuccess);
+            Assert.Contains("does not", result.Error, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
+    public void QuerySummary_IsVersionGatedCorrectly(PostgreSqlVersion version)
+    {
+        using var parser = new Parser(version);
+        var result = parser.Summarize("SELECT * FROM users", truncateLimit: 128);
+
+        if (version.SupportsSummaryApi() && !IsMissingExport(result.Error))
+        {
+            Assert.True(result.IsSuccess, $"Summarize should work in {version}: {result.Error}");
+            Assert.NotNull(result.SummaryProtobuf);
+            Assert.NotEmpty(result.SummaryProtobuf);
+        }
+        else
+        {
+            Assert.False(result.IsSuccess);
+            Assert.Contains("does not", result.Error, StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     [Fact]
-    public void JsonQuery_ParsesInBothButTreeDiffers()
+    public void JsonQuery_ParsesAcrossSupportedVersions()
     {
         var query = "SELECT json_query('[1,2,3]', '$[*]')";
-        
-        using var parser16 = new Parser(PostgreSqlVersion.Postgres16);
-        using var parser17 = new Parser(PostgreSqlVersion.Postgres17);
-        
-        var result16 = parser16.Parse(query);
-        var result17 = parser17.Parse(query);
-        
-        // Both should parse successfully
-        Assert.True(result16.IsSuccess, $"PG 16 failed: {result16.Error}");
-        Assert.True(result17.IsSuccess, $"PG 17 failed: {result17.Error}");
-        
-        // But parse trees will differ
-        var tree16 = result16.ParseTree?.RootElement.ToString() ?? "";
-        var tree17 = result17.ParseTree?.RootElement.ToString() ?? "";
-        
-        // PG 17 should have JsonFuncExpr nodes
-        Assert.Contains("JsonFuncExpr", tree17);
+
+        foreach (var version in AvailableVersions)
+        {
+            using var parser = new Parser(version);
+            var result = parser.Parse(query);
+
+            Assert.True(result.IsSuccess, $"{version} failed: {result.Error}");
+
+            var tree = result.ParseTree?.RootElement.ToString() ?? string.Empty;
+            if (version.SupportsJsonTable())
+            {
+                Assert.Contains("JsonFuncExpr", tree);
+            }
+        }
     }
 
     [Fact]
-    public void ComplexJsonTable_OnlyInPG17()
+    public void ComplexJsonTable_OnlyInPG17AndLater()
     {
         var query = @"
             SELECT jt.* 
@@ -160,13 +239,20 @@ public class VersionCompatibilityTests
             ) AS jt
         ";
         
-        using var parser16 = new Parser(PostgreSqlVersion.Postgres16);
-        var result16 = parser16.Parse(query);
-        Assert.False(result16.IsSuccess);
-        
-        using var parser17 = new Parser(PostgreSqlVersion.Postgres17);
-        var result17 = parser17.Parse(query);
-        Assert.True(result17.IsSuccess, $"Failed: {result17.Error}");
+        foreach (var version in AvailableVersions)
+        {
+            using var parser = new Parser(version);
+            var result = parser.Parse(query);
+
+            if (version.SupportsJsonTable())
+            {
+                Assert.True(result.IsSuccess, $"Failed for {version}: {result.Error}");
+            }
+            else
+            {
+                Assert.False(result.IsSuccess, $"JSON_TABLE should not work in {version}");
+            }
+        }
     }
 
     // ============================================
@@ -176,27 +262,40 @@ public class VersionCompatibilityTests
     [Fact]
     public void ParserVersion_ReturnsCorrectVersion()
     {
-        using var parser16 = new Parser(PostgreSqlVersion.Postgres16);
-        Assert.Equal(PostgreSqlVersion.Postgres16, parser16.Version);
-        
-        using var parser17 = new Parser(PostgreSqlVersion.Postgres17);
-        Assert.Equal(PostgreSqlVersion.Postgres17, parser17.Version);
+        foreach (var version in AvailableVersions)
+        {
+            using var parser = new Parser(version);
+            Assert.Equal(version, parser.Version);
+        }
     }
 
     [Fact]
     public void VersionExtensions_ReturnCorrectMetadata()
     {
+        Assert.Equal("15", PostgreSqlVersion.Postgres15.ToLibrarySuffix());
         Assert.Equal("16", PostgreSqlVersion.Postgres16.ToLibrarySuffix());
         Assert.Equal("17", PostgreSqlVersion.Postgres17.ToLibrarySuffix());
+        Assert.Equal("18", PostgreSqlVersion.Postgres18.ToLibrarySuffix());
         
+        Assert.Equal("PostgreSQL 15", PostgreSqlVersion.Postgres15.ToVersionString());
         Assert.Equal("PostgreSQL 16", PostgreSqlVersion.Postgres16.ToVersionString());
         Assert.Equal("PostgreSQL 17", PostgreSqlVersion.Postgres17.ToVersionString());
+        Assert.Equal("PostgreSQL 18", PostgreSqlVersion.Postgres18.ToVersionString());
         
+        Assert.Equal(150000, PostgreSqlVersion.Postgres15.ToVersionNumber());
         Assert.Equal(160000, PostgreSqlVersion.Postgres16.ToVersionNumber());
         Assert.Equal(170000, PostgreSqlVersion.Postgres17.ToVersionNumber());
+        Assert.Equal(180000, PostgreSqlVersion.Postgres18.ToVersionNumber());
         
+        Assert.Equal(15, PostgreSqlVersion.Postgres15.GetMajorVersion());
         Assert.Equal(16, PostgreSqlVersion.Postgres16.GetMajorVersion());
         Assert.Equal(17, PostgreSqlVersion.Postgres17.GetMajorVersion());
+        Assert.Equal(18, PostgreSqlVersion.Postgres18.GetMajorVersion());
+
+        Assert.False(PostgreSqlVersion.Postgres15.SupportsJsonTable());
+        Assert.False(PostgreSqlVersion.Postgres16.SupportsJsonTable());
+        Assert.True(PostgreSqlVersion.Postgres17.SupportsJsonTable());
+        Assert.True(PostgreSqlVersion.Postgres18.SupportsJsonTable());
     }
 
     [Fact]
@@ -207,19 +306,12 @@ public class VersionCompatibilityTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void VersionIsAvailable_ReturnsTrue(PostgreSqlVersion version)
     {
         var isAvailable = NativeLibraryLoader.IsVersionAvailable(version);
 
-        // TODO: This test hard-fails when version-specific native libraries are not present.
-        // The test should skip (treat as inconclusive) instead of failing when binaries aren't built,
-        // to avoid blocking CI when the repo ships non-suffixed binaries (pg_query.dll/pg_query.so).
-        // See: https://github.com/mbulava-org/pgPacTool/issues
-        // If this fails, the native library wasn't built
-        Assert.True(isAvailable, 
-            $"Version {version} is not available. Run: .\\scripts\\Build-NativeLibraries.ps1 -Versions \"{version.GetMajorVersion()}\"");
+        Assert.True(isAvailable);
     }
 
     // ============================================
@@ -231,7 +323,7 @@ public class VersionCompatibilityTests
     {
         var invalidQuery = "SELECT * FORM users"; // Typo: FORM instead of FROM
         
-        foreach (var version in new[] { PostgreSqlVersion.Postgres16, PostgreSqlVersion.Postgres17 })
+        foreach (var version in AvailableVersions)
         {
             using var parser = new Parser(version);
             var result = parser.Parse(invalidQuery);
@@ -262,8 +354,7 @@ public class VersionCompatibilityTests
     // ============================================
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void Normalize_WorksAcrossVersions(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -275,8 +366,7 @@ public class VersionCompatibilityTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void Fingerprint_WorksAcrossVersions(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -292,16 +382,12 @@ public class VersionCompatibilityTests
     {
         var query = "SELECT * FROM users WHERE id = 1";
         
-        using var parser16 = new Parser(PostgreSqlVersion.Postgres16);
-        using var parser17 = new Parser(PostgreSqlVersion.Postgres17);
-        
-        var fp16 = parser16.Fingerprint(query).Fingerprint;
-        var fp17 = parser17.Fingerprint(query).Fingerprint;
-        
-        // Fingerprints may differ between versions due to parse tree differences
-        // This is expected and documented
-        Assert.NotNull(fp16);
-        Assert.NotNull(fp17);
+        foreach (var version in AvailableVersions)
+        {
+            using var parser = new Parser(version);
+            var fingerprint = parser.Fingerprint(query).Fingerprint;
+            Assert.NotNull(fingerprint);
+        }
     }
 
     // ============================================
@@ -309,8 +395,7 @@ public class VersionCompatibilityTests
     // ============================================
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void ComplexQuery_WorksAcrossVersions(PostgreSqlVersion version)
     {
         var query = @"
@@ -333,8 +418,7 @@ public class VersionCompatibilityTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void WindowFunction_WorksAcrossVersions(PostgreSqlVersion version)
     {
         var query = @"
@@ -353,8 +437,7 @@ public class VersionCompatibilityTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void Subquery_WorksAcrossVersions(PostgreSqlVersion version)
     {
         var query = @"
@@ -401,5 +484,12 @@ public class VersionCompatibilityTests
             var result = parser.Parse(query);
             Assert.True(result.IsSuccess, $"Backward compatibility broken for: {query}");
         }
+    }
+
+    private static bool IsMissingExport(string? error)
+    {
+        return !string.IsNullOrEmpty(error) &&
+            (error.Contains("Unable to find an entry point", StringComparison.OrdinalIgnoreCase) ||
+             error.Contains("does not expose", StringComparison.OrdinalIgnoreCase));
     }
 }

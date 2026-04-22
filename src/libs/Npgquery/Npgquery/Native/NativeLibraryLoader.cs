@@ -229,6 +229,26 @@ public static class NativeLibraryLoader
     }
 
     /// <summary>
+    /// Checks whether a specific native export is available for the requested PostgreSQL version.
+    /// </summary>
+    internal static bool IsFunctionAvailable(PostgreSqlVersion version, string functionName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(functionName);
+
+        if (!IsVersionAvailable(version))
+        {
+            return false;
+        }
+
+        if (!_loadedLibraries.TryGetValue(version, out var handle) || handle == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        return NativeLibrary.TryGetExport(handle, functionName, out _);
+    }
+
+    /// <summary>
     /// Gets all available PostgreSQL versions
     /// </summary>
     /// <returns>Enumerable of available versions</returns>
@@ -236,7 +256,7 @@ public static class NativeLibraryLoader
     {
         var versions = new List<PostgreSqlVersion>();
 
-        foreach (PostgreSqlVersion version in Enum.GetValues(typeof(PostgreSqlVersion)))
+        foreach (var version in PostgreSqlVersionExtensions.GetSupportedVersions())
         {
             if (IsVersionAvailable(version))
             {

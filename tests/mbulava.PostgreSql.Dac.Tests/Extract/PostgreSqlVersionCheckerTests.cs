@@ -11,10 +11,10 @@ namespace mbulava.PostgreSql.Dac.Tests.Extract
     public class PostgreSqlVersionCheckerTests
     {
         [Test]
-        public void MinimumSupportedVersion_IsSetTo16()
+        public void MinimumSupportedVersion_IsSetTo15()
         {
             // Verify the minimum version constant
-            PostgreSqlVersionChecker.MinimumSupportedVersion.Should().Be(16);
+            PostgreSqlVersionChecker.MinimumSupportedVersion.Should().Be(15);
         }
 
         [Test]
@@ -39,7 +39,7 @@ namespace mbulava.PostgreSql.Dac.Tests.Extract
         }
 
         [Test]
-        public async Task ValidateAndGetVersionAsync_PostgreSQL15_ThrowsNotSupported()
+        public async Task ValidateAndGetVersionAsync_PostgreSQL15_Succeeds()
         {
             // Arrange - Create PostgreSQL 15 container
             await using var container = new PostgreSqlBuilder()
@@ -53,12 +53,10 @@ namespace mbulava.PostgreSql.Dac.Tests.Extract
             var connectionString = container.GetConnectionString();
 
             // Act
-            Func<Task> act = async () => await PostgreSqlVersionChecker.ValidateAndGetVersionAsync(connectionString);
+            var version = await PostgreSqlVersionChecker.ValidateAndGetVersionAsync(connectionString);
 
             // Assert
-            await act.Should().ThrowAsync<NotSupportedException>()
-                .WithMessage("*PostgreSQL 15*not supported*")
-                .WithMessage("*requires PostgreSQL 16 or higher*");
+            version.Should().StartWith("15.");
         }
 
         [Test]
@@ -146,7 +144,7 @@ namespace mbulava.PostgreSql.Dac.Tests.Extract
         }
 
         [Test]
-        public async Task CheckVersionSupportAsync_PostgreSQL15_ReturnsNotSupported()
+        public async Task CheckVersionSupportAsync_PostgreSQL15_ReturnsSupported()
         {
             // Arrange
             await using var container = new PostgreSqlBuilder()
@@ -161,10 +159,9 @@ namespace mbulava.PostgreSql.Dac.Tests.Extract
             var (isSupported, message) = await PostgreSqlVersionChecker.CheckVersionSupportAsync(connectionString);
 
             // Assert
-            isSupported.Should().BeFalse();
+            isSupported.Should().BeTrue();
             message.Should().Contain("15");
-            message.Should().Contain("not supported");
-            message.Should().Contain("upgrade");
+            message.Should().Contain("supported");
         }
 
         [Test]
@@ -198,6 +195,25 @@ namespace mbulava.PostgreSql.Dac.Tests.Extract
 
             // Assert
             version.Should().StartWith("17.");
+        }
+
+        [Test]
+        public async Task ValidateAndGetVersionAsync_PostgreSQL18_Succeeds()
+        {
+            // Arrange - PostgreSQL 18 uses a different container/image setup but version validation should accept it.
+            await using var container = new PostgreSqlBuilder()
+                .WithImage("postgres:18")
+                .WithDatabase("testdb")
+                .Build();
+
+            await container.StartAsync();
+            var connectionString = container.GetConnectionString();
+
+            // Act
+            var version = await PostgreSqlVersionChecker.ValidateAndGetVersionAsync(connectionString);
+
+            // Assert
+            version.Should().StartWith("18.");
         }
 
         [Test]

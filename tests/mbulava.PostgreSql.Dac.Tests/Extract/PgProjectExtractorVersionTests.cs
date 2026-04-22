@@ -37,7 +37,7 @@ namespace mbulava.PostgreSql.Dac.Tests.Extract
         }
 
         [Test]
-        public async Task ExtractPgProject_PostgreSQL15_ThrowsNotSupported()
+        public async Task ExtractPgProject_PostgreSQL15_Succeeds()
         {
             // Arrange
             await using var container = new PostgreSqlBuilder()
@@ -51,12 +51,11 @@ namespace mbulava.PostgreSql.Dac.Tests.Extract
             var extractor = new PgProjectExtractor(connectionString);
 
             // Act
-            Func<Task> act = async () => await extractor.ExtractPgProject("testdb");
+            var project = await extractor.ExtractPgProject("testdb");
 
             // Assert
-            await act.Should().ThrowAsync<NotSupportedException>()
-                .WithMessage("*PostgreSQL 15*not supported*")
-                .WithMessage("*requires PostgreSQL 16 or higher*");
+            project.Should().NotBeNull();
+            project.PostgresVersion.Should().MatchRegex(@"^15(\.|$)", "PostgreSQL version should be 15 or 15.x");
         }
 
         [Test]
@@ -104,7 +103,7 @@ namespace mbulava.PostgreSql.Dac.Tests.Extract
         }
 
         [Test]
-        public async Task DetectPostgresVersion_PostgreSQL15_ThrowsNotSupported()
+        public async Task DetectPostgresVersion_PostgreSQL15_ReturnsVersion()
         {
             // Arrange
             await using var container = new PostgreSqlBuilder()
@@ -118,10 +117,10 @@ namespace mbulava.PostgreSql.Dac.Tests.Extract
             var extractor = new PgProjectExtractor(connectionString);
 
             // Act
-            Func<Task> act = async () => await extractor.DetectPostgresVersion();
+            var version = await extractor.DetectPostgresVersion();
 
             // Assert
-            await act.Should().ThrowAsync<NotSupportedException>();
+            version.Should().MatchRegex(@"^15(\.|$)", "PostgreSQL version should be 15 or 15.x");
         }
 
         [Test]
@@ -146,6 +145,28 @@ namespace mbulava.PostgreSql.Dac.Tests.Extract
             project.Should().NotBeNull();
             // Docker containers may return "17" or "17.x" format
             project.PostgresVersion.Should().MatchRegex(@"^17(\.|$)", "PostgreSQL version should be 17 or 17.x");
+        }
+
+        [Test]
+        public async Task ExtractPgProject_PostgreSQL18_Succeeds()
+        {
+            // Arrange
+            await using var container = new PostgreSqlBuilder()
+                .WithImage("postgres:18")
+                .WithDatabase("testdb")
+                .Build();
+
+            await container.StartAsync();
+            var connectionString = container.GetConnectionString();
+
+            var extractor = new PgProjectExtractor(connectionString);
+
+            // Act
+            var project = await extractor.ExtractPgProject("testdb");
+
+            // Assert
+            project.Should().NotBeNull();
+            project.PostgresVersion.Should().MatchRegex(@"^18(\.|$)", "PostgreSQL version should be 18 or 18.x");
         }
 
         [Test]

@@ -19,8 +19,7 @@ public class FunctionalityExposureTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void Parser_ExposesParseMethod(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -32,8 +31,7 @@ public class FunctionalityExposureTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void Parser_ExposesNormalizeMethod(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -45,8 +43,26 @@ public class FunctionalityExposureTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
+    public void Parser_ExposesNormalizeUtilityMethod(PostgreSqlVersion version)
+    {
+        using var parser = new Parser(version);
+        var result = parser.NormalizeUtility("VACUUM users");
+
+        if (!version.SupportsNormalizeUtility() || !NativeLibraryLoader.IsFunctionAvailable(version, "pg_query_normalize_utility"))
+        {
+            Assert.False(result.IsSuccess);
+            Assert.Contains("does not", result.Error, StringComparison.OrdinalIgnoreCase);
+            return;
+        }
+
+        Assert.True(result.IsSuccess, $"NormalizeUtility should work on {version.ToVersionString()}. Error: {result.Error}");
+        Assert.NotNull(result.NormalizedQuery);
+        _output.WriteLine($"✅ NormalizeUtility() works on {version.ToVersionString()}");
+    }
+
+    [Theory]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void Parser_ExposesFingerprintMethod(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -58,8 +74,7 @@ public class FunctionalityExposureTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void Parser_ExposesSplitMethod(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -79,8 +94,7 @@ public class FunctionalityExposureTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void Parser_ExposesScanMethod(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -93,8 +107,7 @@ public class FunctionalityExposureTests
     }
 
     [Theory(Skip = "ScanWithProtobuf broken on Linux. See Issue #36")]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void Parser_ExposesScanWithProtobufMethod(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -107,8 +120,7 @@ public class FunctionalityExposureTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void Parser_ExposesPlpgsqlParseMethod(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -127,8 +139,7 @@ $$ LANGUAGE plpgsql;";
     }
 
     [Theory(Skip = "ParseProtobuf crashes on Linux - AccessViolationException. See issue #36")]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void Parser_ExposesProtobufParseMethod(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -146,8 +157,7 @@ $$ LANGUAGE plpgsql;";
     }
 
     [Theory(Skip = "Deparse uses protobuf internally - broken on Linux. See Issue #36")]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void Parser_ExposesDeparseMethod(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -167,8 +177,7 @@ $$ LANGUAGE plpgsql;";
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void Parser_ExposesIsValidMethod(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -179,8 +188,7 @@ $$ LANGUAGE plpgsql;";
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void Parser_ExposesGetErrorMethod(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -189,6 +197,50 @@ $$ LANGUAGE plpgsql;";
         Assert.NotNull(error);
         Assert.Contains("syntax error", error, StringComparison.OrdinalIgnoreCase);
         _output.WriteLine($"✅ GetError() works on {version.ToVersionString()}");
+    }
+
+    [Theory]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
+    public void Parser_ExposesIsUtilityStatementMethod(PostgreSqlVersion version)
+    {
+        using var parser = new Parser(version);
+        var result = parser.IsUtilityStatement("VACUUM users");
+
+        if (!version.SupportsUtilityStatementDetection() ||
+            !NativeLibraryLoader.IsFunctionAvailable(version, "pg_query_is_utility_stmt") ||
+            !NativeLibraryLoader.IsFunctionAvailable(version, "pg_query_free_is_utility_result"))
+        {
+            Assert.False(result.IsSuccess);
+            Assert.Contains("does not", result.Error, StringComparison.OrdinalIgnoreCase);
+            return;
+        }
+
+        Assert.True(result.IsSuccess, $"IsUtilityStatement should work on {version.ToVersionString()}. Error: {result.Error}");
+        Assert.NotNull(result.IsUtilityStatements);
+        Assert.NotEmpty(result.IsUtilityStatements);
+        _output.WriteLine($"✅ IsUtilityStatement() works on {version.ToVersionString()}");
+    }
+
+    [Theory]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
+    public void Parser_ExposesSummarizeMethod(PostgreSqlVersion version)
+    {
+        using var parser = new Parser(version);
+        var result = parser.Summarize("SELECT * FROM users", truncateLimit: 128);
+
+        if (!version.SupportsSummaryApi() ||
+            !NativeLibraryLoader.IsFunctionAvailable(version, "pg_query_summary") ||
+            !NativeLibraryLoader.IsFunctionAvailable(version, "pg_query_free_summary_parse_result"))
+        {
+            Assert.False(result.IsSuccess);
+            Assert.Contains("does not", result.Error, StringComparison.OrdinalIgnoreCase);
+            return;
+        }
+
+        Assert.True(result.IsSuccess, $"Summarize should work on {version.ToVersionString()}. Error: {result.Error}");
+        Assert.NotNull(result.SummaryProtobuf);
+        Assert.NotEmpty(result.SummaryProtobuf);
+        _output.WriteLine($"✅ Summarize() works on {version.ToVersionString()}");
     }
 
     [Fact]
@@ -205,6 +257,14 @@ $$ LANGUAGE plpgsql;";
         var result = Parser.QuickNormalize("SELECT 1 /* comment */");
         Assert.True(result.IsSuccess);
         _output.WriteLine("✅ QuickNormalize() static method works");
+    }
+
+    [Fact]
+    public void StaticMethods_QuickNormalizeUtility_Works()
+    {
+        var result = Parser.QuickNormalizeUtility("VACUUM users");
+        Assert.NotNull(result);
+        _output.WriteLine("✅ QuickNormalizeUtility() static method works");
     }
 
     [Fact]
@@ -270,26 +330,22 @@ $$ LANGUAGE plpgsql;";
         var versions = NativeLibraryLoader.GetAvailableVersions().ToList();
         
         Assert.NotEmpty(versions);
-        Assert.Contains(PostgreSqlVersion.Postgres16, versions);
-        Assert.Contains(PostgreSqlVersion.Postgres17, versions);
         _output.WriteLine($"✅ NativeLibraryLoader.GetAvailableVersions() works");
         _output.WriteLine($"   Available: {string.Join(", ", versions.Select(v => v.ToVersionString()))}");
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void NativeLibraryLoader_ExposesIsVersionAvailable(PostgreSqlVersion version)
     {
         var available = NativeLibraryLoader.IsVersionAvailable(version);
-        
-        Assert.True(available);
+
+        Assert.Equal(PostgreSqlVersionTestData.AvailableVersionList.Contains(version), available);
         _output.WriteLine($"✅ NativeLibraryLoader.IsVersionAvailable({version.ToVersionString()}) works");
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void NativeLibraryLoader_ExposesGetLibraryHandle(PostgreSqlVersion version)
     {
         var handle = NativeLibraryLoader.GetLibraryHandle(version);

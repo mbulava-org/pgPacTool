@@ -7,7 +7,7 @@ This test project runs all other test projects in Linux containers to verify CI/
 The pgPacTool project experienced Linux-specific issues (like protobuf corruption) that only manifested in GitHub Actions CI builds. This test project helps catch these issues locally by:
 
 1. **Running tests in Linux containers** - Simulates the Ubuntu 24.04 GitHub Actions environment
-2. **Verifying native library loading** - Ensures libpg_query.so loads correctly on Linux
+2. **Verifying native library loading** - Ensures versioned `libpg_query_{version}.so` files load correctly on Linux
 3. **Testing cross-platform behavior** - Catches platform-specific bugs before CI
 
 ## Prerequisites
@@ -221,13 +221,13 @@ Skipping Linux container tests. Install Docker Desktop to run these tests.
 
 ### Native Library Missing
 ```
-❌ Missing: src/libs/Npgquery/Npgquery/runtimes/linux-x64/native/libpg_query.so
+❌ Missing versioned native libraries under `src/libs/Npgquery/Npgquery/runtimes/linux-x64/native`
 ```
 
 **Solution:**
 ```bash
 # Rebuild native libraries for Linux
-.\scripts\Build-NativeLibraries.ps1 -Versions "16,17"
+.\scripts\Build-NativeLibraries.ps1 -Versions "15,16,17,18"
 
 # Or trigger GitHub Actions workflow to build them
 ```

@@ -35,8 +35,22 @@ public sealed class Parser : IDisposable
     {
         ThrowIfDisposedOrNull(query);
 
+        var effectiveOptions = options ?? ParseOptions.Default;
+        var parserOptions = effectiveOptions.ToNativeParserOptions();
+
+        if (parserOptions != ParseOptions.ParseDefault && !NativeLibraryLoader.IsFunctionAvailable(_version, "pg_query_parse_opts"))
+        {
+            return new ParseResult
+            {
+                Query = query,
+                Error = $"{_version.ToVersionString()} does not expose pg_query_parse_opts in the currently loaded native library."
+            };
+        }
+
         return ExecuteNativeOperation(query,
-            q => NativeMethods.pg_query_parse(NativeMethods.StringToUtf8Bytes(q), _version),
+            q => parserOptions == ParseOptions.ParseDefault
+                ? NativeMethods.pg_query_parse(NativeMethods.StringToUtf8Bytes(q), _version)
+                : NativeMethods.pg_query_parse_opts(NativeMethods.StringToUtf8Bytes(q), parserOptions, _version),
             (result, q) =>
             {
                 var error = ExtractError(result.error);
@@ -72,6 +86,42 @@ public sealed class Parser : IDisposable
 
         return ExecuteNativeOperation(query, 
             q => NativeMethods.pg_query_normalize(NativeMethods.StringToUtf8Bytes(q), _version),
+            (result, q) => new NormalizeResult
+            {
+                Query = q,
+                NormalizedQuery = NativeMethods.PtrToString(result.normalized_query),
+                Error = ExtractError(result.error)
+            },
+            result => NativeMethods.pg_query_free_normalize_result(result, _version));
+    }
+
+    /// <summary>
+    /// Normalize a PostgreSQL utility statement when supported by the selected parser version.
+    /// </summary>
+    public NormalizeResult NormalizeUtility(string query)
+    {
+        ThrowIfDisposedOrNull(query);
+
+        if (!_version.SupportsNormalizeUtility())
+        {
+            return new NormalizeResult
+            {
+                Query = query,
+                Error = $"{_version.ToVersionString()} does not support utility normalization."
+            };
+        }
+
+        if (!NativeLibraryLoader.IsFunctionAvailable(_version, "pg_query_normalize_utility"))
+        {
+            return new NormalizeResult
+            {
+                Query = query,
+                Error = $"{_version.ToVersionString()} does not expose pg_query_normalize_utility in the currently loaded native library."
+            };
+        }
+
+        return ExecuteNativeOperation(query,
+            q => NativeMethods.pg_query_normalize_utility(NativeMethods.StringToUtf8Bytes(q), _version),
             (result, q) => new NormalizeResult
             {
                 Query = q,
@@ -150,6 +200,83 @@ public sealed class Parser : IDisposable
                 };
             },
             result => NativeMethods.pg_query_free_scan_result(result, _version));
+    }
+
+    /// <summary>
+    /// Determines whether each statement in the input is a utility statement.
+    /// </summary>
+    public UtilityStatementResult IsUtilityStatement(string query)
+    {
+        ThrowIfDisposedOrNull(query);
+
+        if (!_version.SupportsUtilityStatementDetection())
+        {
+            return new UtilityStatementResult
+            {
+                Query = query,
+                Error = $"{_version.ToVersionString()} does not support utility statement detection."
+            };
+        }
+
+        if (!NativeLibraryLoader.IsFunctionAvailable(_version, "pg_query_is_utility_stmt") ||
+            !NativeLibraryLoader.IsFunctionAvailable(_version, "pg_query_free_is_utility_result"))
+        {
+            return new UtilityStatementResult
+            {
+                Query = query,
+                Error = $"{_version.ToVersionString()} does not expose the required utility statement detection exports in the currently loaded native library."
+            };
+        }
+
+        return ExecuteNativeOperation(query,
+            q => NativeMethods.pg_query_is_utility_stmt(NativeMethods.StringToUtf8Bytes(q), _version),
+            (result, q) => new UtilityStatementResult
+            {
+                Query = q,
+                IsUtilityStatements = NativeMethods.MarshalUtilityFlags(result),
+                Error = ExtractError(result.error)
+            },
+            result => NativeMethods.pg_query_free_is_utility_result(result, _version));
+    }
+
+    /// <summary>
+    /// Summarize a PostgreSQL query when supported by the selected parser version.
+    /// </summary>
+    public QuerySummaryResult Summarize(string query, ParseOptions? options = null, int truncateLimit = 0)
+    {
+        ThrowIfDisposedOrNull(query);
+
+        if (!_version.SupportsSummaryApi())
+        {
+            return new QuerySummaryResult
+            {
+                Query = query,
+                Error = $"{_version.ToVersionString()} does not support query summary."
+            };
+        }
+
+        if (!NativeLibraryLoader.IsFunctionAvailable(_version, "pg_query_summary") ||
+            !NativeLibraryLoader.IsFunctionAvailable(_version, "pg_query_free_summary_parse_result"))
+        {
+            return new QuerySummaryResult
+            {
+                Query = query,
+                Error = $"{_version.ToVersionString()} does not expose the required summary exports in the currently loaded native library."
+            };
+        }
+
+        var parserOptions = (options ?? ParseOptions.Default).ToNativeParserOptions();
+
+        return ExecuteNativeOperation(query,
+            q => NativeMethods.pg_query_summary(NativeMethods.StringToUtf8Bytes(q), parserOptions, truncateLimit, _version),
+            (result, q) => new QuerySummaryResult
+            {
+                Query = q,
+                SummaryProtobuf = ProtobufHelper.ExtractProtobufData(result.summary),
+                Stderr = NativeMethods.PtrToString(result.stderr_buffer),
+                Error = ExtractError(result.error)
+            },
+            result => NativeMethods.pg_query_free_summary_parse_result(result, _version));
     }
 
     /// <summary>
@@ -259,11 +386,37 @@ public sealed class Parser : IDisposable
     /// </summary>
     public ProtobufParseResult ParseProtobuf(string query)
     {
+        return ParseProtobuf(query, null);
+    }
+
+    /// <summary>
+    /// Parse a PostgreSQL query into protobuf format using parse options.
+    /// </summary>
+    /// <param name="query">The SQL query string.</param>
+    /// <param name="options">Parse options.</param>
+    /// <returns>The protobuf parse result.</returns>
+    public ProtobufParseResult ParseProtobuf(string query, ParseOptions? options)
+    {
         ThrowIfDisposedOrNull(query);
+
+        var effectiveOptions = options ?? ParseOptions.Default;
+        var parserOptions = effectiveOptions.ToNativeParserOptions();
+
+        if (parserOptions != ParseOptions.ParseDefault && !NativeLibraryLoader.IsFunctionAvailable(_version, "pg_query_parse_protobuf_opts"))
+        {
+            return new ProtobufParseResult
+            {
+                Query = query,
+                Error = $"{_version.ToVersionString()} does not expose pg_query_parse_protobuf_opts in the currently loaded native library."
+            };
+        }
 
         try
         {
-            var result = NativeMethods.pg_query_parse_protobuf(NativeMethods.StringToUtf8Bytes(query), _version);
+            var result = parserOptions == ParseOptions.ParseDefault
+                ? NativeMethods.pg_query_parse_protobuf(NativeMethods.StringToUtf8Bytes(query), _version)
+                : NativeMethods.pg_query_parse_protobuf_opts(NativeMethods.StringToUtf8Bytes(query), parserOptions, _version);
+
             try
             {
                 var error = ExtractError(result.error);
@@ -278,7 +431,6 @@ public sealed class Parser : IDisposable
                     };
                 }
 
-                // Copy the protobuf data from native memory immediately
                 var protobufData = ProtobufHelper.ExtractProtobufData(result.parse_tree);
 
                 return new ProtobufParseResult
@@ -290,7 +442,6 @@ public sealed class Parser : IDisposable
             }
             finally
             {
-                // Free the native result immediately after copying data
                 NativeMethods.pg_query_free_protobuf_parse_result(result, _version);
             }
         }
@@ -376,6 +527,9 @@ public sealed class Parser : IDisposable
     public static NormalizeResult QuickNormalize(string query) => 
         ExecuteWithInstance(parser => parser.Normalize(query));
 
+    public static NormalizeResult QuickNormalizeUtility(string query) =>
+        ExecuteWithInstance(parser => parser.NormalizeUtility(query));
+
     public static FingerprintResult QuickFingerprint(string query) => 
         ExecuteWithInstance(parser => parser.Fingerprint(query));
 
@@ -393,6 +547,12 @@ public sealed class Parser : IDisposable
 
     public static EnhancedScanResult QuickScanWithProtobuf(string query) => 
         ExecuteWithInstance(parser => parser.ScanWithProtobuf(query));
+
+    public static UtilityStatementResult QuickIsUtilityStatement(string query) =>
+        ExecuteWithInstance(parser => parser.IsUtilityStatement(query));
+
+    public static QuerySummaryResult QuickSummarize(string query, ParseOptions? options = null, int truncateLimit = 0) =>
+        ExecuteWithInstance(parser => parser.Summarize(query, options, truncateLimit));
 
     // Helper methods
     private void ThrowIfDisposedOrNull(string parameter)

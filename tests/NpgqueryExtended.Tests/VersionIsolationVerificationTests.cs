@@ -201,7 +201,7 @@ public class VersionIsolationVerificationTests
     }
 
     // ============================================
-    // All Common SQL Works in Both Versions
+    // All Common SQL Works in Supported Versions
     // ============================================
 
     [Theory]
@@ -214,18 +214,22 @@ public class VersionIsolationVerificationTests
     [InlineData("CREATE INDEX idx_name ON users(name)")]
     [InlineData("WITH cte AS (SELECT 1) SELECT * FROM cte")]
     [InlineData("SELECT id, ROW_NUMBER() OVER (ORDER BY name) FROM users")]
-    public void StandardSQL_WorksInBothVersions(string query)
+    public void StandardSQL_WorksInSupportedVersions(string query)
     {
-        using var parser16 = new Parser(PostgreSqlVersion.Postgres16);
-        using var parser17 = new Parser(PostgreSqlVersion.Postgres17);
+        foreach (var version in PostgreSqlVersionTestData.SupportedVersionList)
+        {
+            if (!NativeLibraryLoader.IsVersionAvailable(version))
+            {
+                _output.WriteLine($"Skipping {version.ToVersionString()} because native library is not available.");
+                continue;
+            }
+
+            using var parser = new Parser(version);
+            var result = parser.Parse(query);
+            Assert.True(result.IsSuccess, $"{version} should parse: {query}. Error: {result.Error}");
+        }
         
-        var result16 = parser16.Parse(query);
-        var result17 = parser17.Parse(query);
-        
-        Assert.True(result16.IsSuccess, $"PG16 should parse: {query}. Error: {result16.Error}");
-        Assert.True(result17.IsSuccess, $"PG17 should parse: {query}. Error: {result17.Error}");
-        
-        _output.WriteLine($"✅ Standard SQL works in both: {query.Substring(0, Math.Min(50, query.Length))}...");
+        _output.WriteLine($"✅ Standard SQL works in supported versions: {query.Substring(0, Math.Min(50, query.Length))}...");
     }
 
     // ============================================

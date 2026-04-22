@@ -17,19 +17,32 @@ namespace ProjectExtract_Tests.Integration
         protected string ConnectionString { get; private set; } = default!;
         protected abstract string PostgreSqlVersion { get; }
 
+        protected virtual PostgreSqlBuilder ConfigureBuilder(PostgreSqlBuilder builder)
+        {
+            return builder;
+        }
+
+        protected virtual Task ConfigureContainerAsync()
+        {
+            return Task.CompletedTask;
+        }
+
         [OneTimeSetUp]
         public async Task BaseSetup()
         {
-            Container = new PostgreSqlBuilder(PostgreSqlVersion)
+            var containerBuilder = new PostgreSqlBuilder(PostgreSqlVersion)
                 .WithDatabase("testdb")
                 .WithUsername("postgres")
-                .WithPassword("testpass")
+                .WithPassword("testpass");
+
+            Container = ConfigureBuilder(containerBuilder)
                 .Build();
 
             await Container.StartAsync();
+            await ConfigureContainerAsync();
 
             // Configure connection string with connection pool settings
-            var builder = new NpgsqlConnectionStringBuilder(Container.GetConnectionString())
+            var connectionStringBuilder = new NpgsqlConnectionStringBuilder(Container.GetConnectionString())
             {
                 MaxPoolSize = 25,
                 MinPoolSize = 0,
@@ -37,7 +50,7 @@ namespace ProjectExtract_Tests.Integration
                 ConnectionPruningInterval = 10,
                 Timeout = 30
             };
-            ConnectionString = builder.ToString();
+            ConnectionString = connectionStringBuilder.ToString();
 
             // Verify connection
             await using var conn = new NpgsqlConnection(ConnectionString);

@@ -20,10 +20,4 @@
     <PackageReference Include="System.Text.Json" Condition="'$(TargetFramework)' == 'net472' or '$(TargetFramework)' == 'net6.0' or '$(TargetFramework)' == 'netstandard2.0' or '$(TargetFramework)' == 'netstandard2.1'" Version="9.0.0" />
   </ItemGroup>
 
-  <ItemGroup>
-    <None Update="pg_query.dll">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
-
 </Project>

@@ -245,13 +245,19 @@ public class NugetPackageValidationTests : IDisposable
         }
 
         Assert.True(File.Exists(toolPath), $"Tool executable not found at: {toolPath}");
-        Assert.True(File.Exists(Path.Combine(toolDirectory, "Google.Protobuf.dll")), "Google.Protobuf.dll should be installed beside the tool host");
-        Assert.True(File.Exists(Path.Combine(toolDirectory, "Npgsql.dll")), "Npgsql.dll should be installed beside the tool host");
-        Assert.True(File.Exists(Path.Combine(toolDirectory, "Npgquery.dll")), "Npgquery.dll should be installed beside the tool host");
-        Assert.True(File.Exists(Path.Combine(toolDirectory, "mbulava.PostgreSql.Dac.dll")), "mbulava.PostgreSql.Dac.dll should be installed beside the tool host");
-        Assert.True(File.Exists(Path.Combine(toolDirectory, "System.CommandLine.dll")), "System.CommandLine.dll should be installed beside the tool host");
-        Assert.True(File.Exists(Path.Combine(toolDirectory, "postgresPacTools.deps.json")), "The tool deps file should be installed beside the tool host");
-        Assert.True(File.Exists(Path.Combine(toolDirectory, "postgresPacTools.runtimeconfig.json")), "The tool runtimeconfig should be installed beside the tool host");
+
+        // With --tool-path installs, DLLs are stored under .store/<pkg>/<ver>/<pkg>/<ver>/tools/<tfm>/any/
+        // not directly in the tool-path root (which only contains the shim executable).
+        var packageId = "postgrespactools"; // NuGet normalises to lower-case
+        var storeDllDirectory = Path.Combine(toolDirectory, ".store", packageId, version, packageId, version, "tools", "net10.0", "any");
+        Assert.True(Directory.Exists(storeDllDirectory), $"Tool store directory not found at: {storeDllDirectory}");
+        Assert.True(File.Exists(Path.Combine(storeDllDirectory, "Google.Protobuf.dll")), "Google.Protobuf.dll should be in the tool store");
+        Assert.True(File.Exists(Path.Combine(storeDllDirectory, "Npgsql.dll")), "Npgsql.dll should be in the tool store");
+        Assert.True(File.Exists(Path.Combine(storeDllDirectory, "Npgquery.dll")), "Npgquery.dll should be in the tool store");
+        Assert.True(File.Exists(Path.Combine(storeDllDirectory, "mbulava.PostgreSql.Dac.dll")), "mbulava.PostgreSql.Dac.dll should be in the tool store");
+        Assert.True(File.Exists(Path.Combine(storeDllDirectory, "System.CommandLine.dll")), "System.CommandLine.dll should be in the tool store");
+        Assert.True(File.Exists(Path.Combine(storeDllDirectory, "postgresPacTools.deps.json")), "The tool deps file should be in the tool store");
+        Assert.True(File.Exists(Path.Combine(storeDllDirectory, "postgresPacTools.runtimeconfig.json")), "The tool runtimeconfig should be in the tool store");
 
         var versionResult = await RunCommand(toolPath, "--version");
         Assert.Equal(0, versionResult.ExitCode);

@@ -59,6 +59,36 @@ public sealed record NormalizeResult : QueryResultBase
 }
 
 /// <summary>
+/// Represents the result of checking whether statements are utility statements.
+/// </summary>
+public sealed record UtilityStatementResult : QueryResultBase
+{
+    /// <summary>
+    /// One entry per parsed statement indicating whether it is a utility statement.
+    /// </summary>
+    [JsonPropertyName("is_utility")]
+    public bool[]? IsUtilityStatements { get; init; }
+}
+
+/// <summary>
+/// Represents the result of summarizing a PostgreSQL query.
+/// </summary>
+public sealed record QuerySummaryResult : QueryResultBase
+{
+    /// <summary>
+    /// Raw summary protobuf bytes copied from native memory.
+    /// </summary>
+    [JsonPropertyName("summary_protobuf")]
+    public byte[]? SummaryProtobuf { get; init; }
+
+    /// <summary>
+    /// Standard error output emitted by libpg_query for the summary operation.
+    /// </summary>
+    [JsonPropertyName("stderr")]
+    public string? Stderr { get; init; }
+}
+
+/// <summary>
 /// Represents the result of fingerprinting a PostgreSQL query
 /// </summary>
 public sealed record FingerprintResult : QueryResultBase
@@ -71,14 +101,93 @@ public sealed record FingerprintResult : QueryResultBase
 }
 
 /// <summary>
+/// Parse modes supported by libpg_query.
+/// </summary>
+public enum ParseMode
+{
+    /// <summary>
+    /// Standard SQL statement parsing.
+    /// </summary>
+    Default = 0,
+
+    /// <summary>
+    /// Parse the input as a PostgreSQL type name.
+    /// </summary>
+    TypeName = 1,
+
+    /// <summary>
+    /// Parse the input as a PL/pgSQL expression.
+    /// </summary>
+    PlpgsqlExpression = 2,
+
+    /// <summary>
+    /// Parse the input as the first PL/pgSQL assignment form.
+    /// </summary>
+    PlpgsqlAssignment1 = 3,
+
+    /// <summary>
+    /// Parse the input as the second PL/pgSQL assignment form.
+    /// </summary>
+    PlpgsqlAssignment2 = 4,
+
+    /// <summary>
+    /// Parse the input as the third PL/pgSQL assignment form.
+    /// </summary>
+    PlpgsqlAssignment3 = 5
+}
+
+/// <summary>
 /// Options for parsing PostgreSQL queries
 /// </summary>
 public sealed record ParseOptions
 {
+    internal const int ParseDefault = 0;
+    internal const int ParseModeBitMask = 0x0F;
+    internal const int DisableBackslashQuoteOption = 16;
+    internal const int DisableStandardConformingStringsOption = 32;
+    internal const int DisableEscapeStringWarningOption = 64;
+
     /// <summary>
-    /// Whether to include location information in the parse tree
+    /// Parse mode to use when calling libpg_query parse option APIs.
     /// </summary>
-    public bool IncludeLocations { get; init; } = false;
+    public ParseMode Mode { get; init; } = ParseMode.Default;
+
+    /// <summary>
+    /// Disable PostgreSQL backslash_quote during parsing.
+    /// </summary>
+    public bool DisableBackslashQuote { get; init; }
+
+    /// <summary>
+    /// Disable standard_conforming_strings during parsing.
+    /// </summary>
+    public bool DisableStandardConformingStrings { get; init; }
+
+    /// <summary>
+    /// Disable escape_string_warning during parsing.
+    /// </summary>
+    public bool DisableEscapeStringWarning { get; init; }
+
+    internal int ToNativeParserOptions()
+    {
+        var options = ((int)Mode) & ParseModeBitMask;
+
+        if (DisableBackslashQuote)
+        {
+            options |= DisableBackslashQuoteOption;
+        }
+
+        if (DisableStandardConformingStrings)
+        {
+            options |= DisableStandardConformingStringsOption;
+        }
+
+        if (DisableEscapeStringWarning)
+        {
+            options |= DisableEscapeStringWarningOption;
+        }
+
+        return options;
+    }
 
     /// <summary>
     /// Default parse options

@@ -69,15 +69,17 @@ set -e
 echo ""Testing Native Library Loading on Linux""
 echo ""========================================""
 
-# Check libpg_query.so exists and is valid
-NATIVE_LIB=""src/libs/Npgquery/Npgquery/runtimes/linux-x64/native/libpg_query.so""
+# Check versioned libpg_query libraries exist and are valid
+NATIVE_LIBS=$(find src/libs/Npgquery/Npgquery/runtimes/linux-x64/native -maxdepth 1 -name 'libpg_query_*.so' | sort)
 
-if [ ! -f ""$NATIVE_LIB"" ]; then
-    echo ""❌ ERROR: $NATIVE_LIB not found""
+if [ -z ""$NATIVE_LIBS"" ]; then
+    echo ""❌ ERROR: No versioned libpg_query libraries found""
     exit 1
 fi
 
-echo ""✅ Found: $NATIVE_LIB""
+echo ""✅ Found versioned libraries:""
+echo ""$NATIVE_LIBS""
+NATIVE_LIB=$(echo ""$NATIVE_LIBS"" | head -n 1)
 ls -lh ""$NATIVE_LIB""
 
 # Verify it's a valid ELF binary
@@ -106,6 +108,7 @@ echo ""✅ Native library loads and works correctly on Linux""
         var result = await RunScriptInLinuxContainerAsync("native-lib-test", script);
 
         result.ExitCode.Should().Be(0, because: "native library should load without errors");
+        result.Output.Should().Contain("✅ Found versioned libraries:", because: "versioned native libraries should be present");
         result.Output.Should().Contain("7f 45 4c 46", because: "it should be a valid Linux binary");
         result.Output.Should().NotContain("error while loading shared libraries", because: "all dependencies should be satisfied");
     }

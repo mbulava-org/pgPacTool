@@ -128,20 +128,22 @@ set -e
 # Check if native libraries exist
 echo ""Checking native libraries...""
 
-NPGQUERY_LIB=""src/libs/Npgquery/Npgquery/runtimes/linux-x64/native/libpg_query.so""
+NPGQUERY_LIBS=$(find src/libs/Npgquery/Npgquery/runtimes/linux-x64/native -maxdepth 1 -name 'libpg_query_*.so' | sort)
 
-if [ -f ""$NPGQUERY_LIB"" ]; then
-    echo ""✅ Found: $NPGQUERY_LIB""
-    ls -lh ""$NPGQUERY_LIB""
+if [ -n ""$NPGQUERY_LIBS"" ]; then
+    echo ""✅ Found versioned native libraries:""
+    echo ""$NPGQUERY_LIBS""
+    FIRST_LIB=$(echo ""$NPGQUERY_LIBS"" | head -n 1)
+    ls -lh ""$FIRST_LIB""
 
     # Check ELF magic header (7f 45 4c 46)
-    echo ""ELF magic: $(head -c 4 ""$NPGQUERY_LIB"" | od -An -t x1)""
+    echo ""ELF magic: $(head -c 4 ""$FIRST_LIB"" | od -An -t x1)""
     
     # Check library dependencies
     echo ""Library dependencies:""
-    ldd ""$NPGQUERY_LIB"" || true
+    ldd ""$FIRST_LIB"" || true
 else
-    echo ""❌ Missing: $NPGQUERY_LIB""
+    echo ""❌ Missing versioned native libraries under runtimes/linux-x64/native""
     exit 1
 fi
 
@@ -155,7 +157,7 @@ echo ""✅ Npgquery library built successfully""
         var result = await RunScriptInLinuxContainerAsync("verify-native-libs", script);
 
         result.ExitCode.Should().Be(0, because: "native libraries should be present and loadable on Linux");
-        result.Output.Should().Contain("✅ Found:", because: "libpg_query.so should exist");
+        result.Output.Should().Contain("✅ Found versioned native libraries:", because: "versioned libpg_query libraries should exist");
         result.Output.Should().Contain("7f 45 4c 46", because: "it should be a valid Linux ELF binary");
     }
 

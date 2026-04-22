@@ -287,7 +287,7 @@ gh run view {run-id} --log
 
 ## 🔄 Adding a New PostgreSQL Version
 
-When PostgreSQL 18 is released:
+For PostgreSQL 18 builds:
 
 1. **Trigger workflow with new version:**
    ```
@@ -295,15 +295,15 @@ When PostgreSQL 18 is released:
    ```
 
 2. **Workflow will:**
-   - Build libpg_query from `18-latest` branch
+   - Build libpg_query from `18-latest-dev` branch
    - Generate 3 new library files (win/linux/mac)
    - Add to existing runtimes structure
    - Create PR with all 9 files (3 platforms × 3 versions)
 
-3. **Then update code:**
-   - Add `Postgres18` to `PostgreSqlVersion` enum
-   - Update version mapping in `NativeLibraryLoader`
-   - Add version-specific tests
+3. **Then validate wrapper parity and tests:**
+   - Verify exported methods match the .NET wrapper expectations
+   - Rebuild native assets into runtime folders
+   - Run version-specific tests for PostgreSQL 18
 
 ---
 

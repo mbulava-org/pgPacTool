@@ -10,8 +10,11 @@ namespace LinuxContainer.Tests;
 [Category("LinuxContainer")]
 public class NativeLibraryLinuxTests : LinuxContainerTestBase
 {
-    [Test]
-    public async Task LinuxContainer_CanLoadPg16Library()
+    [TestCase("15")]
+    [TestCase("16")]
+    [TestCase("17")]
+    [TestCase("18")]
+    public async Task LinuxContainer_CanLoadVersionedLibrary(string majorVersion)
     {
         if (!IsDockerAvailable)
         {
@@ -26,36 +29,14 @@ dotnet test tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj \
     --logger 'console;verbosity=normal'
 ";
 
-        var result = await RunScriptInLinuxContainerAsync("pg16-load", script);
+        var result = await RunScriptInLinuxContainerAsync($"pg{majorVersion}-load", script);
         
-        result.ExitCode.Should().Be(0, "PG16 library should load successfully on Linux");
-        result.Output.Should().Contain("PostgreSQL 16 availability: True", "PG16 should be available on Linux");
+        result.ExitCode.Should().Be(0, $"PG{majorVersion} library should load successfully on Linux");
+        result.Output.Should().Contain($"PostgreSQL {majorVersion} availability: True", $"PG{majorVersion} should be available on Linux");
     }
 
     [Test]
-    public async Task LinuxContainer_CanLoadPg17Library()
-    {
-        if (!IsDockerAvailable)
-        {
-            Assert.Ignore("Docker is not available");
-            return;
-        }
-
-        var script = @"
-cd /workspace
-dotnet test tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj \
-    --filter 'FullyQualifiedName~NativeLibraryIntegrationTests.NativeLibraryLoader_IsVersionAvailable_ReturnsTrue' \
-    --logger 'console;verbosity=normal'
-";
-
-        var result = await RunScriptInLinuxContainerAsync("pg17-load", script);
-        
-        result.ExitCode.Should().Be(0, "PG17 library should load successfully on Linux");
-        result.Output.Should().Contain("PostgreSQL 17 availability: True", "PG17 should be available on Linux");
-    }
-
-    [Test]
-    public async Task LinuxContainer_DetectsBothVersions()
+    public async Task LinuxContainer_DetectsSupportedVersions()
     {
         if (!IsDockerAvailable)
         {
@@ -73,8 +54,11 @@ dotnet test tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj \
         var result = await RunScriptInLinuxContainerAsync("detect-versions", script);
         
         result.ExitCode.Should().Be(0, "Version detection should work on Linux");
+        result.Output.Should().Contain("Available PostgreSQL versions", "Should report detected PostgreSQL versions");
+        result.Output.Should().Contain("PostgreSQL 15", "Should detect PG15 when built");
         result.Output.Should().Contain("PostgreSQL 16", "Should detect PG16");
         result.Output.Should().Contain("PostgreSQL 17", "Should detect PG17");
+        result.Output.Should().Contain("PostgreSQL 18", "Should detect PG18 when built");
     }
 
     [Test]
@@ -159,7 +143,7 @@ dotnet test tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj \
         var result = await RunScriptInLinuxContainerAsync("multi-version", script);
         
         result.ExitCode.Should().Be(0, "Multiple versions should work simultaneously on Linux");
-        result.Output.Should().Contain("PG16 and PG17 parsers work simultaneously", "Should confirm both versions work");
+        result.Output.Should().Contain("parsers work simultaneously", "Should confirm multiple versions work together");
     }
 
     [Test]
@@ -174,7 +158,7 @@ dotnet test tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj \
         var script = @"
 cd /workspace
 dotnet test tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj \
-    --filter 'FullyQualifiedName~VersionCompatibilityTests.JsonTable_FailsInPG16_SucceedsInPG17' \
+    --filter 'FullyQualifiedName~VersionCompatibilityTests.JsonTable_FailsBeforePG17_SucceedsInPG17AndLater' \
     --logger 'console;verbosity=detailed'
 ";
 
@@ -203,8 +187,10 @@ dotnet test tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj \
         var result = await RunScriptInLinuxContainerAsync("library-paths", script);
         
         result.ExitCode.Should().Be(0, "Library paths should be correct on Linux");
+        result.Output.Should().Contain("libpg_query_15.so", "Should find PG15 library when built");
         result.Output.Should().Contain("libpg_query_16.so", "Should find PG16 library");
         result.Output.Should().Contain("libpg_query_17.so", "Should find PG17 library");
+        result.Output.Should().Contain("libpg_query_18.so", "Should find PG18 library when built");
     }
 
     [Test]

@@ -7,17 +7,22 @@ using System.Threading.Tasks;
 namespace ProjectExtract_Tests.Integration
 {
     /// <summary>
-    /// Integration tests for PostgreSQL 18 (Future-proofing)
-    /// These tests will be enabled once PostgreSQL 18 is released
+    /// Integration tests for PostgreSQL 18.
     /// </summary>
     [TestFixture]
     [Category("Integration")]
     [Category("Postgres18")]
-    [Category("FutureVersion")]
-    [Ignore("PostgreSQL 18 not yet released - Enable when available")]
     public class Postgres18IntegrationTests : PostgresVersionTestBase
     {
         protected override string PostgreSqlVersion => "postgres:18";
+
+        protected override Task ConfigureContainerAsync()
+        {
+            // PostgreSQL 18 container setup differs from earlier versions and may require
+            // additional image-specific configuration as the upstream image evolves.
+            // Keep the override in place so PG18-specific bootstrap can be added centrally.
+            return Task.CompletedTask;
+        }
 
         [Test]
         public async Task ExtractProject_Postgres18_Success()

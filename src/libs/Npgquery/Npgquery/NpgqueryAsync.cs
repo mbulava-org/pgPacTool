@@ -22,6 +22,13 @@ public static class ParserAsync
         Task.Run(() => parser.Normalize(query), cancellationToken);
 
     /// <summary>
+    /// Asynchronously normalize a PostgreSQL utility query when supported by the selected parser version.
+    /// </summary>
+    public static Task<NormalizeResult> NormalizeUtilityAsync(this Parser parser, string query,
+        CancellationToken cancellationToken = default) =>
+        Task.Run(() => parser.NormalizeUtility(query), cancellationToken);
+
+    /// <summary>
     /// Asynchronously generate a fingerprint for a PostgreSQL query
     /// </summary>
     public static Task<FingerprintResult> FingerprintAsync(this Parser parser, string query, 
@@ -62,6 +69,20 @@ public static class ParserAsync
     public static Task<ScanResult> ScanAsync(this Parser parser, string query, 
         CancellationToken cancellationToken = default) =>
         Task.Run(() => parser.Scan(query), cancellationToken);
+
+    /// <summary>
+    /// Asynchronously determine whether statements in a query are utility statements.
+    /// </summary>
+    public static Task<UtilityStatementResult> IsUtilityStatementAsync(this Parser parser, string query,
+        CancellationToken cancellationToken = default) =>
+        Task.Run(() => parser.IsUtilityStatement(query), cancellationToken);
+
+    /// <summary>
+    /// Asynchronously summarize a PostgreSQL query when supported by the selected parser version.
+    /// </summary>
+    public static Task<QuerySummaryResult> SummarizeAsync(this Parser parser, string query,
+        ParseOptions? options = null, int truncateLimit = 0, CancellationToken cancellationToken = default) =>
+        Task.Run(() => parser.Summarize(query, options, truncateLimit), cancellationToken);
 
     /// <summary>
     /// Asynchronously parse PL/pgSQL code
@@ -120,6 +141,16 @@ public static class ParserAsync
     {
         using var parser = new Parser();
         return await parser.NormalizeAsync(query, cancellationToken);
+    }
+
+    /// <summary>
+    /// Static async method for quick one-off utility normalization.
+    /// </summary>
+    public static async Task<NormalizeResult> QuickNormalizeUtilityAsync(string query,
+        CancellationToken cancellationToken = default)
+    {
+        using var parser = new Parser();
+        return await parser.NormalizeUtilityAsync(query, cancellationToken);
     }
 
     /// <summary>

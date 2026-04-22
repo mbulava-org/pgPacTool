@@ -35,15 +35,7 @@
     <Using Include="NUnit.Framework" />
   </ItemGroup>
 
-  <!-- Copy Npgquery native DLL to output directory for tests -->
-  <Target Name="CopyNpgqueryNativeDll" AfterTargets="Build">
-    <ItemGroup>
-      <NpgqueryNativeDll Include="..\..\src\libs\Npgquery\Npgquery\runtimes\win-x64\native\pg_query.dll" Condition="'$(OS)' == 'Windows_NT'" />
-      <NpgqueryNativeDll Include="..\..\src\libs\Npgquery\Npgquery\runtimes\linux-x64\native\pg_query.so" Condition="'$(OS)' != 'Windows_NT'" />
-    </ItemGroup>
-    <Copy SourceFiles="@(NpgqueryNativeDll)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" Condition="'@(NpgqueryNativeDll)' != ''" />
-    <Message Text="Copied Npgquery native library to $(OutDir)" Importance="high" Condition="'@(NpgqueryNativeDll)' != ''" />
-  </Target>
+
 
 </Project>
 

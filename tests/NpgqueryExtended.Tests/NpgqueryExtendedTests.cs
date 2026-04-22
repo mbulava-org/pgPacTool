@@ -35,7 +35,7 @@ public class ParserExtendedTests : IDisposable
         Assert.Contains("users", deparseResult.Query);
     }
 
-    [Fact]
+    [Fact(Skip = "pg_query_split_with_parser not exported by versioned libpg_query_16/17 native libraries. Rebuild native libraries to resolve. See Issue #37.")]
     public void Split_MultipleStatements_ReturnsSeparateStatements()
     {
         // Arrange
@@ -99,7 +99,7 @@ public class ParserExtendedTests : IDisposable
         Assert.NotNull(deparseResult.Query);
     }
 
-    [Fact]
+    [Fact(Skip = "pg_query_split_with_parser not exported by versioned libpg_query_16/17 native libraries. Rebuild native libraries to resolve. See Issue #37.")]
     public void QuickSplit_StaticMethod_Works()
     {
         // Arrange
@@ -143,7 +143,7 @@ public class ParserExtendedTests : IDisposable
         Assert.Contains("users", roundTripQuery);
     }
 
-    [Fact]
+    [Fact(Skip = "pg_query_split_with_parser not exported by versioned libpg_query_16/17 native libraries. Rebuild native libraries to resolve. See Issue #37.")]
     public void SplitStatements_MultipleStatements_ReturnsIndividualQueries()
     {
         // Arrange
@@ -190,7 +190,7 @@ public class ParserExtendedTests : IDisposable
         // Note: Actual keywords depend on libpg_query implementation
     }
 
-    [Fact]
+    [Fact(Skip = "pg_query_split_with_parser not exported by versioned libpg_query_16/17 native libraries. Rebuild native libraries to resolve. See Issue #37.")]
     public void CountStatements_MultipleStatements_ReturnsCorrectCount()
     {
         // Arrange

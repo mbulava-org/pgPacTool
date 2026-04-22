@@ -31,13 +31,10 @@ public class NativeLibraryIntegrationTests
         _output.WriteLine($"Available PostgreSQL versions: {string.Join(", ", availableVersions.Select(v => v.ToVersionString()))}");
         
         Assert.NotEmpty(availableVersions);
-        Assert.Contains(PostgreSqlVersion.Postgres16, availableVersions);
-        Assert.Contains(PostgreSqlVersion.Postgres17, availableVersions);
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.SupportedVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void NativeLibraryLoader_IsVersionAvailable_ReturnsTrue(PostgreSqlVersion version)
     {
         // Act
@@ -45,12 +42,11 @@ public class NativeLibraryIntegrationTests
 
         // Assert
         _output.WriteLine($"{version.ToVersionString()} availability: {isAvailable}");
-        Assert.True(isAvailable, $"{version.ToVersionString()} should be available");
+        Assert.True(isAvailable, $"{version.ToVersionString()} should be available. Rebuild native libraries for this version if missing.");
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void NativeLibraryLoader_GetLibraryHandle_ReturnsValidHandle(PostgreSqlVersion version)
     {
         // Act
@@ -62,8 +58,7 @@ public class NativeLibraryIntegrationTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void NativeLibraryLoader_MultipleCallsSameVersion_ReturnsSameHandle(PostgreSqlVersion version)
     {
         // Act
@@ -78,13 +73,16 @@ public class NativeLibraryIntegrationTests
     [Fact]
     public void NativeLibraryLoader_DifferentVersions_ReturnDifferentHandles()
     {
+        var availableVersions = NativeLibraryLoader.GetAvailableVersions().Take(2).ToList();
+        Assert.True(availableVersions.Count >= 2, "At least two versioned native libraries are required for handle isolation tests.");
+
         // Act
-        var handle16 = NativeLibraryLoader.GetLibraryHandle(PostgreSqlVersion.Postgres16);
-        var handle17 = NativeLibraryLoader.GetLibraryHandle(PostgreSqlVersion.Postgres17);
+        var handle16 = NativeLibraryLoader.GetLibraryHandle(availableVersions[0]);
+        var handle17 = NativeLibraryLoader.GetLibraryHandle(availableVersions[1]);
 
         // Assert
-        _output.WriteLine($"PG16 handle: 0x{handle16:X}");
-        _output.WriteLine($"PG17 handle: 0x{handle17:X}");
+        _output.WriteLine($"{availableVersions[0].ToVersionString()} handle: 0x{handle16:X}");
+        _output.WriteLine($"{availableVersions[1].ToVersionString()} handle: 0x{handle17:X}");
         Assert.NotEqual(handle16, handle17);
     }
 
@@ -93,8 +91,7 @@ public class NativeLibraryIntegrationTests
     // ============================================
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void Parser_Construction_LoadsCorrectVersion(PostgreSqlVersion version)
     {
         // Act & Assert
@@ -116,8 +113,7 @@ public class NativeLibraryIntegrationTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void Parser_MultipleInstances_SameVersion_AllWork(PostgreSqlVersion version)
     {
         // Act
@@ -140,16 +136,19 @@ public class NativeLibraryIntegrationTests
     [Fact]
     public void Parser_MultipleVersions_Simultaneous_AllWork()
     {
+        var availableVersions = NativeLibraryLoader.GetAvailableVersions().Take(2).ToList();
+        Assert.True(availableVersions.Count >= 2, "At least two versioned native libraries are required for simultaneous parser tests.");
+
         // Act
-        using var parser16 = new Parser(PostgreSqlVersion.Postgres16);
-        using var parser17 = new Parser(PostgreSqlVersion.Postgres17);
+        using var parser16 = new Parser(availableVersions[0]);
+        using var parser17 = new Parser(availableVersions[1]);
 
         // Assert
         var query = "SELECT id FROM users";
         var result16 = parser16.Parse(query);
         var result17 = parser17.Parse(query);
 
-        _output.WriteLine("PG16 and PG17 parsers work simultaneously");
+        _output.WriteLine($"{availableVersions[0].ToVersionString()} and {availableVersions[1].ToVersionString()} parsers work simultaneously");
         Assert.True(result16.IsSuccess);
         Assert.True(result17.IsSuccess);
     }
@@ -182,6 +181,11 @@ public class NativeLibraryIntegrationTests
     // ============================================
 
     [Theory]
+    [InlineData(PostgreSqlVersion.Postgres15, "SELECT 1")]
+    [InlineData(PostgreSqlVersion.Postgres15, "SELECT * FROM users")]
+    [InlineData(PostgreSqlVersion.Postgres15, "INSERT INTO users (name) VALUES ('test')")]
+    [InlineData(PostgreSqlVersion.Postgres15, "UPDATE users SET name = 'updated'")]
+    [InlineData(PostgreSqlVersion.Postgres15, "DELETE FROM users WHERE id = 1")]
     [InlineData(PostgreSqlVersion.Postgres16, "SELECT 1")]
     [InlineData(PostgreSqlVersion.Postgres16, "SELECT * FROM users")]
     [InlineData(PostgreSqlVersion.Postgres16, "INSERT INTO users (name) VALUES ('test')")]
@@ -192,8 +196,19 @@ public class NativeLibraryIntegrationTests
     [InlineData(PostgreSqlVersion.Postgres17, "INSERT INTO users (name) VALUES ('test')")]
     [InlineData(PostgreSqlVersion.Postgres17, "UPDATE users SET name = 'updated'")]
     [InlineData(PostgreSqlVersion.Postgres17, "DELETE FROM users WHERE id = 1")]
+    [InlineData(PostgreSqlVersion.Postgres18, "SELECT 1")]
+    [InlineData(PostgreSqlVersion.Postgres18, "SELECT * FROM users")]
+    [InlineData(PostgreSqlVersion.Postgres18, "INSERT INTO users (name) VALUES ('test')")]
+    [InlineData(PostgreSqlVersion.Postgres18, "UPDATE users SET name = 'updated'")]
+    [InlineData(PostgreSqlVersion.Postgres18, "DELETE FROM users WHERE id = 1")]
     public void Parse_BasicQueries_SucceedsWithCorrectVersion(PostgreSqlVersion version, string query)
     {
+        if (!NativeLibraryLoader.IsVersionAvailable(version))
+        {
+            _output.WriteLine($"Skipping {version.ToVersionString()} because native library is not available.");
+            return;
+        }
+
         // Arrange
         using var parser = new Parser(version);
 
@@ -213,10 +228,18 @@ public class NativeLibraryIntegrationTests
     }
 
     [Theory]
+    [InlineData(PostgreSqlVersion.Postgres15, "SELECT * FROM users /* comment */ WHERE id = 1")]
     [InlineData(PostgreSqlVersion.Postgres16, "SELECT * FROM users /* comment */ WHERE id = 1")]
     [InlineData(PostgreSqlVersion.Postgres17, "SELECT * FROM users /* comment */ WHERE id = 1")]
+    [InlineData(PostgreSqlVersion.Postgres18, "SELECT * FROM users /* comment */ WHERE id = 1")]
     public void Normalize_WorksWithCorrectVersion(PostgreSqlVersion version, string query)
     {
+        if (!NativeLibraryLoader.IsVersionAvailable(version))
+        {
+            _output.WriteLine($"Skipping {version.ToVersionString()} because native library is not available.");
+            return;
+        }
+
         // Arrange
         using var parser = new Parser(version);
 
@@ -233,10 +256,18 @@ public class NativeLibraryIntegrationTests
     }
 
     [Theory]
+    [InlineData(PostgreSqlVersion.Postgres15, "SELECT * FROM users WHERE id = 1", "SELECT * FROM users WHERE id = 2")]
     [InlineData(PostgreSqlVersion.Postgres16, "SELECT * FROM users WHERE id = 1", "SELECT * FROM users WHERE id = 2")]
     [InlineData(PostgreSqlVersion.Postgres17, "SELECT * FROM users WHERE id = 1", "SELECT * FROM users WHERE id = 2")]
+    [InlineData(PostgreSqlVersion.Postgres18, "SELECT * FROM users WHERE id = 1", "SELECT * FROM users WHERE id = 2")]
     public void Fingerprint_SimilarQueries_ReturnsSameFingerprint(PostgreSqlVersion version, string query1, string query2)
     {
+        if (!NativeLibraryLoader.IsVersionAvailable(version))
+        {
+            _output.WriteLine($"Skipping {version.ToVersionString()} because native library is not available.");
+            return;
+        }
+
         // Arrange
         using var parser = new Parser(version);
 

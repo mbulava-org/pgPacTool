@@ -1,4 +1,4 @@
-// Version Enforcement for PostgreSQL 16+
+// Version Enforcement for supported PostgreSQL versions
 
 using Npgsql;
 using System;
@@ -14,14 +14,19 @@ namespace mbulava.PostgreSql.Dac.Extract
         /// <summary>
         /// Minimum supported PostgreSQL major version
         /// </summary>
-        public const int MinimumSupportedVersion = 16;
+        public const int MinimumSupportedVersion = 15;
+
+        /// <summary>
+        /// Maximum tested PostgreSQL major version.
+        /// </summary>
+        public const int MaximumTestedVersion = 18;
         
         /// <summary>
         /// Validates that the connected PostgreSQL instance meets minimum version requirements
         /// </summary>
         /// <param name="connectionString">PostgreSQL connection string</param>
         /// <returns>Full version string (e.g., "16.1")</returns>
-        /// <exception cref="NotSupportedException">Thrown when PostgreSQL version is below 16</exception>
+        /// <exception cref="NotSupportedException">Thrown when PostgreSQL version is below 15</exception>
         public static async Task<string> ValidateAndGetVersionAsync(string connectionString)
         {
             try
@@ -51,9 +56,14 @@ namespace mbulava.PostgreSql.Dac.Extract
                         $"Minimum required version: {MinimumSupportedVersion}.0\n\n" +
                         "To upgrade your PostgreSQL instance:\n" +
                         "1. Backup your data: pg_dump mydb > backup.sql\n" +
-                        "2. Install PostgreSQL 16: https://www.postgresql.org/download/\n" +
+                        $"2. Install PostgreSQL {MinimumSupportedVersion} or later: https://www.postgresql.org/download/\n" +
                         "3. Restore your data: psql -d mydb < backup.sql\n\n" +
                         "For help: https://github.com/mbulava-org/pgPacTool/wiki/postgresql-upgrade");
+                }
+
+                if (majorVersion > MaximumTestedVersion)
+                {
+                    return versionPart;
                 }
 
                 return versionPart;

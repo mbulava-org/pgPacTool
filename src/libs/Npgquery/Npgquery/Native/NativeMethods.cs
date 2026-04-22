@@ -43,6 +43,22 @@ internal static unsafe class NativeMethods
         public IntPtr error;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct PgQueryIsUtilityResult
+    {
+        public int length;
+        public IntPtr items;
+        public IntPtr error;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct PgQuerySummaryParseResult
+    {
+        public PgQueryProtobuf summary;
+        public IntPtr stderr_buffer;
+        public IntPtr error;
+    }
+
     /// <summary>
     /// Fingerprint result structure from libpg_query
     /// </summary>
@@ -127,7 +143,13 @@ internal static unsafe class NativeMethods
     private delegate PgQueryParseResult ParseDelegate(byte[] input);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate PgQueryParseResult ParseOptionsDelegate(byte[] input, int parserOptions);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate PgQueryNormalizeResult NormalizeDelegate(byte[] input);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate PgQueryNormalizeResult NormalizeUtilityDelegate(byte[] input);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate PgQueryFingerprintResult FingerprintDelegate(byte[] input);
@@ -151,10 +173,25 @@ internal static unsafe class NativeMethods
     private delegate PgQueryProtobufParseResult ParseProtobufDelegate(byte[] input);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate PgQueryProtobufParseResult ParseProtobufOptionsDelegate(byte[] input, int parserOptions);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate PgQueryIsUtilityResult IsUtilityDelegate(byte[] input);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate PgQuerySummaryParseResult SummaryDelegate(byte[] input, int parserOptions, int truncateLimit);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate void FreeParseResultDelegate(PgQueryParseResult result);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate void FreeNormalizeResultDelegate(PgQueryNormalizeResult result);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate void FreeIsUtilityResultDelegate(PgQueryIsUtilityResult result);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate void FreeSummaryParseResultDelegate(PgQuerySummaryParseResult result);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate void FreeFingerprintResultDelegate(PgQueryFingerprintResult result);
@@ -179,7 +216,9 @@ internal static unsafe class NativeMethods
     #region Function Pointer Caches
 
     private static readonly ConcurrentDictionary<PostgreSqlVersion, ParseDelegate> _parseFunctions = new();
+    private static readonly ConcurrentDictionary<PostgreSqlVersion, ParseOptionsDelegate> _parseOptionsFunctions = new();
     private static readonly ConcurrentDictionary<PostgreSqlVersion, NormalizeDelegate> _normalizeFunctions = new();
+    private static readonly ConcurrentDictionary<PostgreSqlVersion, NormalizeUtilityDelegate> _normalizeUtilityFunctions = new();
     private static readonly ConcurrentDictionary<PostgreSqlVersion, FingerprintDelegate> _fingerprintFunctions = new();
     private static readonly ConcurrentDictionary<PostgreSqlVersion, DeparseDelegate> _deparseFunctions = new();
     private static readonly ConcurrentDictionary<PostgreSqlVersion, DeparseProtobufDelegate> _deparseProtobufFunctions = new();
@@ -188,9 +227,14 @@ internal static unsafe class NativeMethods
     private static readonly ConcurrentDictionary<PostgreSqlVersion, ScanDelegate> _scanFunctions = new();
     private static readonly ConcurrentDictionary<PostgreSqlVersion, ParsePlpgsqlDelegate> _parsePlpgsqlFunctions = new();
     private static readonly ConcurrentDictionary<PostgreSqlVersion, ParseProtobufDelegate> _parseProtobufFunctions = new();
+    private static readonly ConcurrentDictionary<PostgreSqlVersion, ParseProtobufOptionsDelegate> _parseProtobufOptionsFunctions = new();
+    private static readonly ConcurrentDictionary<PostgreSqlVersion, IsUtilityDelegate> _isUtilityFunctions = new();
+    private static readonly ConcurrentDictionary<PostgreSqlVersion, SummaryDelegate> _summaryFunctions = new();
 
     private static readonly ConcurrentDictionary<PostgreSqlVersion, FreeParseResultDelegate> _freeParseResultFunctions = new();
     private static readonly ConcurrentDictionary<PostgreSqlVersion, FreeNormalizeResultDelegate> _freeNormalizeResultFunctions = new();
+    private static readonly ConcurrentDictionary<PostgreSqlVersion, FreeIsUtilityResultDelegate> _freeIsUtilityResultFunctions = new();
+    private static readonly ConcurrentDictionary<PostgreSqlVersion, FreeSummaryParseResultDelegate> _freeSummaryParseResultFunctions = new();
     private static readonly ConcurrentDictionary<PostgreSqlVersion, FreeFingerprintResultDelegate> _freeFingerprintResultFunctions = new();
     private static readonly ConcurrentDictionary<PostgreSqlVersion, FreeDeparseResultDelegate> _freeDeparseResultFunctions = new();
     private static readonly ConcurrentDictionary<PostgreSqlVersion, FreeSplitResultDelegate> _freeSplitResultFunctions = new();
@@ -213,6 +257,28 @@ internal static unsafe class NativeMethods
         return func(input);
     }
 
+    internal static PgQueryNormalizeResult pg_query_normalize_utility(byte[] input, PostgreSqlVersion version = PostgreSqlVersion.Postgres16)
+    {
+        var func = _normalizeUtilityFunctions.GetOrAdd(version, v =>
+        {
+            var handle = NativeLibraryLoader.GetLibraryHandle(v);
+            var ptr = NativeLibrary.GetExport(handle, "pg_query_normalize_utility");
+            return Marshal.GetDelegateForFunctionPointer<NormalizeUtilityDelegate>(ptr);
+        });
+        return func(input);
+    }
+
+    internal static PgQueryParseResult pg_query_parse_opts(byte[] input, int parserOptions, PostgreSqlVersion version = PostgreSqlVersion.Postgres16)
+    {
+        var func = _parseOptionsFunctions.GetOrAdd(version, v =>
+        {
+            var handle = NativeLibraryLoader.GetLibraryHandle(v);
+            var ptr = NativeLibrary.GetExport(handle, "pg_query_parse_opts");
+            return Marshal.GetDelegateForFunctionPointer<ParseOptionsDelegate>(ptr);
+        });
+        return func(input, parserOptions);
+    }
+
     internal static PgQueryNormalizeResult pg_query_normalize(byte[] input, PostgreSqlVersion version = PostgreSqlVersion.Postgres16)
     {
         var func = _normalizeFunctions.GetOrAdd(version, v =>
@@ -222,6 +288,39 @@ internal static unsafe class NativeMethods
             return Marshal.GetDelegateForFunctionPointer<NormalizeDelegate>(ptr);
         });
         return func(input);
+    }
+
+    internal static PgQueryIsUtilityResult pg_query_is_utility_stmt(byte[] input, PostgreSqlVersion version = PostgreSqlVersion.Postgres17)
+    {
+        var func = _isUtilityFunctions.GetOrAdd(version, v =>
+        {
+            var handle = NativeLibraryLoader.GetLibraryHandle(v);
+            var ptr = NativeLibrary.GetExport(handle, "pg_query_is_utility_stmt");
+            return Marshal.GetDelegateForFunctionPointer<IsUtilityDelegate>(ptr);
+        });
+        return func(input);
+    }
+
+    internal static PgQuerySummaryParseResult pg_query_summary(byte[] input, int parserOptions, int truncateLimit, PostgreSqlVersion version = PostgreSqlVersion.Postgres17)
+    {
+        var func = _summaryFunctions.GetOrAdd(version, v =>
+        {
+            var handle = NativeLibraryLoader.GetLibraryHandle(v);
+            var ptr = NativeLibrary.GetExport(handle, "pg_query_summary");
+            return Marshal.GetDelegateForFunctionPointer<SummaryDelegate>(ptr);
+        });
+        return func(input, parserOptions, truncateLimit);
+    }
+
+    internal static PgQueryProtobufParseResult pg_query_parse_protobuf_opts(byte[] input, int parserOptions, PostgreSqlVersion version = PostgreSqlVersion.Postgres16)
+    {
+        var func = _parseProtobufOptionsFunctions.GetOrAdd(version, v =>
+        {
+            var handle = NativeLibraryLoader.GetLibraryHandle(v);
+            var ptr = NativeLibrary.GetExport(handle, "pg_query_parse_protobuf_opts");
+            return Marshal.GetDelegateForFunctionPointer<ParseProtobufOptionsDelegate>(ptr);
+        });
+        return func(input, parserOptions);
     }
 
     internal static PgQueryFingerprintResult pg_query_fingerprint(byte[] input, PostgreSqlVersion version = PostgreSqlVersion.Postgres16)
@@ -319,6 +418,28 @@ internal static unsafe class NativeMethods
             var handle = NativeLibraryLoader.GetLibraryHandle(v);
             var ptr = NativeLibrary.GetExport(handle, "pg_query_free_parse_result");
             return Marshal.GetDelegateForFunctionPointer<FreeParseResultDelegate>(ptr);
+        });
+        func(result);
+    }
+
+    internal static void pg_query_free_is_utility_result(PgQueryIsUtilityResult result, PostgreSqlVersion version = PostgreSqlVersion.Postgres17)
+    {
+        var func = _freeIsUtilityResultFunctions.GetOrAdd(version, v =>
+        {
+            var handle = NativeLibraryLoader.GetLibraryHandle(v);
+            var ptr = NativeLibrary.GetExport(handle, "pg_query_free_is_utility_result");
+            return Marshal.GetDelegateForFunctionPointer<FreeIsUtilityResultDelegate>(ptr);
+        });
+        func(result);
+    }
+
+    internal static void pg_query_free_summary_parse_result(PgQuerySummaryParseResult result, PostgreSqlVersion version = PostgreSqlVersion.Postgres17)
+    {
+        var func = _freeSummaryParseResultFunctions.GetOrAdd(version, v =>
+        {
+            var handle = NativeLibraryLoader.GetLibraryHandle(v);
+            var ptr = NativeLibrary.GetExport(handle, "pg_query_free_summary_parse_result");
+            return Marshal.GetDelegateForFunctionPointer<FreeSummaryParseResultDelegate>(ptr);
         });
         func(result);
     }
@@ -454,6 +575,22 @@ internal static unsafe class NativeMethods
             stmts[i] = Marshal.PtrToStructure<PgQuerySplitStmt>(stmtPtr);
         }
         return stmts;
+    }
+
+    internal static bool[] MarshalUtilityFlags(PgQueryIsUtilityResult result)
+    {
+        if (result.length <= 0 || result.items == IntPtr.Zero)
+        {
+            return Array.Empty<bool>();
+        }
+
+        var flags = new bool[result.length];
+        for (int i = 0; i < result.length; i++)
+        {
+            flags[i] = Marshal.ReadByte(result.items, i) != 0;
+        }
+
+        return flags;
     }
 
     internal static NativeScanResult ProcessScanResult(PgQueryScanResult nativeResult, string originalQuery)

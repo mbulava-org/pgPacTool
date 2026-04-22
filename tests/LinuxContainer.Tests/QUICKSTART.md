@@ -20,7 +20,7 @@ dotnet test tests/LinuxContainer.Tests --filter "ProtobufDeparse_ShouldGenerateV
 
 ### Native Library Test
 ```bash
-# Verify libpg_query.so loads correctly
+# Verify versioned libpg_query_{version}.so files load correctly
 dotnet test tests/LinuxContainer.Tests --filter "NativeLibrary_ShouldLoadWithoutErrors"
 ```
 
@@ -36,7 +36,7 @@ dotnet test tests/LinuxContainer.Tests --filter "CompleteCI_Simulation"
 - **BuildAndTest_DacTests_InLinuxContainer**: Runs DAC tests in Ubuntu container
 - **BuildAndTest_ProjectExtractTests_InLinuxContainer**: Runs extraction tests in Ubuntu container  
 - **BuildAndTest_AllProjects_InLinuxContainer**: Runs ALL test projects sequentially
-- **Verify_NativeLibraries_LoadOnLinux**: Checks libpg_query.so is valid and loads
+- **Verify_NativeLibraries_LoadOnLinux**: Checks versioned Linux native libraries are valid and load
 
 ### LinuxIssueTests (New!)
 - **ProtobufDeparse_ShouldGenerateValidSQL_NotGarbage**: Tests the protobuf corruption fix

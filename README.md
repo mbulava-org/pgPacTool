@@ -1512,9 +1512,9 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ### Third-Party Licenses
 
-**pg_query.dll** - Licensed under the PostgreSQL License (similar to MIT). 
+**libpg_query native libraries** - Licensed under the PostgreSQL License (similar to MIT). 
 - [PostgreSQL License](https://www.postgresql.org/about/licence/)
-- Building multi-platform versions (Windows, Linux, macOS) for pgPacTool
+- Building versioned multi-platform libraries (Windows, Linux, macOS) for pgPacTool
 
 ---
 

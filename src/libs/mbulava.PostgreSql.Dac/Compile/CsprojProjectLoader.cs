@@ -73,13 +73,12 @@ public class CsprojProjectLoader
         project.PostgresVersion = GetRequiredPostgresVersion(doc);
         project.DefaultSchema = GetDefaultSchema(doc);
 
-        // Get default owner from project properties
+        // Get default owner from project properties (empty string means "not configured")
         var defaultOwnerElement = doc.Descendants()
             .FirstOrDefault(e => e.Name.LocalName == "DefaultOwner");
-        if (defaultOwnerElement != null && !string.IsNullOrWhiteSpace(defaultOwnerElement.Value))
-        {
-            project.DefaultOwner = defaultOwnerElement.Value;
-        }
+        project.DefaultOwner = (defaultOwnerElement != null && !string.IsNullOrWhiteSpace(defaultOwnerElement.Value))
+            ? defaultOwnerElement.Value
+            : string.Empty;
 
         // Get default tablespace from project properties
         var defaultTablespaceElement = doc.Descendants()

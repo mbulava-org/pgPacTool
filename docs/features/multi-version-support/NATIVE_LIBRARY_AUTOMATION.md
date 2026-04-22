@@ -210,7 +210,7 @@ Total: 2 libraries
 ### Build Fails on GitHub Actions
 
 **Check**:
-1. Branch exists: `{version}-latest` (e.g., `18-latest`)
+1. Branch exists for the requested version (`{version}-latest` for most versions, `18-latest-dev` for PostgreSQL 18)
 2. libpg_query repository structure hasn't changed
 3. Build logs in Actions tab for specific errors
 

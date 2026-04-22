@@ -63,10 +63,10 @@ Write-Host "PostgreSQL versions to build: $($VersionList -join ', ')" -Foregroun
 Write-Host ""
 
 # Detect platform and architecture
-$IsWindows = $IsWindows -or ($PSVersionTable.PSVersion.Major -lt 6)
-$Platform = if ($IsWindows) { "Windows" } elseif ($IsMacOS) { "macOS" } else { "Linux" }
+$IsWindowsPlatform = $IsWindows -or ($PSVersionTable.PSVersion.Major -lt 6)
+$Platform = if ($IsWindowsPlatform) { "Windows" } elseif ($IsMacOS) { "macOS" } else { "Linux" }
 
-if ($IsWindows) {
+if ($IsWindowsPlatform) {
     $RID = "win-x64"
     $LibExtension = ".dll"
     $LibPrefix = ""
@@ -120,7 +120,7 @@ if (-not (Test-Path $LibPgQueryPath)) {
 
 # Build each version
 foreach ($Version in $VersionList) {
-    $Branch = "$Version-latest"
+    $Branch = if ($Version -eq "18") { "18-latest-dev" } else { "$Version-latest" }
     $OutputFile = "${LibPrefix}pg_query_${Version}${LibExtension}"
     $TargetFile = Join-Path $TargetDir $OutputFile
     
@@ -156,7 +156,8 @@ foreach ($Version in $VersionList) {
         
         # Clean previous build
         Write-Host "Cleaning previous build..." -ForegroundColor Yellow
-        if ($IsWindows) {
+        if ($IsWindowsPlatform) {
+            if (Test-Path "libpg_query.dll") { Remove-Item "libpg_query.dll" -Force }
             if (Test-Path "pg_query.dll") { Remove-Item "pg_query.dll" -Force }
             nmake /F Makefile.msvc clean 2>&1 | Out-Null
         } else {
@@ -167,9 +168,13 @@ foreach ($Version in $VersionList) {
         
         # Build
         Write-Host "Building library..." -ForegroundColor Yellow
-        if ($IsWindows) {
+        if ($IsWindowsPlatform) {
             nmake /F Makefile.msvc
-            $SourceFile = "pg_query.dll"
+            if (Test-Path "libpg_query.dll") {
+                $SourceFile = "libpg_query.dll"
+            } else {
+                $SourceFile = "pg_query.dll"
+            }
         } else {
             make
             $SourceFile = "libpg_query${LibExtension}"

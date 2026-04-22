@@ -54,11 +54,22 @@ public class LibraryDiscoveryTests
     public void TestDirectLoad()
     {
         var baseDir = AppContext.BaseDirectory;
+        var libraryFileName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+            ? "libpg_query_16.dll"
+            : RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
+                ? "libpg_query_16.so"
+                : "libpg_query_16.dylib";
+
+        var runtimePath = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+            ? Path.Combine(baseDir, "runtimes", "win-x64", "native", libraryFileName)
+            : RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
+                ? Path.Combine(baseDir, "runtimes", "linux-x64", "native", libraryFileName)
+                : Path.Combine(baseDir, "runtimes", "osx-arm64", "native", libraryFileName);
+
         var paths = new[]
         {
-            Path.Combine(baseDir, "libpg_query_16.dll"),
-            Path.Combine(baseDir, "runtimes", "win-x64", "native", "libpg_query_16.dll"),
-            Path.Combine(baseDir, "runtimes\\win-x64\\native\\libpg_query_16.dll"),
+            Path.Combine(baseDir, libraryFileName),
+            runtimePath,
         };
 
         foreach (var path in paths)
@@ -86,13 +97,29 @@ public class LibraryDiscoveryTests
     [Fact]
     public void TestNativeLibraryTryLoad()
     {
-        var names = new[]
-        {
-            "libpg_query_16",
-            "libpg_query_16.dll",
-            "pg_query_16",
-            "pg_query_16.dll"
-        };
+        var names = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+            ? new[]
+            {
+                "libpg_query_16",
+                "libpg_query_16.dll",
+                "pg_query_16",
+                "pg_query_16.dll"
+            }
+            : RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
+                ? new[]
+                {
+                    "libpg_query_16",
+                    "libpg_query_16.so",
+                    "pg_query_16",
+                    "pg_query_16.so"
+                }
+                : new[]
+                {
+                    "libpg_query_16",
+                    "libpg_query_16.dylib",
+                    "pg_query_16",
+                    "pg_query_16.dylib"
+                };
 
         foreach (var name in names)
         {

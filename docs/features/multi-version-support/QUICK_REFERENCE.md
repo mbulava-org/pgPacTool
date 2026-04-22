@@ -141,7 +141,7 @@ catch (PostgreSqlVersionNotAvailableException ex)
 
 | Platform | Pattern | Example |
 |----------|---------|---------|
-| Windows | `pg_query_{ver}.dll` | `pg_query_16.dll` |
+| Windows | `libpg_query_{ver}.dll` | `libpg_query_16.dll` |
 | Linux | `libpg_query_{ver}.so` | `libpg_query_16.so` |
 | macOS | `libpg_query_{ver}.dylib` | `libpg_query_16.dylib` |
 
@@ -168,8 +168,8 @@ Manual trigger with version selection in GitHub UI
 # Default (16, 17)
 .\scripts\Build-NativeLibraries.ps1
 
-# Custom versions (example with future version 18)
-.\scripts\Build-NativeLibraries.ps1 -Versions "16,17,18"
+# Supported versions
+.\scripts\Build-NativeLibraries.ps1 -Versions "15,16,17,18"
 
 # Force rebuild
 .\scripts\Build-NativeLibraries.ps1 -Force

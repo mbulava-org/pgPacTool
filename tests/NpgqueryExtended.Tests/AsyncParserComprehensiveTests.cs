@@ -23,8 +23,7 @@ public class AsyncParserComprehensiveTests
     // ============================================
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public async Task ParseAsync_ValidQuery_ReturnsAST(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -36,8 +35,7 @@ public class AsyncParserComprehensiveTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public async Task ParseAsync_WithCancellation_Cancels(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -51,8 +49,7 @@ public class AsyncParserComprehensiveTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public async Task NormalizeAsync_ValidQuery_ReturnsNormalized(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -64,8 +61,7 @@ public class AsyncParserComprehensiveTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public async Task FingerprintAsync_ValidQuery_ReturnsFingerprint(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -77,8 +73,7 @@ public class AsyncParserComprehensiveTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public async Task ParseAsAsync_ValidQuery_ReturnsTypedResult(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -89,8 +84,7 @@ public class AsyncParserComprehensiveTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public async Task IsValidAsync_ValidQuery_ReturnsTrue(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -101,8 +95,7 @@ public class AsyncParserComprehensiveTests
     }
 
     [Theory(Skip = "DeparseAsync may not be available")]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public async Task DeparseAsync_ValidAST_ReturnsSQL(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -115,8 +108,7 @@ public class AsyncParserComprehensiveTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public async Task SplitAsync_MultipleStatements_Splits(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -127,8 +119,7 @@ public class AsyncParserComprehensiveTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public async Task ScanAsync_ValidQuery_ReturnsTokens(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -140,8 +131,7 @@ public class AsyncParserComprehensiveTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public async Task ParsePlpgsqlAsync_ValidCode_ReturnsParseTree(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -231,8 +221,7 @@ public class AsyncParserComprehensiveTests
     // ============================================
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public async Task ParseManyAsync_MultipleQueries_ParsesInParallel(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -254,8 +243,7 @@ public class AsyncParserComprehensiveTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public async Task ParseManyAsync_WithMaxParallelism_RespectsLimit(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -271,8 +259,7 @@ public class AsyncParserComprehensiveTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public async Task ParseManyAsync_WithCancellation_Cancels(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);
@@ -288,8 +275,7 @@ public class AsyncParserComprehensiveTests
     }
 
     [Theory]
-    [InlineData(PostgreSqlVersion.Postgres16)]
-    [InlineData(PostgreSqlVersion.Postgres17)]
+    [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public async Task ParseManyAsync_SomeFail_ReturnsAllResults(PostgreSqlVersion version)
     {
         using var parser = new Parser(version);

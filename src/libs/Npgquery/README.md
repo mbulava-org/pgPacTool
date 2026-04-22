@@ -576,11 +576,18 @@ The `ParseOptions` class provides configuration options to customize the parsing
 
 #### Available Options
 
-**`IncludeLocations`** (boolean, default: `false`)
-- When set to `true`, the resulting Abstract Syntax Tree (AST) will include location information for each node
-- Location information shows the character position in the original query where each element was found
-- Useful for analysis tools, syntax highlighting, or error reporting that need to map back to the original query text
-- Note: Including locations increases the size of the parse tree output
+**`Mode`** (`ParseMode`, default: `Default`)
+- Controls how libpg_query interprets the input text
+- Useful for parsing PostgreSQL type names and PL/pgSQL expression/assignment forms
+
+**`DisableBackslashQuote`** (boolean, default: `false`)
+- Disables PostgreSQL `backslash_quote` during parsing
+
+**`DisableStandardConformingStrings`** (boolean, default: `false`)
+- Disables `standard_conforming_strings` during parsing
+
+**`DisableEscapeStringWarning`** (boolean, default: `false`)
+- Disables `escape_string_warning` during parsing
 
 #### Usage Examples
 
@@ -591,31 +598,29 @@ using Npgquery;
 using var parser = new Parser();
 var result = parser.Parse("SELECT * FROM users");
 
-// Include location information in parse tree
-var optionsWithLocations = new ParseOptions
+// Parse a PostgreSQL type name
+var optionsWithParseMode = new ParseOptions
 {
-    IncludeLocations = true
+    Mode = ParseMode.TypeName
 };
-var resultWithLocations = parser.Parse("SELECT * FROM users WHERE id = 1", optionsWithLocations);
+var resultWithParseMode = parser.Parse("integer", optionsWithParseMode);
 
 // Using with static methods
-var quickResult = Parser.QuickParse("SELECT * FROM users", optionsWithLocations);
+var quickResult = Parser.QuickParse("integer", optionsWithParseMode);
 
 // Using with async methods
-var asyncResult = await parser.ParseAsync("SELECT * FROM users", optionsWithLocations);
+var asyncResult = await parser.ParseAsync("integer", optionsWithParseMode);
 ```
 
 #### When to Use Parse Options
 
-- **Include Locations**: Enable when building tools that need to:
-  - Highlight syntax in editors
-  - Show precise error locations
-  - Generate source maps for query transformations
-  - Build refactoring tools that modify specific parts of queries
+- **TypeName**: Parse standalone PostgreSQL type names such as `integer` or `text[]`
+- **PL/pgSQL modes**: Parse PL/pgSQL expressions and assignment forms
+- **Parsing GUC flags**: Reproduce parser behavior that depends on string parsing settings
 
 #### Performance Considerations
 
-- Including locations adds overhead to parsing and increases memory usage
+- Parser options affect how the native PostgreSQL parser interprets the input
 - For high-throughput scenarios, consider reusing the same `ParseOptions` instance
 
 ### Custom Parse Options
@@ -624,10 +629,11 @@ var asyncResult = await parser.ParseAsync("SELECT * FROM users", optionsWithLoca
 using var parser = new Parser();
 var options = new ParseOptions
 {
-    IncludeLocations = true
+    Mode = ParseMode.TypeName,
+    DisableBackslashQuote = true
 };
 
-var result = parser.Parse("SELECT * FROM users", options);
+var result = parser.Parse("integer", options);
 ```
 
 ### Strongly-Typed AST

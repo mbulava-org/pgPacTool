@@ -92,102 +92,43 @@ jobs:
 
           Write-Host "`nCreating DLL from static library..."
 
-          # Create version-specific DEF file
-          # Different PostgreSQL versions have different exported functions
+          # Create version-specific DEF file from the symbols that actually exist in pg_query.lib
+          # This avoids linker failures when a branch lacks one of the hard-coded exports.
           $pgVersion = "${{ matrix.pg_version }}"
           Write-Host "Creating DEF file for PostgreSQL $pgVersion..."
+          $availableSymbolsRaw = & dumpbin /LINKERMEMBER:1 pg_query.lib 2>&1 | Out-String
+          $availableSymbolNames = [regex]::Matches($availableSymbolsRaw, 'pg_query_[A-Za-z0-9_]+') |
+            ForEach-Object { $_.Value } |
+            Sort-Object -Unique
 
-          if ($pgVersion -eq "15") {
-            # PostgreSQL 15 baseline export set required by managed interop
-            $defContent = "LIBRARY pg_query`nEXPORTS`n"
-            $defContent += "    pg_query_deparse_protobuf`n"
-            $defContent += "    pg_query_fingerprint`n"
-            $defContent += "    pg_query_free_deparse_result`n"
-            $defContent += "    pg_query_free_fingerprint_result`n"
-            $defContent += "    pg_query_free_normalize_result`n"
-            $defContent += "    pg_query_free_parse_result`n"
-            $defContent += "    pg_query_free_plpgsql_parse_result`n"
-            $defContent += "    pg_query_free_protobuf_parse_result`n"
-            $defContent += "    pg_query_free_scan_result`n"
-            $defContent += "    pg_query_free_split_result`n"
-            $defContent += "    pg_query_normalize`n"
-            $defContent += "    pg_query_parse`n"
-            $defContent += "    pg_query_parse_plpgsql`n"
-            $defContent += "    pg_query_parse_protobuf`n"
-            $defContent += "    pg_query_scan`n"
-          } elseif ($pgVersion -eq "16") {
-            # PostgreSQL 16 baseline export set required by managed interop
-            $defContent = "LIBRARY pg_query`nEXPORTS`n"
-            $defContent += "    pg_query_deparse_protobuf`n"
-            $defContent += "    pg_query_fingerprint`n"
-            $defContent += "    pg_query_free_deparse_result`n"
-            $defContent += "    pg_query_free_fingerprint_result`n"
-            $defContent += "    pg_query_free_normalize_result`n"
-            $defContent += "    pg_query_free_parse_result`n"
-            $defContent += "    pg_query_free_plpgsql_parse_result`n"
-            $defContent += "    pg_query_free_protobuf_parse_result`n"
-            $defContent += "    pg_query_free_scan_result`n"
-            $defContent += "    pg_query_free_split_result`n"
-            $defContent += "    pg_query_normalize`n"
-            $defContent += "    pg_query_parse`n"
-            $defContent += "    pg_query_parse_plpgsql`n"
-            $defContent += "    pg_query_parse_protobuf`n"
-            $defContent += "    pg_query_scan`n"
-          } elseif ($pgVersion -eq "17") {
-            # PostgreSQL 17 adds utility and summary APIs
-            $defContent = "LIBRARY pg_query`nEXPORTS`n"
-            $defContent += "    pg_query_deparse_protobuf`n"
-            $defContent += "    pg_query_fingerprint`n"
-            $defContent += "    pg_query_free_deparse_result`n"
-            $defContent += "    pg_query_free_fingerprint_result`n"
-            $defContent += "    pg_query_free_normalize_result`n"
-            $defContent += "    pg_query_free_parse_result`n"
-            $defContent += "    pg_query_free_plpgsql_parse_result`n"
-            $defContent += "    pg_query_free_protobuf_parse_result`n"
-            $defContent += "    pg_query_free_scan_result`n"
-            $defContent += "    pg_query_free_split_result`n"
-            $defContent += "    pg_query_is_utility_stmt`n"
-            $defContent += "    pg_query_normalize`n"
-            $defContent += "    pg_query_parse`n"
-            $defContent += "    pg_query_parse_plpgsql`n"
-            $defContent += "    pg_query_parse_protobuf`n"
-            $defContent += "    pg_query_scan`n"
-            $defContent += "    pg_query_summary`n"
-          } elseif ($pgVersion -eq "18") {
-            # PostgreSQL 18 currently uses the same managed export surface as PG17
-            $defContent = "LIBRARY pg_query`nEXPORTS`n"
-            $defContent += "    pg_query_deparse_protobuf`n"
-            $defContent += "    pg_query_fingerprint`n"
-            $defContent += "    pg_query_free_deparse_result`n"
-            $defContent += "    pg_query_free_fingerprint_result`n"
-            $defContent += "    pg_query_free_normalize_result`n"
-            $defContent += "    pg_query_free_parse_result`n"
-            $defContent += "    pg_query_free_plpgsql_parse_result`n"
-            $defContent += "    pg_query_free_protobuf_parse_result`n"
-            $defContent += "    pg_query_free_scan_result`n"
-            $defContent += "    pg_query_free_split_result`n"
-            $defContent += "    pg_query_is_utility_stmt`n"
-            $defContent += "    pg_query_normalize`n"
-            $defContent += "    pg_query_parse`n"
-            $defContent += "    pg_query_parse_plpgsql`n"
-            $defContent += "    pg_query_parse_protobuf`n"
-            $defContent += "    pg_query_scan`n"
-            $defContent += "    pg_query_summary`n"
-          } else {
-            Write-Host "❌ Unsupported PostgreSQL version for DEF generation: $pgVersion"
+          Write-Host "Detected pg_query symbols in pg_query.lib:"
+          $availableSymbolNames | ForEach-Object { Write-Host "  $_" }
+
+          $headerPublicApis = [regex]::Matches((Get-Content pg_query.h -Raw), '\b(pg_query_[A-Za-z0-9_]+)\s*\(') |
+            ForEach-Object { $_.Groups[1].Value } |
+            Sort-Object -Unique
+
+          Write-Host "Detected public pg_query APIs in pg_query.h:"
+          $headerPublicApis | ForEach-Object { Write-Host "  $_" }
+
+          $selectedExports = $headerPublicApis | Where-Object { $availableSymbolNames -contains $_ } | Sort-Object -Unique
+
+          if ($selectedExports.Count -eq 0) {
+            Write-Host "❌ No pg_query exports were detected for DEF generation."
             exit 1
           }
 
-          # Add split exports when they exist in the static library for the selected version.
-          # This keeps the DEF file aligned to the actual libpg_query branch output.
-          $availableSymbols = & dumpbin /LINKERMEMBER:1 pg_query.lib 2>&1 | Out-String
-          if ($availableSymbols -match "pg_query_split_with_parser") {
-            $defContent += "    pg_query_split_with_parser`n"
-          }
-          if ($availableSymbols -match "pg_query_split_with_scanner") {
-            $defContent += "    pg_query_split_with_scanner`n"
+          Write-Host "Selected exports for pg_query.def:"
+          $selectedExports | ForEach-Object { Write-Host "  $_" }
+
+          $defContent = "LIBRARY pg_query`nEXPORTS`n"
+          foreach ($exportName in $selectedExports) {
+            $defContent += "    $exportName`n"
           }
           $defContent | Out-File -FilePath pg_query.def -Encoding ASCII
+
+          Write-Host "Generated pg_query.def:"
+          Get-Content pg_query.def
 
           # Windows: Extract object files from library then link (like ar -x on Linux/macOS)
           Write-Host "`nExtracting object files from pg_query.lib..."
@@ -207,10 +148,12 @@ jobs:
           $extractedObjs | ForEach-Object { "`"$_`"" } | Out-File -FilePath objs.rsp -Encoding ASCII
 
           Write-Host "Linking DLL..."
-          & link /DLL /OUT:libpg_query.dll /DEF:pg_query.def "@objs.rsp" MSVCRT.lib
+          & link /DLL /OUT:libpg_query.dll /DEF:pg_query.def "@objs.rsp" MSVCRT.lib 2>&1 | Tee-Object -FilePath link-output.log
 
           if ($LASTEXITCODE -ne 0) {
             Write-Host "❌ Link failed with exit code $LASTEXITCODE"
+            Write-Host "`nFull link output:"
+            Get-Content link-output.log -ErrorAction SilentlyContinue
             Write-Host "`nFirst 5 object files:"
             Get-Content objs.rsp | Select-Object -First 5
             exit 1

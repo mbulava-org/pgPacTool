@@ -111,10 +111,17 @@ jobs:
           Write-Host "Detected public pg_query APIs in pg_query.h:"
           $headerPublicApis | ForEach-Object { Write-Host "  $_" }
 
-          $selectedExports = $headerPublicApis | Where-Object { $availableSymbolNames -contains $_ } | Sort-Object -Unique
+          $selectedExports = foreach ($apiName in $headerPublicApis) {
+            if ($availableSymbolsRaw -match "(?<![A-Za-z0-9_])$([regex]::Escape($apiName))(?![A-Za-z0-9_])") {
+              $apiName
+            }
+          }
+          $selectedExports = $selectedExports | Sort-Object -Unique
 
           if ($selectedExports.Count -eq 0) {
             Write-Host "❌ No pg_query exports were detected for DEF generation."
+            Write-Host "Available symbol sample from dumpbin output:"
+            $availableSymbolsRaw -split "`r?`n" | Select-Object -First 50 | ForEach-Object { Write-Host $_ }
             exit 1
           }
 

@@ -139,8 +139,9 @@ jobs:
 
           # Link the static library directly with the generated DEF file.
           # This is more robust than extracting every object file first.
-          Write-Host "Linking DLL directly from pg_query.lib..."
-          & link /DLL /OUT:libpg_query.dll /DEF:pg_query.def pg_query.lib MSVCRT.lib 2>&1 | Tee-Object -FilePath link-output.log
+          $pgQueryLibPath = (Resolve-Path .\pg_query.lib).Path
+          Write-Host "Linking DLL directly from: $pgQueryLibPath"
+          & link /DLL /OUT:libpg_query.dll /IMPLIB:libpg_query_import.lib /DEF:pg_query.def "$pgQueryLibPath" MSVCRT.lib 2>&1 | Tee-Object -FilePath link-output.log
 
           if ($LASTEXITCODE -ne 0) {
             Write-Host "❌ Link failed with exit code $LASTEXITCODE"

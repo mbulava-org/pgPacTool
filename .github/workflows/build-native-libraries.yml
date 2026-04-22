@@ -130,32 +130,15 @@ jobs:
           Write-Host "Generated pg_query.def:"
           Get-Content pg_query.def
 
-          # Windows: Extract object files from library then link (like ar -x on Linux/macOS)
-          Write-Host "`nExtracting object files from pg_query.lib..."
-          Remove-Item *.obj -ErrorAction SilentlyContinue
-
-          $libContents = & lib /NOLOGO /LIST pg_query.lib
-          Write-Host "Library contains $($libContents.Count) object files"
-
-          foreach ($objFile in $libContents) {
-            if ($objFile -match '\.obj$') {
-              & lib /NOLOGO "/EXTRACT:$objFile" pg_query.lib 2>&1 | Out-Null
-            }
-          }
-
-          $extractedObjs = (Get-ChildItem -Filter "*.obj").FullName
-          Write-Host "Extracted $($extractedObjs.Count) files, creating response file..."
-          $extractedObjs | ForEach-Object { "`"$_`"" } | Out-File -FilePath objs.rsp -Encoding ASCII
-
-          Write-Host "Linking DLL..."
-          & link /DLL /OUT:libpg_query.dll /DEF:pg_query.def "@objs.rsp" MSVCRT.lib 2>&1 | Tee-Object -FilePath link-output.log
+          # Link the static library directly with the generated DEF file.
+          # This is more robust than extracting every object file first.
+          Write-Host "Linking DLL directly from pg_query.lib..."
+          & link /DLL /OUT:libpg_query.dll /DEF:pg_query.def pg_query.lib MSVCRT.lib 2>&1 | Tee-Object -FilePath link-output.log
 
           if ($LASTEXITCODE -ne 0) {
             Write-Host "❌ Link failed with exit code $LASTEXITCODE"
             Write-Host "`nFull link output:"
             Get-Content link-output.log -ErrorAction SilentlyContinue
-            Write-Host "`nFirst 5 object files:"
-            Get-Content objs.rsp | Select-Object -First 5
             exit 1
           }
 

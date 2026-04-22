@@ -15,6 +15,11 @@
 > - ✅ **Core Library** - Package version ready: `mbulava.PostgreSql.Dac/1.0.0-preview8` (includes Npgquery)
 >
 > **💡 PostgreSQL Version Support**: Currently supports **PostgreSQL 16 and 17**. Older versions (14, 15) may be added in the future based on demand. See [Multi-Version Support Documentation](docs/features/multi-version-support/README.md) for details.
+>
+> **🧠 Embedded Copilot Skill**: Repository-aware PostgreSQL guidance is available in the
+> [PostgreSQL Expert Skill](.github/skills/postgresql-expert/README.md), backed by the
+> [Roles/Security](docs/version-differences/PG_ROLES_PERMISSIONS_SECURITY.md) and
+> [Database Objects](docs/version-differences/PG_DATABASE_OBJECTS.md) version references.
 
 ---
 

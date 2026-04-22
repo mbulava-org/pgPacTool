@@ -12,7 +12,6 @@ pgPacTool is a PostgreSQL Data-Tier Application tool that brings SQL Server-styl
 
 ---
 
-
 ## Documentation Requirements
 
 ### 1. PostgreSQL Version Support
@@ -34,6 +33,7 @@ pgPacTool is a PostgreSQL Data-Tier Application tool that brings SQL Server-styl
 - Note that older versions (14, 15) may be added later if needed
 - Always specify which versions a feature requires
 - Default to PostgreSQL 16 for backward compatibility
+- Prefer the official PostgreSQL 15, 16, 17, and 18 documentation as supporting references when verifying behavior
 
 ❌ **DON'T**:
 - Show code examples with unsupported versions (14, 15)
@@ -77,6 +77,7 @@ pgPacTool/
 
 **Current Features**:
 - `docs/features/multi-version-support/` - Multi-version PostgreSQL support
+- `docs/features/embedded-skills/` - Embedded repository skill system and roadmap
 
 ### 3. Version Compatibility Analysis
 
@@ -245,6 +246,19 @@ public Parser(PostgreSqlVersion version = PostgreSqlVersion.Postgres14) // ❌ 1
 - `docs/features/multi-version-support/VERSION_COMPATIBILITY_STRATEGY.md`
 - `docs/features/multi-version-support/VERSION_COMPATIBILITY_CRITICAL.md`
 - `docs/version-differences/PG17_CHANGES.md`
+- `.github/skills/postgresql-expert/SKILL.md`
+- `.github/skills/compare-and-deploy-expert/SKILL.md`
+- `.github/skills/postgresql-catalog-extraction-expert/SKILL.md`
+- `.github/skills/msbuild-sdk-expert/SKILL.md`
+- `.github/skills/cli-ux-and-diagnostics-expert/SKILL.md`
+- `.github/skills/native-libpg-query-integration-expert/SKILL.md`
+- `.github/skills/test-matrix-expert/SKILL.md`
+- `.github/skills/database-project-layout-expert/SKILL.md`
+- `.github/skills/managed-postgresql-platforms-expert/SKILL.md`
+- `.github/skills/nuget-packaging-and-release-expert/SKILL.md`
+- `.github/skills/repo-doc-maintainer/SKILL.md`
+- `.github/skills/performance-and-memory-expert/SKILL.md`
+- `.github/skills/breaking-change-reviewer/SKILL.md`
 
 ---
 
@@ -255,6 +269,20 @@ public Parser(PostgreSqlVersion version = PostgreSqlVersion.Postgres14) // ❌ 1
 - Docs Index: `docs/README.md`
 - Multi-Version: `docs/features/multi-version-support/README.md`
 - Quick Ref: `docs/features/multi-version-support/QUICK_REFERENCE.md`
+- Embedded Skills: `docs/features/embedded-skills/README.md`
+- Embedded Skill: `.github/skills/postgresql-expert/SKILL.md`
+- Compare/Deploy Skill: `.github/skills/compare-and-deploy-expert/SKILL.md`
+- Catalog Extraction Skill: `.github/skills/postgresql-catalog-extraction-expert/SKILL.md`
+- MSBuild SDK Skill: `.github/skills/msbuild-sdk-expert/SKILL.md`
+- CLI UX Skill: `.github/skills/cli-ux-and-diagnostics-expert/SKILL.md`
+- Native Parser Skill: `.github/skills/native-libpg-query-integration-expert/SKILL.md`
+- Test Matrix Skill: `.github/skills/test-matrix-expert/SKILL.md`
+- Project Layout Skill: `.github/skills/database-project-layout-expert/SKILL.md`
+- Managed Platforms Skill: `.github/skills/managed-postgresql-platforms-expert/SKILL.md`
+- Packaging Skill: `.github/skills/nuget-packaging-and-release-expert/SKILL.md`
+- Docs Maintainer Skill: `.github/skills/repo-doc-maintainer/SKILL.md`
+- Performance Skill: `.github/skills/performance-and-memory-expert/SKILL.md`
+- Breaking Change Skill: `.github/skills/breaking-change-reviewer/SKILL.md`
 
 **Supported PostgreSQL Versions**:
 - 16 (default)
@@ -293,8 +321,40 @@ When working on this project:
 5. ✅ **Test across all versions**
 6. ✅ **Update version references accurately**
 7. ✅ **Link documentation clearly**
+8. ✅ **Apply the embedded PostgreSQL expert skill for object/version work**
 
 **Key Principle**: PostgreSQL versions have breaking changes - always analyze and test!
+
+**Embedded Skill**: Use `.github/skills/postgresql-expert/SKILL.md` whenever changing
+PostgreSQL object models, extraction queries, compare logic, publish/script generation, or
+version-specific documentation.
+
+**Supporting Skills**:
+- Use `.github/skills/compare-and-deploy-expert/SKILL.md` when changing comparer behavior,
+  deployment script generation, publish orchestration, ownership enforcement, or deployment
+  reporting.
+- Use `.github/skills/postgresql-catalog-extraction-expert/SKILL.md` when changing catalog
+  extraction queries, ACL parsing, extracted model properties, or extraction version gates.
+- Use `.github/skills/msbuild-sdk-expert/SKILL.md` when changing SDK props/targets, package
+  layout, CLI-host-driven builds, restore/load behavior, or incremental build semantics.
+- Use `.github/skills/cli-ux-and-diagnostics-expert/SKILL.md` when changing command options,
+  user-facing CLI output, verbose diagnostics, or exit-code/error behavior.
+- Use `.github/skills/native-libpg-query-integration-expert/SKILL.md` when changing native
+  loader behavior, runtime asset layout, parser version support, or cross-platform diagnostics.
+- Use `.github/skills/test-matrix-expert/SKILL.md` when deciding which test layer should validate
+  a change across unit, integration, package, or Linux/container coverage.
+- Use `.github/skills/database-project-layout-expert/SKILL.md` when changing extracted project
+  folder conventions, generated SQL file layout, or SDK-style project structure examples.
+- Use `.github/skills/managed-postgresql-platforms-expert/SKILL.md` when changing Azure, Amazon
+  RDS, or Aurora-specific PostgreSQL assumptions, reserved roles, or managed-service limitations.
+- Use `.github/skills/nuget-packaging-and-release-expert/SKILL.md` when changing package
+  structure, package metadata/versioning, native asset packaging, or release-surface behavior.
+- Use `.github/skills/repo-doc-maintainer/SKILL.md` when changing durable behavior that should be
+  reflected in README, docs indexes, or instruction files.
+- Use `.github/skills/performance-and-memory-expert/SKILL.md` when changing hot paths or
+  allocation-heavy workflows where performance or memory behavior may matter.
+- Use `.github/skills/breaking-change-reviewer/SKILL.md` when a change may affect compatibility,
+  generated output contracts, package/runtime layout, platform portability, or durable repo rules.
 
 ---
 

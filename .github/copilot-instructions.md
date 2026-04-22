@@ -6,11 +6,12 @@ pgPacTool is a PostgreSQL Data-Tier Application tool that brings SQL Server-styl
 
 **Key Technologies**:
 - .NET 10
-- PostgreSQL 15–18 (15 and 16 are baseline; 17 adds pg_maintain; 18 adds OAuth auth)
+- PostgreSQL 15–18 (15 and 16 are baseline; 17 adds pg_maintain + VIRTUAL columns; 18 adds OAuth auth + pg_signal_autovacuum_worker)
 - libpg_query native library integration
 - MSBuild SDK for database projects
 
 ---
+
 
 ## Documentation Requirements
 
@@ -306,8 +307,8 @@ When working on this project:
 1. **Never generate `CREATE ROLE` for any `pg_*` built-in role or Azure reserved role.**
    - Built-in roles to skip: `pg_monitor`, `pg_read_all_data`, `pg_write_all_data`,
      `pg_database_owner`, `pg_maintain` (17+), `pg_use_reserved_connections` (17+),
-     `pg_create_subscription` (16+), `pg_checkpoint`, `pg_signal_backend`, and all other
-     `pg_*` prefixed roles.
+     `pg_create_subscription` (16+), `pg_checkpoint`, `pg_signal_backend`,
+     `pg_signal_autovacuum_worker` (18+), and all other `pg_*` prefixed roles.
    - Azure-reserved roles to skip: `azure_pg_admin`, `azuresu`, `replication`, `localadmin`.
 
 2. **`CREATEROLE` behavior changed in PG 16** — on PG 16+, only roles with `ADMIN OPTION` can
@@ -338,6 +339,59 @@ When working on this project:
 10. **`PgRole` model requires `CreateDb`, `CreateRole`, `ConnectionLimit`, `ValidUntil`,
     `IsBuiltIn`, `Comment`, and `Memberships` (list of `PgRoleMembership`) properties.**
     See full model spec in the reference document above.
+
+---
+
+## Database Objects — Version Rules
+
+> **Full reference**: [`docs/version-differences/PG_DATABASE_OBJECTS.md`](../docs/version-differences/PG_DATABASE_OBJECTS.md)
+
+### Quick Rules for Database Object Code Generation
+
+1. **`VIRTUAL` generated columns are PG 17+ only.**
+   - PG 15–16 only support `STORED` generated columns.
+   - `STORED` and `VIRTUAL` are semantically different; flag as diff, never silently coerce.
+   - Virtual columns cannot be indexed or used as foreign key columns.
+
+2. **`NULLS NOT DISTINCT` on UNIQUE constraints/indexes is PG 15+ only.**
+   - Omit this clause when generating scripts for PG 14 or earlier.
+
+3. **Named `NOT NULL` constraints and `NO INHERIT` on constraints are PG 16+ only.**
+   - On PG 15, `NOT NULL` is a column attribute, not a named constraint.
+
+4. **`SECURITY_INVOKER` on views is PG 15+ only.**
+   - Default for all versions is security-definer semantics (view owner's privileges).
+   - Always compare `SecurityInvoker` as part of view diff.
+
+5. **`MAINTAIN` privilege on tables is PG 17+ only.**
+   - ACL abbreviation is `m`. Do not parse or emit `m` against PG 15–16 servers.
+   - Per-table: `GRANT MAINTAIN ON TABLE t TO role`.
+   - Per-role: grant `pg_maintain` membership.
+
+6. **`INCLUDE` on BRIN indexes is PG 17+ only** (B-Tree/GiST/SP-GiST covering indexes work on all supported versions).
+
+7. **`ALTER DEFAULT PRIVILEGES ON ROUTINES` is reliable only on PG 17+.**
+   - On PG 15–16, use `FUNCTION` only; `PROCEDURE` behavior was unreliable.
+   - On PG 18+, also support `LARGE OBJECTS` in `ALTER DEFAULT PRIVILEGES`.
+
+8. **Sequence `AS <type>` (data type) is PG 16+ only.**
+   - On PG 15, sequences are always `bigint`. Do not emit `AS bigint` on PG 15.
+   - Extract `data_type` from `pg_sequences.data_type` on PG 16+.
+
+9. **`WITHOUT OVERLAPS` exclusion constraints are PG 18+ only.**
+   - Capture in `PgConstraint.Definition`; omit when targeting PG 15–17.
+
+10. **`SECURITY DEFINER` functions must have `SET search_path`.**
+    - PG 18 tightens enforcement: maintenance operations block unsafe `search_path` access.
+    - Warn during compile/compare if a `SECURITY DEFINER` function lacks an explicit
+      `SET search_path` clause.
+
+11. **Function identity = name + argument types.** Overloaded functions are distinct objects.
+    Use the full qualified signature as the compare key, not just the function name.
+
+12. **`PgView.SecurityInvoker`, `PgSequence.DataType`, `PgColumn.GeneratedColumnKind`
+    (`Stored`/`Virtual`) must be tracked as model properties.** See full model requirements
+    in the reference document above.
 
 ---
 

@@ -37,12 +37,15 @@
 |---------------|----------------------|
 | DATABASE      | `CONNECT`, `CREATE`, `TEMPORARY` |
 | SCHEMA        | `USAGE`, `CREATE` |
-| TABLE / VIEW  | `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES`, `TRIGGER` |
+| TABLE / VIEW / MATERIALIZED VIEW | `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES`, `TRIGGER`, `MAINTAIN` (PG 17+) |
 | SEQUENCE      | `USAGE`, `SELECT`, `UPDATE` |
 | FUNCTION / PROCEDURE | `EXECUTE` |
 | TYPE / DOMAIN | `USAGE` |
 | FOREIGN DATA WRAPPER | `USAGE` |
 | FOREIGN SERVER | `USAGE` |
+| LARGE OBJECT  | `SELECT`, `UPDATE` |
+| PARAMETER (GUC) | `SET`, `ALTER SYSTEM` |
+| TABLESPACE    | `CREATE` |
 
 ### 1.4 Special Grantees
 - **`PUBLIC`** — implicit role that every role is a member of. Granting to `PUBLIC` gives access to all.
@@ -174,10 +177,41 @@
 - **Impact**: pgPacTool does not currently model `pg_hba.conf`; no model changes required.
   Document as a known gap for future work.
 
-#### Predefined Role Additions (PG 18, confirm on release)
-- PG 18 continues the pattern of adding fine-grained predefined roles.
-- At time of writing, PG 18 is stabilizing. Always re-check `pg_roles` on a live PG 18 instance
-  against Section 4.1 built-in role list before generating any role DDL.
+#### New Predefined Role: pg_signal_autovacuum_worker (NEW)
+
+| Role | Purpose |
+|------|--------|
+| `pg_signal_autovacuum_worker` | Allows sending signals to autovacuum workers (cancel current table's vacuum or terminate the worker session) |
+
+- **Impact**: Add to built-in role exclusion list. Do not generate `CREATE ROLE` DDL for this role.
+  Compare logic must skip it in diffs.
+
+#### MD5 Password Deprecation Warning (PG 18)
+- `CREATE ROLE ... PASSWORD '...'` using MD5 now emits a **deprecation warning**.
+- `ALTER ROLE ... PASSWORD '...'` with MD5 also warns.
+- The server variable `md5_password_warnings` (default `on`) controls whether warnings appear.
+- **Impact on compare/publish**: pgPacTool never stores passwords in compare output (`PgRole.Password = null`).
+  No model changes needed, but if future versions expose password format, prefer `scram-sha-256`.
+
+#### MAINTAIN Privilege — Per-Table Grant (PG 17+, clarified in PG 18 docs)
+- The `MAINTAIN` privilege can be granted on a **per-table basis** (`GRANT MAINTAIN ON TABLE t TO role`).
+- The `pg_maintain` predefined role grants this implicitly on **all** tables.
+- `MAINTAIN` allows: `VACUUM`, `ANALYZE`, `CLUSTER`, `REINDEX`, `REFRESH MATERIALIZED VIEW`,
+  `LOCK TABLE`, and statistics manipulation functions.
+- **Impact on compare**: Track per-table `MAINTAIN` grants in `PgTable.Privileges` alongside
+  `SELECT`, `INSERT`, etc. The abbreviation is `m` in ACL output.
+
+#### ALTER DEFAULT PRIVILEGES — Large Object Support (PG 18+)
+- `ALTER DEFAULT PRIVILEGES` now supports `LARGE OBJECTS` as a target object type.
+- **Impact on compare/publish**: On PG 18+, include `LARGE OBJECT` in default-privilege scanning.
+  `SELECT` and `UPDATE` are the relevant privileges for large objects.
+
+#### AFTER Trigger Execution Role (PG 18, BREAKING behavior clarification)
+- AFTER triggers (including deferred triggers) now execute as the **role that was active when the
+  trigger event was queued**, not the role active at `COMMIT` time.
+- Previously, a `SET ROLE` between enqueue and commit could change which role ran the trigger.
+- **Impact**: No DDL model change, but generated trigger test scripts should not rely on role
+  switching between DML and commit to affect trigger executor identity.
 
 ---
 
@@ -206,6 +240,7 @@ These roles exist in every PostgreSQL instance of the indicated version and abov
 | `pg_create_subscription`        | **PG 16+** |
 | `pg_maintain`                   | **PG 17+** |
 | `pg_use_reserved_connections`   | **PG 17+** |
+| `pg_signal_autovacuum_worker`   | **PG 18+** |
 
 ### 3.2 Azure-Specific Reserved Roles
 These roles exist only in Azure Database for PostgreSQL and must also never be generated or diffed:
@@ -336,7 +371,10 @@ Scripts must be emitted in this sequence to respect dependencies:
 | `GRANT ... WITH INHERIT TRUE/FALSE` | PG 16+ only | Omit `WITH INHERIT` clause on PG 15 |
 | `GRANT ... WITH SET TRUE/FALSE` | PG 16+ only | Omit `WITH SET` clause on PG 15 |
 | `GRANT pg_maintain TO ...` | PG 17+ only | Error/skip if target version < 17 |
+| `GRANT MAINTAIN ON TABLE ... TO ...` | PG 17+ only | Error/skip if target version < 17 |
+| `ALTER DEFAULT PRIVILEGES ... GRANT ... ON LARGE OBJECTS` | PG 18+ only | Omit on PG 15–17 |
 | `GRANT pg_use_reserved_connections TO ...` | PG 17+ only | Warn if target version < 17 |
+| `GRANT pg_signal_autovacuum_worker TO ...` | PG 18+ only | Error/skip if target version < 18 |
 | `GRANT pg_create_subscription TO ...` | PG 16+ only | Error/skip if target version < 16 |
 | `GRANT pg_checkpoint TO ...` | PG 15+ only | Error/skip if target version < 15 |
 | `BYPASSRLS` in `CREATE ROLE` | PG 16+ without superuser | PG 15 requires superuser context; emit warning |
@@ -491,8 +529,13 @@ public void Azure_GeneratedScript_DoesNotGrant_PgWriteAllData()
 | `pg_maintain` built-in role | ❌ | ❌ | ✅ | ✅ |
 | `pg_use_reserved_connections` built-in role | ❌ | ❌ | ✅ | ✅ |
 | `pg_checkpoint` built-in role | ✅ | ✅ | ✅ | ✅ |
+| `pg_signal_autovacuum_worker` built-in role | ❌ | ❌ | ❌ | ✅ |
 | Default privileges for ROUTINE type | ❌ | ❌ | ✅ | ✅ |
+| Default privileges for LARGE OBJECT type | ❌ | ❌ | ❌ | ✅ |
+| Per-table `MAINTAIN` privilege grant | ❌ | ❌ | ✅ | ✅ |
 | OAuth authentication support | ❌ | ❌ | ❌ | ✅ |
+| MD5 password deprecation warning | ❌ | ❌ | ❌ | ✅ |
+| AFTER trigger runs as enqueueing role | ❌ | ❌ | ❌ | ✅ |
 
 ---
 
@@ -542,5 +585,5 @@ ORDER BY member_role, group_role;
 
 ---
 
-*Last updated: based on PostgreSQL 15.17, 16.13, 17.9, 18.3 documentation.*
+*Last updated: reviewed against PostgreSQL 15.17, 16.13, 17.9, 18.3 official documentation (February 2026).*
 *See also: [`docs/features/multi-version-support/VERSION_COMPATIBILITY_STRATEGY.md`](../features/multi-version-support/VERSION_COMPATIBILITY_STRATEGY.md)*

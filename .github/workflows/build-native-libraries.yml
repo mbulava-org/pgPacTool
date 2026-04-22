@@ -87,8 +87,10 @@ jobs:
           Write-Host "Listing all .obj files after nmake:"
           Get-ChildItem -Recurse -Filter *.obj | Select-Object FullName, Length | Format-Table
 
-          Write-Host "`nChecking pg_query.lib contents:"
-          lib /LIST pg_query.lib
+          $pgQueryLibPath = (Resolve-Path .\pg_query.lib).Path
+
+          Write-Host "`nChecking pg_query.lib contents: $pgQueryLibPath"
+          lib /LIST "$pgQueryLibPath"
 
           Write-Host "`nCreating DLL from static library..."
 
@@ -96,14 +98,6 @@ jobs:
           # This avoids linker failures when a branch lacks one of the hard-coded exports.
           $pgVersion = "${{ matrix.pg_version }}"
           Write-Host "Creating DEF file for PostgreSQL $pgVersion..."
-          $availableSymbolsRaw = & dumpbin /LINKERMEMBER:1 pg_query.lib 2>&1 | Out-String
-          $availableSymbolNames = [regex]::Matches($availableSymbolsRaw, 'pg_query_[A-Za-z0-9_]+') |
-            ForEach-Object { $_.Value } |
-            Sort-Object -Unique
-
-          Write-Host "Detected pg_query symbols in pg_query.lib:"
-          $availableSymbolNames | ForEach-Object { Write-Host "  $_" }
-
           $headerPublicApis = [regex]::Matches((Get-Content pg_query.h -Raw), '\b(pg_query_[A-Za-z0-9_]+)\s*\(') |
             ForEach-Object { $_.Groups[1].Value } |
             Sort-Object -Unique
@@ -111,17 +105,10 @@ jobs:
           Write-Host "Detected public pg_query APIs in pg_query.h:"
           $headerPublicApis | ForEach-Object { Write-Host "  $_" }
 
-          $selectedExports = foreach ($apiName in $headerPublicApis) {
-            if ($availableSymbolsRaw -match "(?<![A-Za-z0-9_])$([regex]::Escape($apiName))(?![A-Za-z0-9_])") {
-              $apiName
-            }
-          }
-          $selectedExports = $selectedExports | Sort-Object -Unique
+          $selectedExports = $headerPublicApis
 
           if ($selectedExports.Count -eq 0) {
             Write-Host "❌ No pg_query exports were detected for DEF generation."
-            Write-Host "Available symbol sample from dumpbin output:"
-            $availableSymbolsRaw -split "`r?`n" | Select-Object -First 50 | ForEach-Object { Write-Host $_ }
             exit 1
           }
 
@@ -139,7 +126,6 @@ jobs:
 
           # Link the static library directly with the generated DEF file.
           # This is more robust than extracting every object file first.
-          $pgQueryLibPath = (Resolve-Path .\pg_query.lib).Path
           Write-Host "Linking DLL directly from: $pgQueryLibPath"
           & link /DLL /OUT:libpg_query.dll /IMPLIB:libpg_query_import.lib /DEF:pg_query.def "$pgQueryLibPath" MSVCRT.lib 2>&1 | Tee-Object -FilePath link-output.log
 

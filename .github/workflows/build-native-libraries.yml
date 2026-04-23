@@ -5,9 +5,9 @@ on:
   workflow_dispatch:
     inputs:
       pg_versions:
-        description: 'PostgreSQL versions to build (comma-separated, e.g., "15,16,17,18")'
+        description: 'PostgreSQL versions to build (comma-separated, e.g., "16,17,18")'
         required: true
-        default: '15,16,17,18'
+        default: '16,17,18'
       force_rebuild:
         description: 'Force rebuild even if files exist'
         type: boolean
@@ -21,14 +21,13 @@ on:
 env:
   NPGQUERY_PROJECT_PATH: src/libs/Npgquery/Npgquery
   # Default versions for non-workflow_dispatch triggers
-  # Supported versions: PostgreSQL 15, 16, 17, 18
-  DEFAULT_PG_VERSIONS: '15,16,17,18'
+  # Supported versions: PostgreSQL 16, 17, 18
+  DEFAULT_PG_VERSIONS: '16,17,18'
 
 jobs:
   build-matrix:
     name: Build libpg_query
     # Supported PostgreSQL versions:
-    # - PG15: Supported for legacy compatibility
     # - PG16: Supported, default version
     # - PG17: Supported with JSON_TABLE and newer parser features
     # - PG18: Supported, but integration/container coverage may require version-specific setup

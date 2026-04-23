@@ -18,10 +18,10 @@ The Npgquery project supports multiple PostgreSQL versions through version-speci
 1. Go to **Actions** tab in GitHub
 2. Select **"Build Native libpg_query Libraries"**
 3. Click **"Run workflow"**
-4. Enter PostgreSQL versions (e.g., `16,17` or `16,17,18` for future versions)
+4. Enter PostgreSQL versions (e.g., `16,17` or `16,17,18`)
 5. Click **"Run workflow"**
 
-> **Supported Versions**: Currently PostgreSQL 16 and 17. Older versions (14, 15) may be added in the future if needed.
+> **Supported Versions**: PostgreSQL 16, 17, and 18. PostgreSQL 15 and below are not currently supported.
 
 The workflow will:
 - Build libraries for Windows, Linux, macOS (Intel & ARM)
@@ -33,10 +33,10 @@ The workflow will:
 **For Development/Testing**
 
 ```powershell
-# Build PostgreSQL 16 and 17 (default)
+# Build PostgreSQL 16 and 17 (default example)
 .\scripts\Build-NativeLibraries.ps1
 
-# Build specific versions (example with future version 18)
+# Build specific supported versions
 .\scripts\Build-NativeLibraries.ps1 -Versions "16,17,18"
 
 # Force rebuild existing libraries
@@ -48,7 +48,7 @@ The workflow will:
 
 **Note**: Local script only builds for your current platform. Use GitHub Actions for complete multi-platform builds.
 
-> **Version Support**: Only PostgreSQL 16+ is currently supported. If you need older versions (14, 15), they can be added following the same process - see [MULTI_VERSION_DESIGN.md](MULTI_VERSION_DESIGN.md) for details.
+> **Version Support**: PostgreSQL 16+ is currently supported. PostgreSQL 15 and below would require additional cross-platform implementation work and are deferred unless there is future demand.
 
 ## Adding New PostgreSQL Versions
 
@@ -218,6 +218,7 @@ Total: 2 libraries
 - For new versions, verify branch exists in libpg_query repo
 - Check if Makefile.msvc or Makefile changed upstream
 - Review GitHub Actions logs for compiler errors
+- PostgreSQL 15 and below are outside the current support matrix; if they are reconsidered later, review upstream Windows build support first
 
 ### Local Build Fails
 

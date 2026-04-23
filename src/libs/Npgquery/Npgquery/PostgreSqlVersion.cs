@@ -40,7 +40,6 @@ public static class PostgreSqlVersionExtensions
     {
         return
         [
-            PostgreSqlVersion.Postgres15,
             PostgreSqlVersion.Postgres16,
             PostgreSqlVersion.Postgres17,
             PostgreSqlVersion.Postgres18

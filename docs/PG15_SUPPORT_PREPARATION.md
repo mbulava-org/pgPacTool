@@ -1,20 +1,20 @@
 # PostgreSQL 15 Support Preparation
 
 **Date**: Current Session  
-**Status**: ✅ Build Infrastructure Ready, Awaiting Implementation  
+**Status**: Archived / Not Supported by Current Cross-Platform Matrix  
 **Branch**: `feature/verify-native-library-integration`
 
 ---
 
 ## Summary
 
-The GitHub Actions workflow has been updated to support building PostgreSQL 15 native libraries. The build infrastructure is ready, but the C# code implementation is deferred to a future enhancement.
+PostgreSQL 15 support was explored, but the repository now standardizes on PostgreSQL 16+ so support remains aligned across major development and production platforms. PostgreSQL 15 and below are deferred unless future demand justifies a proper cross-platform implementation.
 
 ---
 
 ## Changes Made
 
-### 1. ✅ GitHub Actions Workflow Updated
+### 1. Historical Workflow Investigation
 
 **File**: `.github/workflows/build-native-libraries.yml`
 
@@ -26,16 +26,9 @@ The GitHub Actions workflow has been updated to support building PostgreSQL 15 n
      default: '16,17'
    ```
 
-2. **Added PG15 to DEF File Generation** (Windows)
-   ```powershell
-   if ($pgVersion -eq "15") {
-     # PostgreSQL 15 - older API, some functions don't exist yet
-     $defContent = "LIBRARY pg_query`nEXPORTS`n"
-     $defContent += "    pg_query_deparse_protobuf`n"
-     $defContent += "    pg_query_fingerprint`n"
-     # ... (same as PG16)
-   }
-   ```
+2. **Observed Upstream Limitation**
+   - `15-latest` does not include `Makefile.msvc`
+   - Windows matrix automation would require a custom build path for PG15
 
 3. **Added Comments**
    - Documented that PG15 is built but not yet implemented
@@ -44,39 +37,25 @@ The GitHub Actions workflow has been updated to support building PostgreSQL 15 n
 
 ---
 
-## How to Build PG15 Libraries
+## PostgreSQL 15 Support Decision
 
-### Via GitHub Actions (Recommended)
+The current support policy is:
 
-1. Go to **Actions** → **Build Native libpg_query Libraries**
-2. Click **Run workflow**
-3. Enter PostgreSQL versions: `15` (or `15,16,17` to build all)
-4. Click **Run workflow**
+- ✅ PostgreSQL 16+
+- ❌ PostgreSQL 15 and below
 
-The workflow will:
-- ✅ Checkout libpg_query 15-latest branch
-- ✅ Build Windows DLL (libpg_query_15.dll)
-- ✅ Build Linux SO (libpg_query_15.so)
-- ✅ Build macOS dylib (libpg_query_15.dylib)
-- ✅ Create PR with all libraries
+Reason:
+- supported versions must work across major development and production platforms
+- PG15 currently requires platform-specific exceptions and extra implementation work
 
-### Expected Output
+### If Demand Appears Later
 
 ```
-src/libs/Npgquery/Npgquery/runtimes/
-├── win-x64/native/
-│   ├── libpg_query_15.dll
-│   ├── libpg_query_16.dll
-│   └── libpg_query_17.dll
-├── linux-x64/native/
-│   ├── libpg_query_15.so
-│   ├── libpg_query_16.so
-│   └── libpg_query_17.so
-└── osx-arm64/native/
-    ├── libpg_query_15.dylib
-    ├── libpg_query_16.dylib
-    └── libpg_query_17.dylib
-```
+Reconsider PG15 only if there is clear user demand and time to add:
+
+- a proper Windows build path
+- cross-platform validation
+- updated compatibility and support docs
 
 ---
 
@@ -97,26 +76,9 @@ Based on the libpg_query repository:
 | pg_query_is_utility_stmt | ❌ | ❌ | ✅ |
 | pg_query_summary | ❌ | ❌ | ✅ |
 
-### DEF File Contents (Windows)
+### Outcome
 
-PostgreSQL 15 uses the same exports as PG16:
-```
-LIBRARY pg_query
-EXPORTS
-    pg_query_deparse_protobuf
-    pg_query_fingerprint
-    pg_query_free_deparse_result
-    pg_query_free_fingerprint_result
-    pg_query_free_normalize_result
-    pg_query_free_parse_result
-    pg_query_free_plpgsql_parse_result
-    pg_query_free_scan_result
-    pg_query_free_split_result
-    pg_query_normalize
-    pg_query_parse
-    pg_query_parse_plpgsql
-    pg_query_scan
-```
+PG15 remains out of the supported matrix for now.
 
 ---
 

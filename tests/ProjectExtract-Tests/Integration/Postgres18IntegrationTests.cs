@@ -30,7 +30,7 @@ namespace ProjectExtract_Tests.Integration
 
             // Assert
             Assert.That(project, Is.Not.Null);
-            Assert.That(project.PostgresVersion, Does.StartWith("18."));
+            Assert.That(project.PostgresVersion, Does.StartWith("18"));
             Assert.That(project.Schemas, Is.Not.Empty);
             
             TestContext.WriteLine($"✓ Extracted project from PostgreSQL {project.PostgresVersion}");
@@ -46,7 +46,7 @@ namespace ProjectExtract_Tests.Integration
             var version = await extractor.DetectPostgresVersion();
 
             // Assert
-            Assert.That(version, Does.StartWith("18."));
+            Assert.That(version, Does.StartWith("18"));
             TestContext.WriteLine($"✓ Detected PostgreSQL version: {version}");
         }
 

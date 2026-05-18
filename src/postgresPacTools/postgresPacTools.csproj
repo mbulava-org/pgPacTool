@@ -30,6 +30,11 @@
 
   <ItemGroup>
 	<PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
+	<!-- Explicit reference required: Google.Protobuf is a runtime dep of Npgquery, but
+	     mbulava.PostgreSql.Dac references Npgquery with PrivateAssets=all which prevents
+	     transitive deps from flowing to this publish output. Without this, publish fails
+	     with "Could not load file or assembly Google.Protobuf, Version=3.33.5.0". -->
+	<PackageReference Include="Google.Protobuf" Version="3.33.5" />
   </ItemGroup>
 
   <ItemGroup>

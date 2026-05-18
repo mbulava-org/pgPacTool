@@ -84,7 +84,6 @@ public class CompilationIntegrationTests
     }
 
     [Test]
-    [Ignore("TODO: Circular dependency detection issue - function body parsing may incorrectly identify dependencies")]
     public void IntegrationTest_FunctionsAndTriggers_CompileInCorrectOrder()
     {
         // Arrange - Functions and triggers with dependencies

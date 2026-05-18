@@ -27,12 +27,7 @@ public class ProjectPublisherIntegrationTests
     [OneTimeSetUp]
     public async Task SetupContainer()
     {
-        // Guard: skip the whole fixture if Docker is unavailable
-        if (!await IsDockerAvailableAsync())
-        {
-            Assert.Ignore("Docker is not available — skipping ProjectPublisher integration tests.");
-            return;
-        }
+        DockerAvailability.SkipIfUnavailable();
 
         _container = new PostgreSqlBuilder()
             .WithImage("postgres:16")
@@ -165,20 +160,6 @@ public class ProjectPublisherIntegrationTests
                 }
             }
         };
-    }
-
-    private static async Task<bool> IsDockerAvailableAsync()
-    {
-        try
-        {
-            using var docker = new Docker.DotNet.DockerClientConfiguration().CreateClient();
-            await docker.System.PingAsync();
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
     }
 
     // ------------------------------------------------------------------ tests

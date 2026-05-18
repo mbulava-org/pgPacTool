@@ -20,8 +20,10 @@ public class CsprojIntegrationTests
     public void Setup()
     {
         // Get test projects directory
+        // TestDirectory is e.g. .../tests/mbulava.PostgreSql.Dac.Tests/bin/Debug/net10.0
+        // We need to go up 5 levels to reach the repo root where TestProjects lives.
         var currentDir = TestContext.CurrentContext.TestDirectory;
-        _testProjectsDir = Path.Combine(currentDir, "..", "..", "..", "..", "TestProjects");
+        _testProjectsDir = Path.Combine(currentDir, "..", "..", "..", "..", "..", "TestProjects");
         _testProjectsDir = Path.GetFullPath(_testProjectsDir);
 
         // Create output directory for test artifacts

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <IsPackable>false</IsPackable>
+    <DatabaseName>SampleDatabase</DatabaseName>
+    <DefaultSchema>public</DefaultSchema>
+    <PostgresVersion>16</PostgresVersion>
+  </PropertyGroup>
+
+</Project>

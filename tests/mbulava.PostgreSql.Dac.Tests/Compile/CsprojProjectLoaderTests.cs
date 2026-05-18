@@ -33,16 +33,16 @@ public class CsprojProjectLoaderTests
     }
 
     [Test]
-    public async Task LoadProjectAsync_WithoutPostgresVersion_ThrowsInvalidOperationException()
+    public async Task LoadProjectAsync_WithoutPostgresVersion_DefaultsToPostgres16()
     {
+        // PostgresVersion is optional; when omitted the loader defaults to Postgres 16.
         var projectPath = await CreateProjectAsync(postgresVersion: null, sql: "CREATE TABLE public.users (id integer);", projectName: "MissingVersion");
         var loader = new CsprojProjectLoader(projectPath);
 
-        Func<Task> act = () => loader.LoadProjectAsync();
+        var project = await loader.LoadProjectAsync();
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*PostgresVersion*")
-            .WithMessage("*project file*");
+        project.Should().NotBeNull();
+        project.PostgresVersion.Should().Be("16", because: "missing PostgresVersion should default to 16");
     }
 
     [Test]

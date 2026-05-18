@@ -139,6 +139,10 @@ public class ProjectPublisherIntegrationTests
         return new PgProject
         {
             DatabaseName = "testdb",
+            Roles = new List<PgRole>
+            {
+                new PgRole { Name = "postgres", IsSuperUser = true, CanLogin = true }
+            },
             Schemas = new List<PgSchema>
             {
                 new PgSchema
@@ -261,6 +265,10 @@ public class ProjectPublisherIntegrationTests
         var badProject = new PgProject
         {
             DatabaseName = "testdb",
+            Roles = new List<PgRole>
+            {
+                new PgRole { Name = "postgres", IsSuperUser = true, CanLogin = true }
+            },
             Schemas = new List<PgSchema>
             {
                 new PgSchema

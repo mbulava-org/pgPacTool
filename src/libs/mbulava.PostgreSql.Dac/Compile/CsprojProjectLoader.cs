@@ -172,8 +172,9 @@ public class CsprojProjectLoader
             var result = parser.Parse(sql);
             if (!result.IsSuccess || result.ParseTree == null)
             {
-                Console.WriteLine($"Warning: Failed to parse {filePath}: {result.Error}");
-                return null;
+                throw new InvalidOperationException(
+                    $"Failed to parse SQL in project file '{filePath}': {result.Error}. " +
+                    "Fix the syntax error in the SQL file before loading the project.");
             }
 
             var astJson = result.ParseTree.RootElement.GetRawText();

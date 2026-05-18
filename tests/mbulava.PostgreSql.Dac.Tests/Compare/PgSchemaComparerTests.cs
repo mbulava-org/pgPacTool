@@ -193,7 +193,7 @@ public class PgSchemaComparerTests
 
         // Assert
         diff.TableDiffs.Should().NotBeEmpty();
-        diff.TableDiffs[0].TableName.Should().Be("users");
+        diff.TableDiffs[0].TableName.Should().Be("public.users");
     }
 
     [Test]
@@ -328,7 +328,7 @@ public class PgSchemaComparerTests
         // Assert
         diff.TableDiffs.Should().HaveCount(1);
         var tableDiff = diff.TableDiffs[0];
-        tableDiff.TableName.Should().Be("users");
+        tableDiff.TableName.Should().Be("public.users");
         tableDiff.ColumnDiffs.Should().HaveCount(1);
         var colDiff = tableDiff.ColumnDiffs[0];
         colDiff.ColumnName.Should().Be("email");
@@ -383,7 +383,7 @@ public class PgSchemaComparerTests
         // Assert
         diff.TableDiffs.Should().HaveCount(1);
         var tableDiff = diff.TableDiffs[0];
-        tableDiff.TableName.Should().Be("users");
+        tableDiff.TableName.Should().Be("public.users");
         // "username" missing in target + "user_name" extra in target
         tableDiff.ColumnDiffs.Should().HaveCount(2);
         tableDiff.ColumnDiffs.Should().Contain(c => c.ColumnName == "username"  && c.TargetDataType == null);
@@ -544,7 +544,7 @@ public class PgSchemaComparerTests
         // Assert
         diff.TableDiffs.Should().HaveCount(1);
         var tableDiff = diff.TableDiffs[0];
-        tableDiff.TableName.Should().Be("users");
+        tableDiff.TableName.Should().Be("public.users");
         tableDiff.IndexDiffs.Should().HaveCount(1);
         var idxDiff = tableDiff.IndexDiffs[0];
         idxDiff.IndexName.Should().Be("idx_users_email");

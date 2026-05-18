@@ -243,6 +243,15 @@ public class FunctionDependencyExtractor : AstDependencyExtractor
             // Range types
             "int4range", "int8range", "numrange", "tsrange", "tstzrange", "daterange",
             
+            // Trigger pseudo-types (used as RETURNS type in trigger functions)
+            "trigger", "event_trigger",
+
+            // Polymorphic and internal pseudo-types
+            "internal", "language_handler", "fdw_handler", "index_am_handler",
+            "tsm_handler", "opaque", "anyarray", "anyelement", "anyenum",
+            "anynonarray", "anyrange", "anycompatible", "anycompatiblearray",
+            "anycompatiblenonarray", "anycompatiblerange", "record", "cstring",
+
             // Other
             "void", "oid", "regproc", "regprocedure", "regoper", "regoperator",
             "regclass", "regtype", "regrole", "regnamespace", "regconfig",

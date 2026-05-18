@@ -10,6 +10,12 @@ namespace mbulava.PostgreSql.Dac.Tests.Extract
     [TestFixture]
     public class PgProjectExtractorVersionTests
     {
+        [OneTimeSetUp]
+        public void FixtureSetUp()
+        {
+            DockerAvailability.SkipIfUnavailable();
+        }
+
         [Test]
         public async Task ExtractPgProject_PostgreSQL16_Succeeds()
         {

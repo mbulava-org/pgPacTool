@@ -23,6 +23,8 @@ namespace ProjectExtract_Tests.Privileges
         [SetUp]
         public async Task Setup()
         {
+            DockerAvailability.SkipIfUnavailable();
+
             // Start fresh PostgreSQL container for each test
             _pgContainer = new PostgreSqlBuilder("postgres:16")
                 .WithDatabase("testdb")

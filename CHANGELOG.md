@@ -17,6 +17,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.0-preview9] - 2026-05-18
+
+**⚠️ PREVIEW RELEASE** - Not recommended for production use. Please test and provide feedback!
+
+### 🔧 Fixes
+
+- Merged all recent test coverage improvements from main branch
+- Fixed `DockerAvailability.SkipIfUnavailable()` guards in Testcontainer-based tests (Extensions, MultiSchema, CompositeType, DomainType, PostgresVersionTestBase)
+- Fixed `CsprojProjectLoader` to correctly detect `CREATE OR REPLACE VIEW`, `CREATE MATERIALIZED VIEW`, `CREATE OR REPLACE FUNCTION`, and `CREATE OR REPLACE PROCEDURE` SQL statement variants
+- Added `Google.Protobuf` explicit reference to `postgresPacTools` CLI to fix missing assembly on publish ([DEV-52](/DEV/issues/DEV-52))
+- Improved test coverage: ProjectPublisher integration tests, PgSchemaComparerTests column/constraint/index/multi-schema diffs, error path tests
+- Resolved merge conflicts between main and preview1 branches
+
+---
+
 ## [1.0.0-preview1] - 2026-03-17
 
 **⚠️ PREVIEW RELEASE** - Not recommended for production use. Please test and provide feedback!

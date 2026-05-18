@@ -24,7 +24,7 @@ The repository ships multiple package surfaces:
 - `MSBuild.Sdk.PostgreSql`
 
 Current durable signals:
-- version is currently coordinated at `1.0.0-preview8`
+- version is currently coordinated at `1.0.0-preview9`
 - package validation tests are a required quality signal
 - native assets are expected in package outputs where relevant
 - README/license files are included in packages

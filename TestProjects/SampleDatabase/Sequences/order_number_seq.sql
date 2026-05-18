@@ -1,0 +1,6 @@
+CREATE SEQUENCE public.order_number_seq
+    START WITH 1000
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;

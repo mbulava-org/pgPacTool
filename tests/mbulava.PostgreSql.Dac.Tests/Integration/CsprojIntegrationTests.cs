@@ -20,8 +20,10 @@ public class CsprojIntegrationTests
     public void Setup()
     {
         // Get test projects directory
+        // TestDirectory is e.g. .../tests/mbulava.PostgreSql.Dac.Tests/bin/Debug/net10.0
+        // We need to go up 5 levels to reach the repo root where TestProjects lives.
         var currentDir = TestContext.CurrentContext.TestDirectory;
-        _testProjectsDir = Path.Combine(currentDir, "..", "..", "..", "..", "TestProjects");
+        _testProjectsDir = Path.Combine(currentDir, "..", "..", "..", "..", "..", "TestProjects");
         _testProjectsDir = Path.GetFullPath(_testProjectsDir);
 
         // Create output directory for test artifacts
@@ -370,7 +372,7 @@ public class CsprojIntegrationTests
         await File.WriteAllTextAsync(projectPath,
             """
             <Project Sdk="Microsoft.NET.Sdk">
-              <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview8" />
+              <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview9" />
               <PropertyGroup>
                 <TargetFramework>net10.0</TargetFramework>
                 <DatabaseName>SchemaQualifiedProject</DatabaseName>
@@ -478,7 +480,7 @@ public class CsprojIntegrationTests
         await File.WriteAllTextAsync(projectPath,
             """
             <Project Sdk="Microsoft.NET.Sdk">
-              <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview8" />
+              <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview9" />
               <PropertyGroup>
                 <TargetFramework>net10.0</TargetFramework>
                 <PostgresVersion>17</PostgresVersion>
@@ -519,7 +521,7 @@ public class CsprojIntegrationTests
         await File.WriteAllTextAsync(projectPath,
             """
             <Project Sdk="Microsoft.NET.Sdk">
-              <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview8" />
+              <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview9" />
               <PropertyGroup>
                 <TargetFramework>net10.0</TargetFramework>
                 <PostgresVersion>17</PostgresVersion>

@@ -97,7 +97,7 @@ public class CompilationIntegrationTests
         await File.WriteAllTextAsync(projectPath,
             """
             <Project Sdk="Microsoft.NET.Sdk">
-              <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview8" />
+              <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview9" />
               <PropertyGroup>
                 <TargetFramework>net10.0</TargetFramework>
                 <DatabaseName>MissingRefs</DatabaseName>
@@ -132,7 +132,6 @@ public class CompilationIntegrationTests
     }
 
     [Test]
-    [Ignore("TODO: Circular dependency detection issue - function body parsing may incorrectly identify dependencies")]
     public void IntegrationTest_FunctionsAndTriggers_CompileInCorrectOrder()
     {
         // Arrange - Functions and triggers with dependencies

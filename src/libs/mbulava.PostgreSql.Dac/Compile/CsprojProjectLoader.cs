@@ -421,8 +421,8 @@ public class CsprojProjectLoader
 
         if (pgVersionElement == null || string.IsNullOrWhiteSpace(pgVersionElement.Value))
         {
-            throw new InvalidOperationException(
-                $"Project '{_projectPath}' must define a PostgresVersion property in the project file. Example: <PostgresVersion>16</PostgresVersion>.");
+            // PostgresVersion is optional; default to 16 when not specified.
+            return "16";
         }
 
         return pgVersionElement.Value.Trim();

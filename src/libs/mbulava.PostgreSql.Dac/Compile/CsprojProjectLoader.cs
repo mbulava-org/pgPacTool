@@ -190,7 +190,9 @@ public class CsprojProjectLoader
                 parsed.ObjectName = stmt?.Idxname ?? name ?? "unknown";
                 parsed.Ast = stmt;
             }
-            else if (sql.Contains("CREATE VIEW", StringComparison.OrdinalIgnoreCase))
+            else if (sql.Contains("CREATE VIEW", StringComparison.OrdinalIgnoreCase) ||
+                     sql.Contains("CREATE OR REPLACE VIEW", StringComparison.OrdinalIgnoreCase) ||
+                     sql.Contains("CREATE MATERIALIZED VIEW", StringComparison.OrdinalIgnoreCase))
             {
                 var stmt = JsonSerializer.Deserialize<ViewStmt>(astJson);
                 parsed.ObjectType = SqlObjectType.View;
@@ -200,7 +202,9 @@ public class CsprojProjectLoader
                 parsed.Ast = stmt;
             }
             else if (sql.Contains("CREATE FUNCTION", StringComparison.OrdinalIgnoreCase) ||
-                     sql.Contains("CREATE PROCEDURE", StringComparison.OrdinalIgnoreCase))
+                     sql.Contains("CREATE OR REPLACE FUNCTION", StringComparison.OrdinalIgnoreCase) ||
+                     sql.Contains("CREATE PROCEDURE", StringComparison.OrdinalIgnoreCase) ||
+                     sql.Contains("CREATE OR REPLACE PROCEDURE", StringComparison.OrdinalIgnoreCase))
             {
                 var stmt = JsonSerializer.Deserialize<CreateFunctionStmt>(astJson);
                 parsed.ObjectType = SqlObjectType.Function;

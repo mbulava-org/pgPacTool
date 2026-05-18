@@ -22,6 +22,8 @@ public class DomainTypeExtractionTests
     [OneTimeSetUp]
     public async Task OneTimeSetup()
     {
+        DockerAvailability.SkipIfUnavailable();
+
         _pgContainer = new PostgreSqlBuilder("postgres:16")
             .WithDatabase("testdb")
             .WithUsername("postgres")

@@ -66,6 +66,7 @@ public class ErrorPathTests
               <PropertyGroup>
                 <TargetFramework>net10.0</TargetFramework>
                 <DatabaseName>InvalidSqlProject</DatabaseName>
+                <PostgresVersion>16</PostgresVersion>
               </PropertyGroup>
             </Project>
             """);
@@ -122,6 +123,7 @@ public class ErrorPathTests
               <PropertyGroup>
                 <TargetFramework>net10.0</TargetFramework>
                 <DatabaseName>CircularViewProject</DatabaseName>
+                <PostgresVersion>16</PostgresVersion>
               </PropertyGroup>
             </Project>
             """);
@@ -197,6 +199,7 @@ public class ErrorPathTests
               <PropertyGroup>
                 <TargetFramework>net10.0</TargetFramework>
                 <DatabaseName>ExtensionProject</DatabaseName>
+                <PostgresVersion>16</PostgresVersion>
               </PropertyGroup>
             </Project>
             """);

@@ -21,6 +21,8 @@ public class ViewExtractionTests
     [OneTimeSetUp]
     public async Task OneTimeSetup()
     {
+        DockerAvailability.SkipIfUnavailable();
+
         // Start PostgreSQL 16 container
         _pgContainer = new PostgreSqlBuilder("postgres:16")
             .WithDatabase("testdb")

@@ -17,6 +17,8 @@ namespace ProjectExtract_Tests
         [Test]
         public async Task SmokeTest_PrivilegeExtraction_Works()
         {
+            DockerAvailability.SkipIfUnavailable();
+
             // Arrange - Start PostgreSQL container
             await using var container = new PostgreSqlBuilder("postgres:16")
                 .WithDatabase("testdb")

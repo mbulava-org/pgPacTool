@@ -17,6 +17,8 @@ namespace ProjectExtract_Tests
         [OneTimeSetUp]
         public async Task Setup()
         {
+            DockerAvailability.SkipIfUnavailable();
+
             _pgContainer = new PostgreSqlBuilder("postgres:16")
                 .WithDatabase("testdb")
                 .WithUsername("testuser")

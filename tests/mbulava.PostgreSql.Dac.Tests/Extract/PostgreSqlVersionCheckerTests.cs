@@ -10,6 +10,12 @@ namespace mbulava.PostgreSql.Dac.Tests.Extract
     [TestFixture]
     public class PostgreSqlVersionCheckerTests
     {
+        [OneTimeSetUp]
+        public void FixtureSetUp()
+        {
+            DockerAvailability.SkipIfUnavailable();
+        }
+
         [Test]
         public void MinimumSupportedVersion_IsSetTo16()
         {

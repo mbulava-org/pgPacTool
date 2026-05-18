@@ -20,6 +20,8 @@ namespace ProjectExtract_Tests.Integration
         [OneTimeSetUp]
         public async Task BaseSetup()
         {
+            DockerAvailability.SkipIfUnavailable();
+
             Container = new PostgreSqlBuilder(PostgreSqlVersion)
                 .WithDatabase("testdb")
                 .WithUsername("postgres")

@@ -315,7 +315,7 @@ public class ProjectPublisherIntegrationTests
             Type = DeploymentScriptType.PostDeployment,
             Order = 1,
             // Content is set directly (no file on disk) so we bypass file-loading path.
-            Content = $"INSERT INTO {TestSchemaName}.{tableName} (name) VALUES ('$(SeedName)');"
+            Content = $"INSERT INTO {TestSchemaName}.{tableName} (id, name) VALUES (1, '$(SeedName)');"
         };
 
         var options = new PublishOptions

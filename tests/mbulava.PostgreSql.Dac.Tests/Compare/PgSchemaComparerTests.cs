@@ -446,7 +446,7 @@ public class PgSchemaComparerTests
         // Assert
         diff.TableDiffs.Should().HaveCount(1);
         var tableDiff = diff.TableDiffs[0];
-        tableDiff.TableName.Should().Be("orders");
+        tableDiff.TableName.Should().Be("public.orders");
         tableDiff.ConstraintDiffs.Should().HaveCount(1);
         var cDiff = tableDiff.ConstraintDiffs[0];
         cDiff.ConstraintName.Should().Be("chk_amount");
@@ -643,7 +643,7 @@ public class PgSchemaComparerTests
         // Assert
         diff.SchemaName.Should().Be("billing");
         diff.TableDiffs.Should().HaveCount(1);
-        diff.TableDiffs[0].TableName.Should().Be("payments");
+        diff.TableDiffs[0].TableName.Should().Be("billing.payments");
     }
 
     [Test]

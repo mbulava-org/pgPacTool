@@ -195,7 +195,7 @@ jobs:
           Expand-Archive -Path $dacPackage.FullName -DestinationPath $tempDir -Force
           
           $hasNpgquery = Test-Path "$tempDir/lib/net10.0/Npgquery.dll"
-          $nativeFiles = Get-ChildItem "$tempDir/runtimes" -Recurse -Filter "pg_query.*" -ErrorAction SilentlyContinue
+          $nativeFiles = Get-ChildItem "$tempDir/runtimes" -Recurse -Include "*pg_query*" -ErrorAction SilentlyContinue
           
           if ($hasNpgquery) {
             Write-Host "✅ Npgquery.dll is embedded" -ForegroundColor Green

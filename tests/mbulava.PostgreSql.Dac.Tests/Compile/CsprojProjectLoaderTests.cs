@@ -60,10 +60,12 @@ public class CsprojProjectLoaderTests
         var postgres16Loader = new CsprojProjectLoader(postgres16ProjectPath);
         var postgres17Loader = new CsprojProjectLoader(postgres17ProjectPath);
 
-        var postgres16Project = await postgres16Loader.LoadProjectAsync();
-        var postgres17Project = await postgres17Loader.LoadProjectAsync();
+        // PG16 parser cannot parse PG17-only JSON_TABLE syntax — this is an error, not a silent skip.
+        var act = async () => await postgres16Loader.LoadProjectAsync();
+        await act.Should().ThrowAsync<InvalidOperationException>(
+            because: "PG17-only SQL in a PG16-configured project is a parse error that must be surfaced");
 
-        postgres16Project.Schemas.Should().BeEmpty();
+        var postgres17Project = await postgres17Loader.LoadProjectAsync();
         postgres17Project.Schemas.Should().ContainSingle();
         postgres17Project.Schemas[0].Views.Should().ContainSingle(view => view.Name == "json_table_view");
     }

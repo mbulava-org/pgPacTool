@@ -47,29 +47,42 @@ jobs:
     - name: Build solution
       run: dotnet build --configuration ${{ env.CONFIGURATION }} --no-restore
 
-    - name: Run tests (exclude NpgqueryExtended.Tests due to Issue #37, skip LinuxContainer)
+    - name: Run ProjectExtract-Tests
+      id: projectextract_tests
+      continue-on-error: true
       run: |
-        # Run only ProjectExtract-Tests and Dac.Tests
-        # NpgqueryExtended.Tests crashes on Linux (Issue #37)
+        # Run ProjectExtract-Tests (integration tests with Testcontainers)
+        # NpgqueryExtended.Tests excluded due to Issue #37
         # LinuxContainer.Tests excluded via Category filter
-
         dotnet test tests/ProjectExtract-Tests/ProjectExtract-Tests.csproj \
           --configuration ${{ env.CONFIGURATION }} --no-build \
           --filter "Category!=LinuxContainer" \
           --verbosity normal --logger "trx;LogFileName=test-results-projectextract.trx"
 
+    - name: Run mbulava.PostgreSql.Dac.Tests
+      id: dac_tests
+      continue-on-error: true
+      run: |
         dotnet test tests/mbulava.PostgreSql.Dac.Tests/mbulava.PostgreSql.Dac.Tests.csproj \
           --configuration ${{ env.CONFIGURATION }} --no-build \
           --filter "Category!=LinuxContainer" \
           --verbosity normal --logger "trx;LogFileName=test-results-dac.trx"
-    
+
     - name: Upload test results
       if: always()
       uses: actions/upload-artifact@v4
       with:
         name: test-results
-        path: '**/test-results.trx'
+        path: '**/*.trx'
         retention-days: 30
+
+    - name: Fail if tests failed
+      if: steps.projectextract_tests.outcome == 'failure' || steps.dac_tests.outcome == 'failure'
+      run: |
+        echo "One or more test suites failed."
+        echo "ProjectExtract-Tests: ${{ steps.projectextract_tests.outcome }}"
+        echo "Dac.Tests: ${{ steps.dac_tests.outcome }}"
+        exit 1
 
   pack-and-publish:
     name: Pack and Publish to NuGet

@@ -295,7 +295,7 @@ public class CsprojProjectLoader
 
             return parsed;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not InvalidOperationException)
         {
             Console.WriteLine($"Error parsing {filePath}: {ex.Message}");
             return null;

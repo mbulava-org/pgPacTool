@@ -37,6 +37,7 @@ public class ConventionDiscoveryTests
             <Project Sdk="Microsoft.NET.Sdk">
               <PropertyGroup>
                 <TargetFramework>net10.0</TargetFramework>{dbNameElement}
+                <PostgresVersion>16</PostgresVersion>
               </PropertyGroup>
             </Project>
             """);

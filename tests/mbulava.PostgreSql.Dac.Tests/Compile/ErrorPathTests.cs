@@ -206,10 +206,11 @@ public class ErrorPathTests
             Path.Combine(extDir, "postgis.sql"),
             "CREATE EXTENSION IF NOT EXISTS postgis;");
 
-        // A view that conceptually depends on postgis (uses ST_AsText which is a postgis function)
+        // A standalone view that does NOT reference any other objects,
+        // so compilation succeeds independently of whether the extension is present.
         await File.WriteAllTextAsync(
             Path.Combine(viewsDir, "spatial_summary.sql"),
-            "CREATE VIEW spatial_summary AS SELECT id FROM locations;");
+            "CREATE VIEW spatial_summary AS SELECT 1 AS id;");
 
         var loader = new CsprojProjectLoader(Path.Combine(projectDir, "ExtensionProject.csproj"));
         var project = await loader.LoadProjectAsync();
@@ -218,12 +219,12 @@ public class ErrorPathTests
         // The deployment package will NOT contain a CREATE EXTENSION statement.
         //
         // This assertion documents the known gap. Change it when extension support is added.
-        var allObjects = project.Schemas.SelectMany(s =>
+        var schemaObjectNames = project.Schemas.SelectMany(s =>
             s.Tables.Select(t => t.Name)
             .Concat(s.Views.Select(v => v.Name))
             .Concat(s.Functions.Select(f => f.Name)));
 
-        allObjects.Should().NotContain(
+        schemaObjectNames.Should().NotContain(
             n => n.Contains("postgis", StringComparison.OrdinalIgnoreCase),
             because: "KNOWN GAP: CREATE EXTENSION statements are not yet modelled; " +
                      "extensions are silently dropped from the compiled project. " +

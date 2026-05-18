@@ -23,6 +23,7 @@ public class PrePostDeploymentScriptManager
 
     /// <summary>
     /// Loads a deployment script from the file system.
+    /// If the script already has content set, returns it unchanged.
     /// </summary>
     /// <param name="script">Script metadata with FilePath</param>
     /// <returns>Script with content loaded</returns>
@@ -30,6 +31,12 @@ public class PrePostDeploymentScriptManager
     {
         ArgumentNullException.ThrowIfNull(script);
         ArgumentException.ThrowIfNullOrWhiteSpace(script.FilePath);
+
+        // If content is already set (e.g., injected in tests), use it directly.
+        if (!string.IsNullOrWhiteSpace(script.Content))
+        {
+            return script;
+        }
 
         var fullPath = Path.IsPathRooted(script.FilePath)
             ? script.FilePath
@@ -74,6 +81,12 @@ public class PrePostDeploymentScriptManager
             if (string.IsNullOrWhiteSpace(script.FilePath))
             {
                 errors.Add($"Script has empty FilePath (Type: {script.Type}, Order: {script.Order})");
+                continue;
+            }
+
+            // Skip file existence check when content is already loaded
+            if (!string.IsNullOrWhiteSpace(script.Content))
+            {
                 continue;
             }
 

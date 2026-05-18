@@ -30,7 +30,7 @@ namespace mbulava.PostgreSql.Dac.Compare
             diff.PrivilegeChanges = ComparePrivileges(source.Privileges, target.Privileges);
 
             // Compare tables
-            diff.TableDiffs = CompareTables(source.Tables, target.Tables);
+            diff.TableDiffs = CompareTables(source.Tables, target.Tables, source.Name);
 
             // Compare types
             diff.TypeDiffs = CompareTypes(source.Types, target.Types);
@@ -89,12 +89,13 @@ namespace mbulava.PostgreSql.Dac.Compare
             return diffs;
         }
 
-        private List<PgTableDiff> CompareTables(List<PgTable> sourceTables, List<PgTable> targetTables)
+        private List<PgTableDiff> CompareTables(List<PgTable> sourceTables, List<PgTable> targetTables, string schemaName = "public")
         {
             var diffs = new List<PgTableDiff>();
 
             foreach (var src in sourceTables)
             {
+                var qualifiedName = $"{schemaName}.{src.Name}";
                 var tgt = targetTables.FirstOrDefault(t => t.Name == src.Name);
                 if (tgt == null)
                 {
@@ -102,7 +103,7 @@ namespace mbulava.PostgreSql.Dac.Compare
                     // Only populate constraint/index diffs (not column diffs - columns are in CREATE TABLE)
                     diffs.Add(new PgTableDiff
                     {
-                        TableName = src.Name,
+                        TableName = qualifiedName,
                         DefinitionChanged = true,
                         SourceDefinition = src.Definition,
                         TargetDefinition = null,
@@ -114,7 +115,7 @@ namespace mbulava.PostgreSql.Dac.Compare
                     continue;
                 }
 
-                var tableDiff = new PgTableDiff { TableName = src.Name };
+                var tableDiff = new PgTableDiff { TableName = qualifiedName };
 
                 // Owner change
                 if (HasExplicitOwner(src.Owner) && src.Owner != tgt.Owner)

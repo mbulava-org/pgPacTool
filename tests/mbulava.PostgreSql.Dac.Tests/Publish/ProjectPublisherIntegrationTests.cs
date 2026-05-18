@@ -148,7 +148,9 @@ public class ProjectPublisherIntegrationTests
                         new PgTable
                         {
                             Name = tableName,
-                            Definition = $"CREATE TABLE {schemaName}.{tableName} (id SERIAL PRIMARY KEY, name TEXT NOT NULL);",
+                            // Use INTEGER (not SERIAL) to avoid auto-generated sequence defaults
+                            // that would look like a schema change on second publish.
+                            Definition = $"CREATE TABLE {schemaName}.{tableName} (id INTEGER NOT NULL, name TEXT NOT NULL);",
                             Owner = "postgres",
                             Columns = new List<PgColumn>
                             {

@@ -1,5 +1,6 @@
 using Xunit;
 using Npgquery;
+using Npgquery.Native;
 
 namespace NpgqueryExtended.Tests;
 
@@ -18,7 +19,11 @@ namespace NpgqueryExtended.Tests;
 /// 1. Force all test classes that use the <c>NativeLibrary</c> collection into the same
 ///    xUnit collection, which prevents concurrent teardown of test classes that share
 ///    native state.
-/// 2. Provide a deterministic join point if future teardown logic is needed.
+/// 2. Call <see cref="NativeMethods.ClearDelegateCache"/> before xUnit's own teardown
+///    so that managed delegates wrapping native function pointers are collected while the
+///    CLR is fully healthy, eliminating the finalizer-race that crashes the test host
+///    (DEV-78).
+/// 3. Provide a deterministic join point if future teardown logic is needed.
 ///
 /// Pattern mirrors the fix applied to mbulava.PostgreSql.Dac.Tests in DEV-49.
 /// </summary>
@@ -28,11 +33,16 @@ public sealed class NativeLibraryCleanupFixture : IAsyncLifetime
 
     public Task DisposeAsync()
     {
-        // Intentionally do NOT call NativeLibraryLoader.UnloadAll() here.
-        // Freeing native handles during xUnit teardown is unsafe: the .NET runtime
-        // may still have finalizers or background threads that call into those handles
-        // after Free(), causing a native access violation / process crash.
-        // The OS will reclaim all native library memory when the test process exits.
+        // Clear all cached native-function delegates so the GC can collect them
+        // NOW, while the CLR is still fully healthy, instead of during the hazardous
+        // process-exit window where the finalizer thread can fault on a partially
+        // unmapped native library.  This is the primary fix for the post-test-run
+        // "Test host process crashed" abort.  See DEV-78.
+        //
+        // We do NOT call NativeLibraryLoader.UnloadAll() here.  Freeing native handles
+        // during xUnit teardown is unsafe for the same reason: background threads or
+        // finalizers may still call into those handles after Free().
+        NativeMethods.ClearDelegateCache();
         return Task.CompletedTask;
     }
 }
@@ -47,3 +57,4 @@ public sealed class NativeLibraryCollection : ICollectionFixture<NativeLibraryCl
     /// <summary>Name used in <c>[Collection]</c> attributes on test classes.</summary>
     public const string Name = "NativeLibrary";
 }
+

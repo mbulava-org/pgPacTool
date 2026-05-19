@@ -385,7 +385,7 @@ public class NugetPackageValidationTests : IDisposable
         Assert.True(File.Exists(packageOutputPath), $"Expected quick start compile output at {packageOutputPath}");
     }
 
-    [Fact]
+    [FactRequiresDocker]
     public async Task GlobalToolPackage_ReadmeExtractExample_CanExtractAndBuildProject()
     {
         var sdkPackagePath = await BuildPackage("MSBuild.Sdk.PostgreSql");

@@ -9,6 +9,7 @@ namespace NpgqueryExtended.Tests;
 /// Verifies that version-specific PostgreSQL features are properly isolated
 /// and that using PG17 features in PG16 (and vice versa) behaves correctly
 /// </summary>
+[Collection(NativeLibraryCollection.Name)]
 public class VersionIsolationVerificationTests
 {
     private readonly ITestOutputHelper _output;

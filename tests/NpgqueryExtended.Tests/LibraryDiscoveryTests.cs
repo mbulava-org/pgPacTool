@@ -7,6 +7,7 @@ namespace NpgqueryExtended.Tests;
 /// <summary>
 /// Tests to diagnose native library discovery and path issues
 /// </summary>
+[Collection(NativeLibraryCollection.Name)]
 public class LibraryDiscoveryTests
 {
     private readonly ITestOutputHelper _output;

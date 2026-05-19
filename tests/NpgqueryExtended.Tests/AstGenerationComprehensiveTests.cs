@@ -9,6 +9,7 @@ namespace NpgqueryExtended.Tests;
 /// Comprehensive tests for AST generation across all supported PostgreSQL versions
 /// Goal: Achieve >90% code coverage for Npgquery project
 /// </summary>
+[Collection(NativeLibraryCollection.Name)]
 public class AstGenerationComprehensiveTests
 {
     private readonly ITestOutputHelper _output;

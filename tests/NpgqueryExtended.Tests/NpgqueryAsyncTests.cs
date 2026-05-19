@@ -4,9 +4,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 using Npgquery;
+using NpgqueryExtended.Tests;
 
 namespace Npgquery.Tests;
 
+[Collection(NativeLibraryCollection.Name)]
 public class ParserAsyncTests : IDisposable
 {
     private readonly Parser _parser;

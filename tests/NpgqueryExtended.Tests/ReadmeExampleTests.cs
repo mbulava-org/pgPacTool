@@ -3,12 +3,14 @@ using System.Linq;
 using System.Threading.Tasks;
 using Xunit;
 using Npgquery;
+using NpgqueryExtended.Tests;
 
 namespace Npgquery.Tests;
 
 /// <summary>
 /// Tests that verify all examples from the README.md work correctly
 /// </summary>
+[Collection(NativeLibraryCollection.Name)]
 public class ReadmeExampleTests : IDisposable
 {
     private readonly Parser _parser;

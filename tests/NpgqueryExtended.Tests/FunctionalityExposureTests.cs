@@ -9,6 +9,7 @@ namespace NpgqueryExtended.Tests;
 /// Verifies that all native library functionality is properly exposed through the Parser API
 /// for multi-version PostgreSQL support
 /// </summary>
+[Collection(NativeLibraryCollection.Name)]
 public class FunctionalityExposureTests
 {
     private readonly ITestOutputHelper _output;

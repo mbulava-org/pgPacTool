@@ -7,6 +7,7 @@ namespace NpgqueryExtended.Tests;
 /// <summary>
 /// Tests to verify PostgreSQL version compatibility and handle breaking changes between versions
 /// </summary>
+[Collection(NativeLibraryCollection.Name)]
 public class VersionCompatibilityTests
 {
     public static IReadOnlyList<PostgreSqlVersion> SupportedVersions => PostgreSqlVersionExtensions.GetSupportedVersions();

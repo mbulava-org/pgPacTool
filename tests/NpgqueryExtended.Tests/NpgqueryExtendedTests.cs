@@ -1,9 +1,11 @@
 using System;
 using Xunit;
 using Npgquery;
+using NpgqueryExtended.Tests;
 
 namespace Npgquery.Tests;
 
+[Collection(NativeLibraryCollection.Name)]
 public class ParserExtendedTests : IDisposable
 {
     private readonly Parser _parser;

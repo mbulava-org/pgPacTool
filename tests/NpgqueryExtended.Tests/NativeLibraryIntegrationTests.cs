@@ -8,6 +8,7 @@ namespace NpgqueryExtended.Tests;
 /// <summary>
 /// Integration tests to verify native library loading and functionality across all supported versions and platforms
 /// </summary>
+[Collection(NativeLibraryCollection.Name)]
 public class NativeLibraryIntegrationTests
 {
     private readonly ITestOutputHelper _output;

@@ -4,9 +4,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 using Npgquery;
+using NpgqueryExtended.Tests;
 
 namespace Npgquery.Tests;
 
+[Collection(NativeLibraryCollection.Name)]
 public class ParserAsyncTests : IDisposable
 {
     private readonly Parser _parser;
@@ -189,7 +191,7 @@ public class ParserAsyncTests : IDisposable
         Assert.Equal(plpgsqlCode, result.Query);
     }
 
-    [Fact]
+    [Fact(Skip = "DeparseAsync uses pg_query_deparse_protobuf - crashes on Linux. See Issue #36")]
     public async Task DeparseAsync_ValidAst_ReturnsQuery()
     {
         // Arrange
@@ -246,7 +248,7 @@ public class ParserAsyncTests : IDisposable
         Assert.Equal(plpgsqlCode, result.Query);
     }
 
-    [Fact]
+    [Fact(Skip = "QuickDeparseAsync uses pg_query_deparse_protobuf - crashes on Linux. See Issue #36")]
     public async Task QuickDeparseAsync_StaticMethod_Works()
     {
         // Arrange

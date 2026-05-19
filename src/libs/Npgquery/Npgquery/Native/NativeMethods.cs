@@ -667,5 +667,59 @@ internal static unsafe class NativeMethods
         }
     }
 
+    /// <summary>
+    /// Clears all cached native-function delegates so the GC can collect them before
+    /// process exit.  Must be called from a <see cref="AppDomain.ProcessExit"/> handler
+    /// while the CLR is still fully operational (i.e. before the finalizer thread races
+    /// with native-library unloading).
+    ///
+    /// Background: <see cref="Marshal.GetDelegateForFunctionPointer{TDelegate}"/> returns
+    /// a managed delegate that wraps a raw native function pointer.  These delegates live
+    /// in static <see cref="ConcurrentDictionary{K,V}"/> fields.  At process exit, the
+    /// CLR runs GC finalizers on every reachable object, including these delegates.  If
+    /// the native library has already been partially unmapped by that point the finalizer
+    /// thread faults, crashing the test host with "Test host process crashed".
+    ///
+    /// Clearing the dictionaries while the CLR is still healthy lets the GC collect those
+    /// delegates eagerly (before the hazardous shutdown window), so the finalizer thread
+    /// has nothing left to finalize when it eventually runs.
+    /// </summary>
+    internal static void ClearDelegateCache()
+    {
+        _parseFunctions.Clear();
+        _parseOptionsFunctions.Clear();
+        _normalizeFunctions.Clear();
+        _normalizeUtilityFunctions.Clear();
+        _fingerprintFunctions.Clear();
+        _deparseFunctions.Clear();
+        _deparseProtobufFunctions.Clear();
+        _splitParserFunctions.Clear();
+        _splitScannerFunctions.Clear();
+        _scanFunctions.Clear();
+        _parsePlpgsqlFunctions.Clear();
+        _parseProtobufFunctions.Clear();
+        _parseProtobufOptionsFunctions.Clear();
+        _isUtilityFunctions.Clear();
+        _summaryFunctions.Clear();
+
+        _freeParseResultFunctions.Clear();
+        _freeNormalizeResultFunctions.Clear();
+        _freeIsUtilityResultFunctions.Clear();
+        _freeSummaryParseResultFunctions.Clear();
+        _freeFingerprintResultFunctions.Clear();
+        _freeDeparseResultFunctions.Clear();
+        _freeSplitResultFunctions.Clear();
+        _freeScanResultFunctions.Clear();
+        _freePlpgsqlParseResultFunctions.Clear();
+        _freeProtobufParseResultFunctions.Clear();
+
+        // Do NOT force GC here. Explicitly collecting while native threads may still
+        // hold references to these delegates (e.g. Task.Run callbacks still in flight)
+        // can cause the finalizer thread to reclaim a delegate object whose underlying
+        // native function pointer is still on the call stack — producing a crash.
+        // The OS will reclaim all memory at process exit; we only need to drop the
+        // managed references so the GC can collect them at its own pace.
+    }
+
     #endregion
 }

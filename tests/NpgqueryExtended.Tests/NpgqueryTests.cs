@@ -1,11 +1,13 @@
 using System.Text.Json;
 using Google.Protobuf;
 using Npgquery;
+using NpgqueryExtended.Tests;
 using PgQuery;
 using Xunit;
 
 namespace Npgquery.Tests;
 
+[Collection(NativeLibraryCollection.Name)]
 public class ParserTests : IDisposable
 {
     private readonly Parser _parser;
@@ -176,6 +178,7 @@ public class ParserTests : IDisposable
     }
 }
 
+[Collection(NativeLibraryCollection.Name)]
 public class QueryUtilsTests
 {
     [Fact]

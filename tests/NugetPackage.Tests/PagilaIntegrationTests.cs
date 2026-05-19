@@ -41,7 +41,15 @@ public class PagilaIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        // Start PostgreSQL container (will throw if Docker is not available - this is intentional)
+        // Skip gracefully instead of failing hard when Docker is not available.
+        // Note: SkipIfUnavailable() throws Xunit.Sdk.SkipException which is only
+        // recognised as a dynamic skip when thrown from within a test method body,
+        // not from IAsyncLifetime.InitializeAsync.  We therefore set a flag here and
+        // let each [Fact] check it at the top of its body.
+        if (!DockerAvailability.IsAvailable)
+            return; // each test will call DockerAvailability.SkipIfUnavailable() and skip
+
+        // Start PostgreSQL container
         _output.WriteLine("🐳 Starting PostgreSQL container (requires Docker)...");
         _postgresContainer = new PostgreSqlBuilder("postgres:16")
             .WithDatabase("pagila")
@@ -57,9 +65,12 @@ public class PagilaIntegrationTests : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
-        _output.WriteLine("🧹 Stopping PostgreSQL container...");
-        await _postgresContainer.StopAsync();
-        await _postgresContainer.DisposeAsync();
+        if (_postgresContainer is not null)
+        {
+            _output.WriteLine("🧹 Stopping PostgreSQL container...");
+            await _postgresContainer.StopAsync();
+            await _postgresContainer.DisposeAsync();
+        }
 
         if (Directory.Exists(_testWorkspace))
         {
@@ -74,7 +85,7 @@ public class PagilaIntegrationTests : IAsyncLifetime
         }
     }
 
-    [Fact]
+    [FactRequiresDocker]
     public async Task PagilaDatabase_CanBeExtractedToMSBuildProject()
     {
         // Arrange: Deploy Pagila schema
@@ -103,7 +114,7 @@ public class PagilaIntegrationTests : IAsyncLifetime
         _output.WriteLine($"   Project content preview:\n{projectContent.Substring(0, Math.Min(500, projectContent.Length))}...");
     }
 
-    [Fact]
+    [FactRequiresDocker]
     public async Task PagilaDatabase_MSBuildProject_CanBeCompiled()
     {
         // Arrange: Deploy and extract to MSBuild project
@@ -131,7 +142,7 @@ public class PagilaIntegrationTests : IAsyncLifetime
         _output.WriteLine($"✅ Compiled successfully: {pgpacFile}");
     }
 
-    [Fact]
+    [FactRequiresDocker]
     public async Task PagilaDatabase_ExtractCompilePublish_RoundTripWorks()
     {
         // Arrange 1: Deploy Pagila schema to SOURCE database (pagila)

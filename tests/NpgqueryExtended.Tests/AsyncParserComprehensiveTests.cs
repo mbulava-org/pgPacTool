@@ -9,6 +9,7 @@ namespace NpgqueryExtended.Tests;
 /// Comprehensive tests for async parser functionality across all supported PostgreSQL versions
 /// Goal: Achieve coverage for NpgqueryAsync.cs extension methods
 /// </summary>
+[Collection(NativeLibraryCollection.Name)]
 public class AsyncParserComprehensiveTests
 {
     private readonly ITestOutputHelper _output;

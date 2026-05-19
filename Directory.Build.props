@@ -1,24 +1,14 @@
 <Project>
   <!-- Common properties for all projects in the solution -->
   
-  <PropertyGroup>
-    <!-- Code Coverage Settings -->
-    <CoverletOutput>./TestResults/</CoverletOutput>
-    <CollectCoverage>true</CollectCoverage>
-    <CoverletOutputFormat>cobertura</CoverletOutputFormat>
-    <ExcludeByFile>$(ExcludeByFile);**/obj/**/*.cs;**/Protos/*.cs</ExcludeByFile>
-    <ExcludeByAttribute>Obsolete;GeneratedCodeAttribute;CompilerGeneratedAttribute;ExcludeFromCodeCoverageAttribute</ExcludeByAttribute>
-  </PropertyGroup>
-
-  <!-- Common package references for testing (only when project is a test project) -->
-  <ItemGroup Condition="$(MSBuildProjectName.Contains('Tests'))">
-    <PackageReference Include="coverlet.collector" Version="6.0.2">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="coverlet.msbuild" Version="6.0.2">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
-    </PackageReference>
-  </ItemGroup>
+  <!--
+    Code coverage: use coverlet.collector (XPlat Code Coverage data collector) only.
+    coverlet.msbuild was removed because it instruments assemblies on disk, then
+    tries to restore the originals at process exit. When the native library
+    libpg_query is still mapped into the test host at that point, the copy of
+    Npgquery.dll fails with "file in use", crashing the host after all tests pass.
+    coverlet.collector is an in-process data collector and never modifies DLLs on
+    disk, so it is safe to use with projects that hold native library handles.
+    Each test .csproj already carries its own coverlet.collector reference.
+  -->
 </Project>

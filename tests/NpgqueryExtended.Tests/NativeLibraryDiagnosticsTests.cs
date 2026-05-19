@@ -7,6 +7,7 @@ namespace NpgqueryExtended.Tests;
 /// <summary>
 /// Tests for native library loading diagnostics
 /// </summary>
+[Collection(NativeLibraryCollection.Name)]
 public class NativeLibraryDiagnosticsTests
 {
     private readonly ITestOutputHelper _output;

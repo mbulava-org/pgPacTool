@@ -894,8 +894,9 @@ public class CsprojProjectLoader
 
             if (!result.IsSuccess)
             {
-                Console.WriteLine($"Warning: Failed to parse {fileName}: {result.Error}");
-                return;
+                throw new InvalidOperationException(
+                    $"Failed to parse SQL in project file '{fileName}': {result.Error}. " +
+                    "Fix the syntax error in the SQL file before loading the project.");
             }
 
             if (result.ParseTree == null)
@@ -913,6 +914,10 @@ public class CsprojProjectLoader
 
                 await ProcessStatementAsync(stmt, sql, fileName, schema, defaultSchema);
             }
+        }
+        catch (InvalidOperationException)
+        {
+            throw;
         }
         catch (Exception ex)
         {

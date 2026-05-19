@@ -32,6 +32,10 @@
     <_PgPacToolVerboseArg Condition="'$(PgPacToolVerbose)' == 'true'"> --verbose</_PgPacToolVerboseArg>
     <_PgPacToolStdOutImportance Condition="'$(PgPacToolVerbose)' == 'true'">high</_PgPacToolStdOutImportance>
     <_PgPacToolStdOutImportance Condition="'$(_PgPacToolStdOutImportance)' == ''">normal</_PgPacToolStdOutImportance>
+    <!-- Use the dotnet host that invoked MSBuild (DOTNET_HOST_PATH is set by dotnet build/msbuild).
+         Fall back to the plain 'dotnet' command only if not set (e.g., when building from Visual Studio). -->
+    <_DotNetExe Condition="'$(DOTNET_HOST_PATH)' != ''">$(DOTNET_HOST_PATH)</_DotNetExe>
+    <_DotNetExe Condition="'$(_DotNetExe)' == ''">dotnet</_DotNetExe>
   </PropertyGroup>
 
   <!-- Set the target path for the database package -->
@@ -66,7 +70,7 @@
 
     <!-- Execute the packaged pgpac CLI so MSBuild and the global tool share the same compile flow -->
     <Exec
-      Command='dotnet exec --depsfile &quot;$(_PgPacToolCliDepsPath)&quot; --runtimeconfig &quot;$(_PgPacToolCliRuntimeConfigPath)&quot; &quot;$(_PgPacToolCliPath)&quot; compile --source-file &quot;$(MSBuildProjectFullPath)&quot; --output-path &quot;$(PgPacFilePath)&quot; --output-format &quot;$(OutputFormat)&quot;$(_PgPacToolSkipValidationArg)$(_PgPacToolVerboseArg)'
+      Command='&quot;$(_DotNetExe)&quot; exec --depsfile &quot;$(_PgPacToolCliDepsPath)&quot; --runtimeconfig &quot;$(_PgPacToolCliRuntimeConfigPath)&quot; &quot;$(_PgPacToolCliPath)&quot; compile --source-file &quot;$(MSBuildProjectFullPath)&quot; --output-path &quot;$(PgPacFilePath)&quot; --output-format &quot;$(OutputFormat)&quot;$(_PgPacToolSkipValidationArg)$(_PgPacToolVerboseArg)'
       ConsoleToMsBuild="true"
       StandardOutputImportance="$(_PgPacToolStdOutImportance)"
       StandardErrorImportance="high" />

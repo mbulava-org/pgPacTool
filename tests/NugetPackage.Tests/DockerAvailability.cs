@@ -1,3 +1,5 @@
+// No using needed - use Xunit.Sdk.SkipException directly
+
 namespace NugetPackage.Tests;
 
 /// <summary>
@@ -36,7 +38,7 @@ internal static class DockerAvailability
     }
 
     /// <summary>
-    /// Throws <see cref="Xunit.SkipException"/> if Docker is unavailable, causing the
+    /// Throws <see cref="Xunit.Sdk.SkipException"/> if Docker is unavailable, causing the
     /// xunit test (or the entire fixture when called from <c>IAsyncLifetime.InitializeAsync</c>)
     /// to be skipped rather than failing with <c>DockerUnavailableException</c>.
     /// </summary>
@@ -44,7 +46,7 @@ internal static class DockerAvailability
     {
         if (!IsAvailable)
         {
-            throw new Xunit.SkipException(
+            throw Xunit.Sdk.SkipException.ForSkip(
                 "Docker is not available in this environment. " +
                 "Install Docker Desktop (or enable DinD in CI) to run container-based tests.");
         }

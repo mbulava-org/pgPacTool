@@ -41,7 +41,10 @@ public class PagilaIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        // Start PostgreSQL container (will throw if Docker is not available - this is intentional)
+        // Skip gracefully instead of failing hard when Docker is not available.
+        DockerAvailability.SkipIfUnavailable();
+
+        // Start PostgreSQL container
         _output.WriteLine("🐳 Starting PostgreSQL container (requires Docker)...");
         _postgresContainer = new PostgreSqlBuilder("postgres:16")
             .WithDatabase("pagila")

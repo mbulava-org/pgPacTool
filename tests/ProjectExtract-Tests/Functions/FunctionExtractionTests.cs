@@ -45,7 +45,8 @@ public class FunctionExtractionTests
     public async Task OneTimeTeardown()
     {
         NpgsqlConnection.ClearAllPools();
-        await _pgContainer.DisposeAsync();
+        if (_pgContainer is not null)
+            await _pgContainer.DisposeAsync();
     }
 
     private async Task SeedTestDataAsync()

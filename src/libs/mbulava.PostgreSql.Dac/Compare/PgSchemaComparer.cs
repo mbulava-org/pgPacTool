@@ -20,8 +20,8 @@ namespace mbulava.PostgreSql.Dac.Compare
                 SchemaName = source.Name
             };
 
-            // Compare ownership
-            if (HasExplicitOwner(source.Owner) && source.Owner != target.Owner)
+            // Compare ownership (only when CompareOwners is enabled)
+            if (options.CompareOwners && HasExplicitOwner(source.Owner) && source.Owner != target.Owner)
             {
                 diff.OwnerChanged = (source.Owner, target.Owner);
             }
@@ -30,10 +30,10 @@ namespace mbulava.PostgreSql.Dac.Compare
             diff.PrivilegeChanges = ComparePrivileges(source.Privileges, target.Privileges);
 
             // Compare tables
-            diff.TableDiffs = CompareTables(source.Tables, target.Tables, source.Name);
+            diff.TableDiffs = CompareTables(source.Tables, target.Tables, options, source.Name);
 
             // Compare types
-            diff.TypeDiffs = CompareTypes(source.Types, target.Types);
+            diff.TypeDiffs = CompareTypes(source.Types, target.Types, options);
 
             // Compare sequences
             diff.SequenceDiffs = CompareSequences(source.Sequences, target.Sequences, options);
@@ -89,7 +89,7 @@ namespace mbulava.PostgreSql.Dac.Compare
             return diffs;
         }
 
-        private List<PgTableDiff> CompareTables(List<PgTable> sourceTables, List<PgTable> targetTables, string schemaName = "public")
+        private List<PgTableDiff> CompareTables(List<PgTable> sourceTables, List<PgTable> targetTables, CompareOptions options, string schemaName = "public")
         {
             var diffs = new List<PgTableDiff>();
 
@@ -118,7 +118,7 @@ namespace mbulava.PostgreSql.Dac.Compare
                 var tableDiff = new PgTableDiff { TableName = qualifiedName };
 
                 // Owner change
-                if (HasExplicitOwner(src.Owner) && src.Owner != tgt.Owner)
+                if (options.CompareOwners && HasExplicitOwner(src.Owner) && src.Owner != tgt.Owner)
                     tableDiff.OwnerChanged = (src.Owner, tgt.Owner);
 
                 // Definition change (compare SQL text)
@@ -151,7 +151,7 @@ namespace mbulava.PostgreSql.Dac.Compare
             return diffs;
         }
 
-        private List<PgTypeDiff> CompareTypes(List<PgType> sourceTypes, List<PgType> targetTypes)
+        private List<PgTypeDiff> CompareTypes(List<PgType> sourceTypes, List<PgType> targetTypes, CompareOptions options)
         {
             var diffs = new List<PgTypeDiff>();
 
@@ -182,7 +182,7 @@ namespace mbulava.PostgreSql.Dac.Compare
                 }
 
                 // Owner change
-                if (HasExplicitOwner(src.Owner) && src.Owner != tgt.Owner)
+                if (options.CompareOwners && HasExplicitOwner(src.Owner) && src.Owner != tgt.Owner)
                     typeDiff.OwnerChanged = (src.Owner, tgt.Owner);
 
                 // Definition change (compare SQL text)

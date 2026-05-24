@@ -695,4 +695,83 @@ public class PgSchemaComparerTests
         diff.OwnerChanged!.Value.SourceOwner.Should().Be("postgres");
         diff.OwnerChanged!.Value.TargetOwner.Should().Be("report_admin");
     }
+
+    // ── CompareOwners=false ───────────────────────────────────────────────────
+
+    [Test]
+    public void Compare_CompareOwnersFalse_DoesNotDetectSchemaOwnerChange()
+    {
+        // Arrange
+        _options = new CompareOptions { CompareOwners = false };
+        var source = new PgSchema { Name = "public", Owner = "postgres" };
+        var target = new PgSchema { Name = "public", Owner = "newowner" };
+
+        // Act
+        var diff = _comparer.Compare(source, target, _options);
+
+        // Assert: owner change must be ignored when CompareOwners=false
+        diff.OwnerChanged.Should().BeNull();
+    }
+
+    [Test]
+    public void Compare_CompareOwnersFalse_DoesNotDetectTableOwnerChange()
+    {
+        // Arrange
+        _options = new CompareOptions { CompareOwners = false };
+        var source = new PgSchema
+        {
+            Name = "public",
+            Owner = "postgres",
+            Tables = new()
+            {
+                new PgTable { Name = "users", Owner = "postgres" }
+            }
+        };
+        var target = new PgSchema
+        {
+            Name = "public",
+            Owner = "postgres",
+            Tables = new()
+            {
+                new PgTable { Name = "users", Owner = "newowner" }
+            }
+        };
+
+        // Act
+        var diff = _comparer.Compare(source, target, _options);
+
+        // Assert: table owner change must be ignored when CompareOwners=false
+        diff.TableDiffs.Should().BeEmpty();
+    }
+
+    [Test]
+    public void Compare_CompareOwnersFalse_DoesNotDetectTypeOwnerChange()
+    {
+        // Arrange
+        _options = new CompareOptions { CompareOwners = false };
+        var source = new PgSchema
+        {
+            Name = "public",
+            Owner = "postgres",
+            Types = new()
+            {
+                new PgType { Name = "my_type", Kind = PgTypeKind.Composite, Owner = "postgres" }
+            }
+        };
+        var target = new PgSchema
+        {
+            Name = "public",
+            Owner = "postgres",
+            Types = new()
+            {
+                new PgType { Name = "my_type", Kind = PgTypeKind.Composite, Owner = "newowner" }
+            }
+        };
+
+        // Act
+        var diff = _comparer.Compare(source, target, _options);
+
+        // Assert: type owner change must be ignored when CompareOwners=false
+        diff.TypeDiffs.Should().BeEmpty();
+    }
 }

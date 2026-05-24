@@ -283,13 +283,21 @@ public static class AstSqlGenerator
             if (!firstObj.TryGetProperty("List", out var list) || !list.TryGetProperty("items", out var items))
                 return null;
 
-            var (schema, name) = ExtractQualifiedNameFromList(items);
-
-            var objType = removeType?.Replace("OBJECT_", "") ?? "TABLE";
             var ifExists = missingOk ? "IF EXISTS " : "";
             var cascade = behavior == "DROP_CASCADE" ? " CASCADE" : "";
 
-            return $"DROP {objType} {ifExists}{QuoteIdent(schema)}.{QuoteIdent(name)}{cascade};";
+            // OBJECT_TRIGGER has a 3-part list: [schema, tableName, triggerName]
+            // DROP TRIGGER syntax is: DROP TRIGGER [IF EXISTS] triggerName ON schema.tableName [CASCADE|RESTRICT]
+            if (removeType == "OBJECT_TRIGGER")
+            {
+                var (schema, tableName, triggerName) = ExtractTriggerPartsFromList(items);
+                return $"DROP TRIGGER {ifExists}{QuoteIdent(triggerName)} ON {QuoteIdent(schema)}.{QuoteIdent(tableName)}{cascade};";
+            }
+
+            var (schemaName, objName) = ExtractQualifiedNameFromList(items);
+            var objType = removeType?.Replace("OBJECT_", "") ?? "TABLE";
+
+            return $"DROP {objType} {ifExists}{QuoteIdent(schemaName)}.{QuoteIdent(objName)}{cascade};";
         }
         catch
         {
@@ -376,6 +384,29 @@ public static class AstSqlGenerator
         if (itemsList.Count == 0) return ("public", "unknown");
         if (itemsList.Count == 1) return ("public", itemsList[0]);
         return (itemsList[0], itemsList[1]);
+    }
+
+    /// <summary>
+    /// Extracts the three parts of a DROP TRIGGER list: schema, table name, and trigger name.
+    /// The AST for OBJECT_TRIGGER stores items as [schema, tableName, triggerName].
+    /// </summary>
+    private static (string schema, string tableName, string triggerName) ExtractTriggerPartsFromList(JsonElement items)
+    {
+        var itemsList = new List<string>();
+        foreach (var item in items.EnumerateArray())
+        {
+            if (item.TryGetProperty("String", out var str) && str.TryGetProperty("sval", out var sval))
+            {
+                var value = sval.GetString();
+                if (value != null)
+                    itemsList.Add(value);
+            }
+        }
+
+        if (itemsList.Count >= 3) return (itemsList[0], itemsList[1], itemsList[2]);
+        if (itemsList.Count == 2) return (itemsList[0], itemsList[1], "unknown");
+        if (itemsList.Count == 1) return ("public", itemsList[0], "unknown");
+        return ("public", "unknown", "unknown");
     }
 
     /// <summary>

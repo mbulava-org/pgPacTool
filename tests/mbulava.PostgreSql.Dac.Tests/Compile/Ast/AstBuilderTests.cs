@@ -140,12 +140,27 @@ public class AstBuilderTests
         // Act
         var sql = AstSqlGenerator.Generate(ast);
 
-        // Assert
+        // Assert - DROP TRIGGER must be idempotent: include IF EXISTS, trigger name, and ON schema.table
         Assert.That(sql.ToLower(), Does.Contain("drop trigger"));
-        // NOTE: libpg_query deparser has a limitation where it omits the trigger name in DROP TRIGGER
-        // The AST structure is correct (verified by Debug_DropTrigger_JSON_Structure test)
-        // but the deparser simplifies the output
-        Assert.That(sql.ToLower(), Does.Contain("public.users"));
+        Assert.That(sql.ToLower(), Does.Contain("if exists"));
+        Assert.That(sql.ToLower(), Does.Contain("audit_trigger"));
+        Assert.That(sql.ToLower(), Does.Contain("on public.users"));
+    }
+
+    [Test]
+    public void DropTrigger_WithoutIfExists_GeneratesValidSQL()
+    {
+        // Arrange
+        var ast = AstBuilder.DropTrigger("audit_trigger", "public", "users", ifExists: false);
+
+        // Act
+        var sql = AstSqlGenerator.Generate(ast);
+
+        // Assert - without ifExists flag, IF EXISTS should not be present
+        Assert.That(sql.ToLower(), Does.Contain("drop trigger"));
+        Assert.That(sql.ToLower(), Does.Not.Contain("if exists"));
+        Assert.That(sql.ToLower(), Does.Contain("audit_trigger"));
+        Assert.That(sql.ToLower(), Does.Contain("on public.users"));
     }
 
     [Test]

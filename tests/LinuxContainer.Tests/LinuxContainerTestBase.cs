@@ -54,8 +54,8 @@ public abstract class LinuxContainerTestBase
             var normalizedScript = scriptContent.Replace("\r\n", "\n").Replace("\r", "\n");
 
             // Create container
-            var container = new ContainerBuilder()
-                .WithImage("mcr.microsoft.com/dotnet/sdk:10.0")
+            // Use the constructor with the image parameter (replaces deprecated parameterless constructor + .WithImage())
+            var container = new ContainerBuilder("mcr.microsoft.com/dotnet/sdk:10.0")
                 .WithName($"pgpactool-linux-test-{name}-{Guid.NewGuid():N}"[..63]) // Docker name limit
                 .WithBindMount(solutionRoot, "/workspace")
                 .WithWorkingDirectory("/workspace")

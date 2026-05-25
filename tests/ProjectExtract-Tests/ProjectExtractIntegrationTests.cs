@@ -36,8 +36,11 @@ namespace ProjectExtract_Tests
         [OneTimeTearDown]
         public async Task Teardown()
         {
-            await _pgContainer.DisposeAsync();
-            Directory.Delete(_tempDir, recursive: true);
+            // Container may be null if Setup was skipped (e.g. Docker unavailable)
+            if (_pgContainer is not null)
+                await _pgContainer.DisposeAsync();
+            if (_tempDir is not null && Directory.Exists(_tempDir))
+                Directory.Delete(_tempDir, recursive: true);
         }
 
        

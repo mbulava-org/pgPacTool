@@ -3,7 +3,7 @@
 **Date:** 2026-03-18  
 **Component:** NpgqueryExtended.Tests / Native libpg_query  
 **Severity:** CRITICAL - Blocks CI/CD test execution  
-**Status:** 🔴 OPEN - Tests disabled in CI/CD as workaround  
+**Status:** ✅ RESOLVED - Tests re-enabled in CI/CD (DEV-308)  
 
 ---
 
@@ -392,5 +392,5 @@ Until then, the current workaround (excluding NpgqueryExtended.Tests) is accepta
 - Native Library Loader: `src/libs/Npgquery/Npgquery/Native/NativeLibraryLoader.cs`
 - Related: `docs/KNOWN_ISSUES_PROTOBUF.md` (Issue #36)
 
-**Last Updated:** 2026-03-18  
-**Status:** WORKAROUND ACTIVE - Tests disabled in CI/CD
+**Last Updated:** 2026-05-25  
+**Status:** ✅ RESOLVED - Tests re-enabled in CI/CD. Root cause was finalizer-race on delegate objects wrapping native function pointers; fixed via `NativeLibraryCleanupFixture.ClearDelegateCache()` at teardown + disabling test parallelisation.

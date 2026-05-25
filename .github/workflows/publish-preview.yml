@@ -52,7 +52,6 @@ jobs:
       continue-on-error: true
       run: |
         # Run ProjectExtract-Tests (integration tests with Testcontainers)
-        # NpgqueryExtended.Tests excluded due to Issue #37
         # LinuxContainer.Tests excluded via Category filter
         dotnet test tests/ProjectExtract-Tests/ProjectExtract-Tests.csproj \
           --configuration ${{ env.CONFIGURATION }} --no-build \
@@ -68,6 +67,18 @@ jobs:
           --filter "Category!=LinuxContainer" \
           --verbosity normal --logger "trx;LogFileName=test-results-dac.trx"
 
+    - name: Run NpgqueryExtended.Tests
+      id: npgquery_tests
+      continue-on-error: true
+      run: |
+        # Issue #37 resolved: NpgqueryExtended.Tests now runs stably on Linux.
+        # The fix uses NativeLibraryCleanupFixture (ClearDelegateCache on teardown)
+        # and disables test parallelisation (xunit.runner.json). Protobuf tests that
+        # crash on Linux are individually skipped via [Skip] attributes (Issue #36).
+        dotnet test tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj \
+          --configuration ${{ env.CONFIGURATION }} --no-build \
+          --verbosity normal --logger "trx;LogFileName=test-results-npgquery.trx"
+
     - name: Upload test results
       if: always()
       uses: actions/upload-artifact@v4
@@ -77,11 +88,12 @@ jobs:
         retention-days: 30
 
     - name: Fail if tests failed
-      if: steps.projectextract_tests.outcome == 'failure' || steps.dac_tests.outcome == 'failure'
+      if: steps.projectextract_tests.outcome == 'failure' || steps.dac_tests.outcome == 'failure' || steps.npgquery_tests.outcome == 'failure'
       run: |
         echo "One or more test suites failed."
         echo "ProjectExtract-Tests: ${{ steps.projectextract_tests.outcome }}"
         echo "Dac.Tests: ${{ steps.dac_tests.outcome }}"
+        echo "NpgqueryExtended.Tests: ${{ steps.npgquery_tests.outcome }}"
         exit 1
 
   pack-and-publish:

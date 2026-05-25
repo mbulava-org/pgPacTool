@@ -79,7 +79,7 @@ public class ReadmeExampleTests : IDisposable
         Assert.Equal(fp1.Fingerprint, fp2.Fingerprint);
     }
 
-    [Fact(Skip = "Deparse uses protobuf - broken on Linux. See Issue #36")]
+    [Fact]
     public void QueryDeparsing_ReadmeExample_Works()
     {
         // Example from README - Query Deparsing section
@@ -89,7 +89,7 @@ public class ReadmeExampleTests : IDisposable
         var parseResult = parser.Parse("SELECT * FROM users WHERE id = 1");
         if (parseResult.IsSuccess && parseResult.ParseTree is not null)
         {
-            var deparseResult = parser.Deparse(parseResult.ParseTree);
+            var deparseResult = parser.Deparse(parseResult);
             
             Assert.True(deparseResult.IsSuccess);
             Assert.NotNull(deparseResult.Query);
@@ -311,16 +311,16 @@ public class ReadmeExampleTests : IDisposable
         Assert.NotEmpty(fingerprintResult.Fingerprint);
     }
 
-    [Fact(Skip = "Deparse uses protobuf - broken on Linux. See Issue #36")]
+    [Fact]
     public void Deparse_ReadmeApiExample_Works()
     {
         // Example from README - API Reference Deparse section
         using var parser = new Parser();
-        var ast = parser.Parse("SELECT * FROM users WHERE id = 1").ParseTree;
+        var parseResult = parser.Parse("SELECT * FROM users WHERE id = 1");
 
-        if (ast is not null)
+        if (parseResult.IsSuccess)
         {
-            var deparseResult = parser.Deparse(ast);
+            var deparseResult = parser.Deparse(parseResult);
             Assert.True(deparseResult.IsSuccess);
             Assert.NotNull(deparseResult.Query);
         }
@@ -658,7 +658,7 @@ public class ReadmeExampleTests : IDisposable
         Assert.All(normalized, kvp => Assert.False(string.IsNullOrWhiteSpace(kvp.Value)));
     }
 
-    [Fact(Skip = "RoundTripTest uses QuickDeparse (protobuf) - broken on Linux. See Issue #36")]
+    [Fact]
     public void QueryUtils_RoundTripTest_ReadmeExample_Works()
     {
         // Example from README - RoundTripTest
@@ -673,16 +673,16 @@ public class ReadmeExampleTests : IDisposable
         }
     }
 
-    [Fact(Skip = "AstToSql uses QuickDeparse (protobuf) - broken on Linux. See Issue #36")]
+    [Fact]
     public void QueryUtils_AstToSql_ReadmeExample_Works()
     {
         // Example from README - AstToSql
         var query = "SELECT * FROM users";
         var parseResult = Parser.QuickParse(query);
         
-        if (parseResult.IsSuccess && parseResult.ParseTree is not null)
+        if (parseResult.IsSuccess)
         {
-            var sql = QueryUtils.AstToSql(parseResult.ParseTree);
+            var sql = QueryUtils.AstToSql(parseResult);
             Assert.NotNull(sql);
             Assert.Contains("SELECT", sql);
         }

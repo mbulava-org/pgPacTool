@@ -57,6 +57,20 @@ public static class ParserAsync
         Task.Run(() => parser.Deparse(parseTree), cancellationToken);
 
     /// <summary>
+    /// Asynchronously deparse a PostgreSQL parse result back to SQL
+    /// </summary>
+    public static Task<DeparseResult> DeparseAsync(this Parser parser, ParseResult parseResult,
+        CancellationToken cancellationToken = default) =>
+        Task.Run(() => parser.Deparse(parseResult), cancellationToken);
+
+    /// <summary>
+    /// Asynchronously deparse a SQL query string back to normalized SQL
+    /// </summary>
+    public static Task<DeparseResult> DeparseAsync(this Parser parser, string query,
+        CancellationToken cancellationToken = default) =>
+        Task.Run(() => parser.Deparse(query), cancellationToken);
+
+    /// <summary>
     /// Asynchronously split multiple PostgreSQL statements
     /// </summary>
     public static Task<SplitResult> SplitAsync(this Parser parser, string query, 
@@ -169,14 +183,31 @@ public static class ParserAsync
     /// <summary>
     /// Static async method for quick one-off deparsing
     /// </summary>
-    /// <param name="parseTree">The AST JSON to deparse</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Deparse result</returns>
     public static async Task<DeparseResult> QuickDeparseAsync(JsonDocument parseTree, 
         CancellationToken cancellationToken = default)
     {
         using var parser = new Parser();
         return await parser.DeparseAsync(parseTree, cancellationToken);
+    }
+
+    /// <summary>
+    /// Static async method for quick one-off deparsing from a ParseResult
+    /// </summary>
+    public static async Task<DeparseResult> QuickDeparseAsync(ParseResult parseResult,
+        CancellationToken cancellationToken = default)
+    {
+        using var parser = new Parser();
+        return await parser.DeparseAsync(parseResult, cancellationToken);
+    }
+
+    /// <summary>
+    /// Static async method for quick one-off deparsing from a SQL query string
+    /// </summary>
+    public static async Task<DeparseResult> QuickDeparseAsync(string query,
+        CancellationToken cancellationToken = default)
+    {
+        using var parser = new Parser();
+        return await parser.DeparseAsync(query, cancellationToken);
     }
 
     /// <summary>

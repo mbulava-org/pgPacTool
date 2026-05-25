@@ -191,7 +191,7 @@ public class ParserAsyncTests : IDisposable
         Assert.Equal(plpgsqlCode, result.Query);
     }
 
-    [Fact(Skip = "DeparseAsync uses pg_query_deparse_protobuf - crashes on Linux. See Issue #36")]
+    [Fact]
     public async Task DeparseAsync_ValidAst_ReturnsQuery()
     {
         // Arrange
@@ -199,7 +199,7 @@ public class ParserAsyncTests : IDisposable
         var parseResult = await _parser.ParseAsync(query);
 
         // Act
-        var deparseResult = await _parser.DeparseAsync(parseResult.ParseTree!);
+        var deparseResult = await _parser.DeparseAsync(parseResult);
 
         // Assert
         Assert.True(deparseResult.IsSuccess);
@@ -248,7 +248,7 @@ public class ParserAsyncTests : IDisposable
         Assert.Equal(plpgsqlCode, result.Query);
     }
 
-    [Fact(Skip = "QuickDeparseAsync uses pg_query_deparse_protobuf - crashes on Linux. See Issue #36")]
+    [Fact]
     public async Task QuickDeparseAsync_StaticMethod_Works()
     {
         // Arrange
@@ -256,7 +256,7 @@ public class ParserAsyncTests : IDisposable
         var parseResult = await ParserAsync.QuickParseAsync(query);
 
         // Act
-        var deparseResult = await ParserAsync.QuickDeparseAsync(parseResult.ParseTree!);
+        var deparseResult = await ParserAsync.QuickDeparseAsync(parseResult);
 
         // Assert
         Assert.True(deparseResult.IsSuccess);

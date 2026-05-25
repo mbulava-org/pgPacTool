@@ -262,7 +262,7 @@ public class QueryUtilsExtendedTests
         Assert.True(parseResult.IsSuccess);
         Assert.NotNull(parseResult.ParseTree);
 
-        var sql = QueryUtils.AstToSql(parseResult.ParseTree!);
+        var sql = QueryUtils.AstToSql(parseResult);
         Assert.NotNull(sql);
         Assert.NotEmpty(sql);
     }

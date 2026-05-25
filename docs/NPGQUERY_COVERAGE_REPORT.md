@@ -163,18 +163,14 @@ The actual code that runs on Windows and Linux is well-covered:
 
 ## ⚠️ Known Limitations
 
-### Skipped Tests (6 tests)
-All skipped tests are related to **Deparse** functionality:
-- ❌ Deparse_ValidAST_ReturnsSQL
-- ❌ Deparse_NullAST_ThrowsArgumentNullException
-- ❌ Deparse_DisposedParser_ThrowsObjectDisposedException
-- ❌ QuickDeparse_ValidAST_Works
-- ❌ QuickDeparseAsync_ValidAST_Works
-- ❌ DeparseAsync_ValidAST_ReturnsSQL
+### Skipped Tests (17 tests)
+All remaining skipped tests are related to **statement splitting** or combined split/deparse README samples:
+- `Split_*` and `QuickSplit_*` scenarios
+- README examples that also require `SplitAsync` / `QuickSplitAsync`
 
-**Reason**: These functions require protobuf functionality that may not be compiled into our native libraries. They cause access violations when called.
+**Reason**: `pg_query_split_with_parser` is not exported by the currently loaded native libraries on Linux (Issue #37).
 
-**Impact**: Medium - Deparse is a nice-to-have feature, not core functionality
+**Impact**: Medium - split helpers and split-based README samples remain unavailable until the native libraries expose the split entrypoint.
 
 ### Untested Files
 - **QueryUtils.cs** (0% coverage) - May be utility code that's not currently used

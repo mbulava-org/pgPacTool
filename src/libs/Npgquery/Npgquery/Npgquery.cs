@@ -335,50 +335,53 @@ public sealed class Parser : IDisposable
     }
 
     /// <summary>
-    /// Deparse a PostgreSQL AST back to SQL
+    /// Deparse a PostgreSQL AST back to SQL.
+    /// Note: This overload requires the original query string to round-trip through the native library.
+    /// Use <see cref="Deparse(ParseResult)"/> when a <see cref="ParseResult"/> is available.
     /// </summary>
     public DeparseResult Deparse(JsonDocument parseTree)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(Parser));
         if (parseTree is null) throw new ArgumentNullException(nameof(parseTree));
 
-        try
+        return new DeparseResult
         {
-            var json = parseTree.RootElement.GetRawText();
-            var protoParseResult = ProtobufHelper.ParseResultFromJson(json);
-            var protoBytes = protoParseResult.ToByteArray();
-            var protoStruct = NativeMethods.AllocPgQueryProtobuf(protoBytes);
+            Ast = parseTree.RootElement.ToString(),
+            Error = "Cannot deparse from a JsonDocument alone: the original SQL query string is required. Use Deparse(ParseResult) or Deparse(string query) instead."
+        };
+    }
 
-            try
-            {
-                var deparseResult = NativeMethods.pg_query_deparse_protobuf(protoStruct, _version);
-                try
-                {
-                    return new DeparseResult
-                    {
-                        Ast = parseTree.RootElement.ToString(),
-                        Query = NativeMethods.PtrToString(deparseResult.query),
-                        Error = ExtractError(deparseResult.error)
-                    };
-                }
-                finally
-                {
-                    NativeMethods.pg_query_free_deparse_result(deparseResult, _version);
-                }
-            }
-            finally
-            {
-                NativeMethods.FreePgQueryProtobuf(protoStruct);
-            }
-        }
-        catch (Exception ex)
+    /// <summary>
+    /// Deparse a PostgreSQL parse result back to SQL by re-parsing the original query via protobuf.
+    /// </summary>
+    public DeparseResult Deparse(ParseResult parseResult)
+    {
+        if (_disposed) throw new ObjectDisposedException(nameof(Parser));
+        if (parseResult is null) throw new ArgumentNullException(nameof(parseResult));
+        if (parseResult.Query is null)
+            return new DeparseResult { Error = "ParseResult.Query is null; cannot deparse." };
+
+        return Deparse(parseResult.Query);
+    }
+
+    /// <summary>
+    /// Deparse a PostgreSQL query by re-parsing it through protobuf format and then deparsing.
+    /// </summary>
+    public DeparseResult Deparse(string query)
+    {
+        if (_disposed) throw new ObjectDisposedException(nameof(Parser));
+        if (query is null) throw new ArgumentNullException(nameof(query));
+
+        var protobufResult = ParseProtobuf(query);
+        if (protobufResult.IsError || protobufResult.ProtobufData == null)
         {
             return new DeparseResult
             {
-                Ast = parseTree.RootElement.ToString(),
-                Error = $"Native library error: {ex.Message}"
+                Error = protobufResult.Error ?? "Failed to parse query into protobuf format."
             };
         }
+
+        return DeparseProtobuf(protobufResult);
     }
 
     /// <summary>
@@ -535,6 +538,12 @@ public sealed class Parser : IDisposable
 
     public static DeparseResult QuickDeparse(JsonDocument parseTree) => 
         ExecuteWithInstance(parser => parser.Deparse(parseTree));
+
+    public static DeparseResult QuickDeparse(ParseResult parseResult) =>
+        ExecuteWithInstance(parser => parser.Deparse(parseResult));
+
+    public static DeparseResult QuickDeparse(string query) =>
+        ExecuteWithInstance(parser => parser.Deparse(query));
 
     public static SplitResult QuickSplit(string query) => 
         ExecuteWithInstance(parser => parser.Split(query));

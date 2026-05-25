@@ -41,12 +41,23 @@ public static class NativeLibraryLoader
     }
 
     /// <summary>
-    /// Explicitly ensures the native library resolver is initialized
-    /// Called by ModuleInitializer to guarantee it runs before any P/Invoke
+    /// Explicitly ensures the native library resolver is initialized.
+    /// Called by ModuleInitializer to guarantee it runs before any P/Invoke.
     /// </summary>
     public static void EnsureInitialized()
     {
         InitializeDllImportResolver();
+    }
+
+    /// <summary>
+    /// Ensures the native library for the specified PostgreSQL version is loaded and ready.
+    /// Alias for <see cref="GetLibraryHandle"/> that returns void; suitable for warm-up calls.
+    /// </summary>
+    /// <param name="version">The PostgreSQL version to pre-load. Defaults to <see cref="PostgreSqlVersion.Postgres16"/>.</param>
+    public static void EnsureLoaded(PostgreSqlVersion version = PostgreSqlVersion.Postgres16)
+    {
+        EnsureInitialized();
+        GetLibraryHandle(version);
     }
 
     /// <summary>

@@ -333,6 +333,7 @@ public class AstBuilderTests
         
         // Assert
         Assert.That(sql.ToLower(), Does.Contain("drop constraint"));
+        Assert.That(sql.ToLower(), Does.Contain("if exists"));
         Assert.That(sql.ToLower(), Does.Contain("uk_email"));
     }
 

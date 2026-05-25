@@ -176,7 +176,7 @@ public static class AstSqlGenerator
                 "AT_SetDefault" => GenerateSetDefault(schema, table, alterCmd),
                 "AT_DropDefault" => $"ALTER TABLE {QuoteIdent(schema)}.{QuoteIdent(table)} ALTER COLUMN {QuoteIdent(name)} DROP DEFAULT;",
                 "AT_AddConstraint" => GenerateAddConstraint(schema, table, alterCmd),
-                "AT_DropConstraint" => $"ALTER TABLE {QuoteIdent(schema)}.{QuoteIdent(table)} DROP CONSTRAINT {QuoteIdent(name)};",
+                "AT_DropConstraint" => $"ALTER TABLE {QuoteIdent(schema)}.{QuoteIdent(table)} DROP CONSTRAINT {(alterCmd.TryGetProperty("missing_ok", out var mok) && mok.GetBoolean() ? "IF EXISTS " : "")}{QuoteIdent(name)};",
                 "AT_ChangeOwner" => GenerateChangeOwner(schema, table, alterCmd),
                 _ => null
             };

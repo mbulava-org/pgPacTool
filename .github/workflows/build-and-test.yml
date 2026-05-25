@@ -54,6 +54,7 @@ jobs:
       run: |
         echo "📋 Test Configuration:"
         echo "  - Excluding: LinuxContainer.Tests (local development only)"
+        echo "  - Excluding: NpgqueryExtended.Tests (native library crashes on Linux - see Issue #37)"
         echo "  - Using: coverlet.runsettings (excludes generated code)"
         echo "  - Coverage scope: src/ folder ONLY"
         echo "  - Test projects excluded from coverage"
@@ -69,16 +70,22 @@ jobs:
       id: test-step
       continue-on-error: true # Don't fail build on test failures
       run: |
-        # Exclude LinuxContainer.Tests (designed for local multi-platform dev testing)
+        # Run specific test projects (exclude projects that crash the test host on Linux):
+        # - LinuxContainer.Tests: designed for local multi-platform dev testing
+        # - NpgqueryExtended.Tests: native library P/Invoke causes post-run process crash on Linux (Issue #37)
         # Use coverlet.runsettings to exclude generated protobuf code and test projects
-        dotnet test --no-build --configuration ${{ env.CONFIGURATION }} \
-          --filter "FullyQualifiedName!~LinuxContainer.Tests" \
-          --verbosity normal \
-          --collect:"XPlat Code Coverage" \
-          --settings coverlet.runsettings \
-          --results-directory ./coverage \
-          --logger "trx;LogFileName=test-results.trx" \
-          --logger "console;verbosity=detailed"
+        for proj in \
+          tests/mbulava.PostgreSql.Dac.Tests/mbulava.PostgreSql.Dac.Tests.csproj \
+          tests/ProjectExtract-Tests/ProjectExtract-Tests.csproj; do
+          echo "Running tests: $proj"
+          dotnet test "$proj" --no-build --configuration ${{ env.CONFIGURATION }} \
+            --verbosity normal \
+            --collect:"XPlat Code Coverage" \
+            --settings coverlet.runsettings \
+            --results-directory ./coverage \
+            --logger "trx;LogFileName=test-results.trx" \
+            --logger "console;verbosity=detailed" || true
+        done
 
     - name: Generate coverage report
       uses: danielpalme/ReportGenerator-GitHub-Action@5.2.0

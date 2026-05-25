@@ -54,7 +54,8 @@ namespace ProjectExtract_Tests.Privileges
         {
             // Clear all connection pools before disposing container
             NpgsqlConnection.ClearAllPools();
-            await _pgContainer.DisposeAsync();
+            if (_pgContainer is not null)
+                await _pgContainer.DisposeAsync();
         }
 
         #region Test Data Seeding

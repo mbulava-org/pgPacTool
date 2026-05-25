@@ -68,7 +68,8 @@ namespace ProjectExtract_Tests.Integration
         {
             // Clear connection pools before disposing
             NpgsqlConnection.ClearAllPools();
-            await Container.DisposeAsync();
+            if (Container is not null)
+                await Container.DisposeAsync();
             TestContext.Out.WriteLine($"✓ Disposed {PostgreSqlVersion} container");
         }
 

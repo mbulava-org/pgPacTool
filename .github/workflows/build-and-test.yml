@@ -70,14 +70,31 @@ jobs:
       continue-on-error: true # Don't fail build on test failures
       run: |
         # Exclude LinuxContainer.Tests (designed for local multi-platform dev testing)
+        # Exclude NugetPackage.Tests from the solution-level run: those tests spawn child
+        # 'dotnet pack/install' processes internally, which conflicts with MSBuild node
+        # orchestration and causes MSB4166 "child node exited prematurely" crashes.
+        # NugetPackage.Tests is run in a dedicated step below instead.
         # Use coverlet.runsettings to exclude generated protobuf code and test projects
         dotnet test --no-build --configuration ${{ env.CONFIGURATION }} \
-          --filter "FullyQualifiedName!~LinuxContainer.Tests" \
+          --filter "FullyQualifiedName!~LinuxContainer.Tests&FullyQualifiedName!~NugetPackage.Tests" \
           --verbosity normal \
           --collect:"XPlat Code Coverage" \
           --settings coverlet.runsettings \
           --results-directory ./coverage \
           --logger "trx;LogFileName=test-results.trx" \
+          --logger "console;verbosity=detailed"
+
+    - name: Run NugetPackage.Tests (standalone)
+      id: nugetpackage-test-step
+      continue-on-error: true # Don't fail build on test failures
+      run: |
+        # NugetPackage.Tests must run outside the solution-level MSBuild orchestration
+        # because its tests spawn child dotnet processes (dotnet pack, dotnet tool install)
+        # that conflict with the parent MSBuild node pool and cause MSB4166 crashes.
+        dotnet test tests/NugetPackage.Tests/NugetPackage.Tests.csproj \
+          --no-build --configuration ${{ env.CONFIGURATION }} \
+          --verbosity normal \
+          --logger "trx;LogFileName=test-results-nugetpackage.trx" \
           --logger "console;verbosity=detailed"
 
     - name: Generate coverage report

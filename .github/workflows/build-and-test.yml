@@ -65,6 +65,17 @@ jobs:
         echo "Source projects (coverage measured):"
         find src -name "*.csproj" -type f | sed 's|src/||' | sed 's|/.*||' | sort -u
 
+    - name: Validate SQL generation consistency
+      # This step MUST pass — it guards against regressions in the AST-based SQL generator.
+      # SQL generation consistency is critical: broken generation produces wrong migration
+      # scripts at runtime, so we enforce these tests as a hard CI gate (no continue-on-error).
+      run: |
+        dotnet test tests/mbulava.PostgreSql.Dac.Tests/ \
+          --no-build --configuration ${{ env.CONFIGURATION }} \
+          --filter "Category=AstSqlGeneration" \
+          --verbosity normal \
+          --logger "console;verbosity=detailed"
+
     - name: Run tests with code coverage
       id: test-step
       continue-on-error: true # Don't fail build on test failures

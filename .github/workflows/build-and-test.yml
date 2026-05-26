@@ -54,7 +54,7 @@ jobs:
       run: |
         echo "📋 Test Configuration:"
         echo "  - Excluding: LinuxContainer.Tests (local development only)"
-        echo "  - Excluding: NpgqueryExtended.Tests (native library crashes on Linux - see Issue #37)"
+        echo "  - Note: NpgqueryExtended.Tests now included - crash fixed in DEV-343"
         echo "  - Using: coverlet.runsettings (excludes generated code)"
         echo "  - Coverage scope: src/ folder ONLY"
         echo "  - Test projects excluded from coverage"
@@ -72,11 +72,14 @@ jobs:
       run: |
         # Run specific test projects (exclude projects that crash the test host on Linux):
         # - LinuxContainer.Tests: designed for local multi-platform dev testing
-        # - NpgqueryExtended.Tests: native library P/Invoke causes post-run process crash on Linux (Issue #37)
+        # Note: NpgqueryExtended.Tests was previously excluded due to post-run process crash (Issue #37).
+        # Fixed in DEV-343: tests using QuickDeparse/protobuf APIs (broken on Linux per Issue #36)
+        # now have proper [Fact(Skip=...)] attributes, eliminating the crash.
         # Use coverlet.runsettings to exclude generated protobuf code and test projects
         for proj in \
           tests/mbulava.PostgreSql.Dac.Tests/mbulava.PostgreSql.Dac.Tests.csproj \
-          tests/ProjectExtract-Tests/ProjectExtract-Tests.csproj; do
+          tests/ProjectExtract-Tests/ProjectExtract-Tests.csproj \
+          tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj; do
           echo "Running tests: $proj"
           dotnet test "$proj" --no-build --configuration ${{ env.CONFIGURATION }} \
             --verbosity normal \

@@ -498,18 +498,34 @@ public static class AstSqlGenerator
                     sql += $" ({string.Join(", ", cols.Select(QuoteIdent))})";
                 }
             }
+            else if (conType == "CONSTR_CHECK")
+            {
+                sql += " CHECK";
+                // raw_check_expr is stored as a plain string by AstBuilder
+                if (constraint.TryGetProperty("raw_check_expr", out var rawExpr))
+                {
+                    sql += $" ({rawExpr.GetString()})";
+                }
+            }
             else if (conType == "CONSTR_FOREIGN")
             {
                 sql += " FOREIGN KEY";
-                if (constraint.TryGetProperty("pk_attrs", out var pkAttrs))
+                // fk_attrs are the local columns
+                if (constraint.TryGetProperty("fk_attrs", out var fkAttrs))
                 {
-                    var cols = ExtractStringList(pkAttrs);
+                    var cols = ExtractStringList(fkAttrs);
                     sql += $" ({string.Join(", ", cols.Select(QuoteIdent))})";
                 }
                 if (constraint.TryGetProperty("pktable", out var pkTable))
                 {
                     var (refSchema, refTable) = ExtractRelationName(pkTable);
                     sql += $" REFERENCES {QuoteIdent(refSchema)}.{QuoteIdent(refTable)}";
+                }
+                if (constraint.TryGetProperty("pk_attrs", out var pkAttrs))
+                {
+                    var cols = ExtractStringList(pkAttrs);
+                    if (cols.Count > 0)
+                        sql += $" ({string.Join(", ", cols.Select(QuoteIdent))})";
                 }
             }
             else if (conType == "CONSTR_UNIQUE")

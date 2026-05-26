@@ -698,14 +698,11 @@ public static class AstBuilder
 
     /// <summary>
     /// Creates an ALTER TABLE ADD CONSTRAINT statement AST.
-    /// Currently supports UNIQUE constraints. TODO: Add PRIMARY KEY, CHECK, FOREIGN KEY.
+    /// Currently supports UNIQUE, PRIMARY KEY, CHECK, FOREIGN KEY constraints.
     /// </summary>
     public static JsonElement AlterTableAddConstraint(string schema, string tableName, string constraintName, string constraintDefinition)
     {
         // Parse the constraint definition to determine type
-        // For now, handle UNIQUE constraints
-        // TODO: Expand to handle PRIMARY KEY, CHECK, FOREIGN KEY
-
         var constraintDef = ParseConstraintDefinition(constraintName, constraintDefinition);
 
         var stmt = new
@@ -817,9 +814,9 @@ public static class AstBuilder
     }
 
     /// <summary>
-    /// Parses constraint definition string to build constraint object.
-    /// Currently handles UNIQUE constraints.
-    /// </summary>
+     /// Parses constraint definition string to build constraint object.
+     /// Handles UNIQUE, PRIMARY KEY, CHECK, FOREIGN KEY constraints.
+     /// </summary>
     private static object ParseConstraintDefinition(string constraintName, string definition)
     {
         // Simple parser for constraint definitions
@@ -871,9 +868,90 @@ public static class AstBuilder
             }
         }
 
-        // For complex constraints, fall back to parsing
-        // TODO: Implement CHECK, FOREIGN KEY parsing
-        throw new NotSupportedException($"Constraint definition '{definition}' is not yet supported for pure AST building. Use parse-then-return for now.");
+        else if (defUpper.StartsWith("CHECK"))
+        {
+            // Extract the check expression: CHECK (expr)
+            var startParen = definition.IndexOf('(');
+            var endParen = definition.LastIndexOf(')');
+
+            if (startParen >= 0 && endParen > startParen)
+            {
+                var expr = definition.Substring(startParen + 1, endParen - startParen - 1).Trim();
+                return new
+                {
+                    contype = "CONSTR_CHECK",
+                    conname = constraintName,
+                    // Store the raw expression as a string for SQL generation
+                    raw_check_expr = expr
+                };
+            }
+        }
+        else if (defUpper.StartsWith("FOREIGN KEY"))
+        {
+            // FOREIGN KEY (col1, col2) REFERENCES schema.table(refcol1, refcol2)
+            var fkColsStart = definition.IndexOf('(');
+            var fkColsEnd = definition.IndexOf(')');
+
+            var refsKeyword = definition.IndexOf("REFERENCES", StringComparison.OrdinalIgnoreCase);
+            if (fkColsStart >= 0 && fkColsEnd > fkColsStart && refsKeyword > fkColsEnd)
+            {
+                var fkColsPart = definition.Substring(fkColsStart + 1, fkColsEnd - fkColsStart - 1);
+                var fkCols = fkColsPart.Split(',')
+                    .Select(c => c.Trim())
+                    .Where(c => !string.IsNullOrEmpty(c))
+                    .ToArray();
+
+                var refsPart = definition.Substring(refsKeyword + "REFERENCES".Length).Trim();
+                var refsTableEnd = refsPart.IndexOf('(');
+                var refsColsEnd = refsPart.LastIndexOf(')');
+
+                string refSchema = "public";
+                string refTable = refsPart;
+                string[] refCols = Array.Empty<string>();
+
+                if (refsTableEnd >= 0)
+                {
+                    var refTableFull = refsPart.Substring(0, refsTableEnd).Trim();
+                    var dotIndex = refTableFull.IndexOf('.');
+                    if (dotIndex >= 0)
+                    {
+                        refSchema = refTableFull.Substring(0, dotIndex).Trim();
+                        refTable = refTableFull.Substring(dotIndex + 1).Trim();
+                    }
+                    else
+                    {
+                        refTable = refTableFull;
+                    }
+
+                    if (refsColsEnd > refsTableEnd)
+                    {
+                        var refColsPart = refsPart.Substring(refsTableEnd + 1, refsColsEnd - refsTableEnd - 1);
+                        refCols = refColsPart.Split(',')
+                            .Select(c => c.Trim())
+                            .Where(c => !string.IsNullOrEmpty(c))
+                            .ToArray();
+                    }
+                }
+
+                return new
+                {
+                    contype = "CONSTR_FOREIGN",
+                    conname = constraintName,
+                    // Local columns (fk_attrs in AST)
+                    fk_attrs = fkCols.Select(col => new { String = new { sval = col } }).ToArray(),
+                    // Referenced table
+                    pktable = new
+                    {
+                        schemaname = refSchema,
+                        relname = refTable
+                    },
+                    // Referenced columns
+                    pk_attrs = refCols.Select(col => new { String = new { sval = col } }).ToArray()
+                };
+            }
+        }
+
+        throw new NotSupportedException($"Constraint definition '{definition}' is not yet supported for pure AST building. Supported types: UNIQUE, PRIMARY KEY, CHECK, FOREIGN KEY.");
     }
 
     /// <summary>

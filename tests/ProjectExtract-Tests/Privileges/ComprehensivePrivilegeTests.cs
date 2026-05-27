@@ -52,10 +52,12 @@ namespace ProjectExtract_Tests.Privileges
         [OneTimeTearDown]
         public async Task Teardown()
         {
+            // Container may be null if Setup was skipped (e.g. Docker unavailable)
+            if (_pgContainer is null) return;
+
             // Clear all connection pools before disposing container
             NpgsqlConnection.ClearAllPools();
-            if (_pgContainer is not null)
-                await _pgContainer.DisposeAsync();
+            await _pgContainer.DisposeAsync();
         }
 
         #region Test Data Seeding

@@ -312,9 +312,16 @@ public struct PgQueryProtobuf {
 
 /// <summary>
 /// Native protobuf parse result structure for libpg_query
+/// Must match the C struct:
+///   typedef struct {
+///     PgQueryProtobuf parse_tree;
+///     char* stderr_buffer;
+///     PgQueryError* error;
+///   } PgQueryProtobufParseResult;
 /// </summary>
 [StructLayout(LayoutKind.Sequential)]
 public struct PgQueryProtobufParseResult {
     public PgQueryProtobuf parse_tree;
+    public IntPtr stderr_buffer;
     public IntPtr error;
 }

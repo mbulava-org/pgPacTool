@@ -20,7 +20,7 @@ public class ParserExtendedTests : IDisposable
         _parser.Dispose();
     }
 
-    [Fact(Skip = "Deparse uses protobuf - broken on Linux. See Issue #36")]
+    [Fact]
     public void Deparse_ValidAst_ReturnsQuery()
     {
         // Arrange
@@ -28,7 +28,7 @@ public class ParserExtendedTests : IDisposable
         var parseResult = _parser.Parse(query);
         
         // Act
-        var deparseResult = _parser.Deparse(parseResult.ParseTree!);
+        var deparseResult = _parser.Deparse(parseResult);
 
         // Assert
         Assert.True(deparseResult.IsSuccess);
@@ -86,7 +86,7 @@ public class ParserExtendedTests : IDisposable
         Assert.Equal(plpgsqlCode, result.Query);
     }
 
-    [Fact(Skip = "QuickDeparse uses protobuf - broken on Linux. See Issue #36")]
+    [Fact]
     public void QuickDeparse_StaticMethod_Works()
     {
         // Arrange
@@ -94,7 +94,7 @@ public class ParserExtendedTests : IDisposable
         var parseResult = Parser.QuickParse(query);
 
         // Act
-        var deparseResult = Parser.QuickDeparse(parseResult.ParseTree!);
+        var deparseResult = Parser.QuickDeparse(parseResult);
 
         // Assert
         Assert.True(deparseResult.IsSuccess);
@@ -129,7 +129,7 @@ public class ParserExtendedTests : IDisposable
         Assert.NotNull(result.Tokens);
     }
 
-    [Fact(Skip = "RoundTripTest uses QuickDeparse (protobuf) - broken on Linux. See Issue #36")]
+    [Fact]
     public void RoundTripTest_ParseAndDeparse_ReturnsValidSql()
     {
         // Arrange
@@ -205,7 +205,7 @@ public class ParserExtendedTests : IDisposable
         Assert.True(count >= 3);
     }
 
-    [Fact(Skip = "AstToSql uses QuickDeparse (protobuf) - broken on Linux. See Issue #36")]
+    [Fact]
     public void AstToSql_ValidAst_ReturnsSql()
     {
         // Arrange
@@ -213,14 +213,14 @@ public class ParserExtendedTests : IDisposable
         var parseResult = Parser.QuickParse(query);
 
         // Act
-        var sql = QueryUtils.AstToSql(parseResult.ParseTree!);
+        var sql = QueryUtils.AstToSql(parseResult);
 
         // Assert
         Assert.NotNull(sql);
         Assert.Contains("SELECT", sql);
     }
 
-    [Theory(Skip = "Uses Deparse which depends on protobuf - broken on Linux. See Issue #36")]
+    [Theory]
     [InlineData("SELECT 1")]
     [InlineData("INSERT INTO test VALUES (1)")]
     [InlineData("UPDATE test SET col = 1")]
@@ -231,12 +231,9 @@ public class ParserExtendedTests : IDisposable
         var parseResult = _parser.Parse(query);
         Assert.True(parseResult.IsSuccess);
 
-        if (parseResult.ParseTree is not null)
-        {
-            var deparseResult = _parser.Deparse(parseResult.ParseTree);
-            // Deparse might not always succeed depending on libpg_query support
-            Assert.NotNull(deparseResult);
-        }
+        var deparseResult = _parser.Deparse(parseResult);
+        // Deparse might not always succeed depending on libpg_query support
+        Assert.NotNull(deparseResult);
 
         var scanResult = _parser.Scan(query);
         Assert.True(scanResult.IsSuccess);

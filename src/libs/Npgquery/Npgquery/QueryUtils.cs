@@ -126,11 +126,21 @@ public static class QueryUtils
     }
 
     /// <summary>
-    /// Convert AST back to SQL query
+    /// Convert AST back to SQL query. Requires a ParseResult to access the original query string.
     /// </summary>
-    public static string? AstToSql(JsonDocument parseTree)
+    public static string? AstToSql(ParseResult parseResult)
     {
-        var result = Parser.QuickDeparse(parseTree);
+        var result = Parser.QuickDeparse(parseResult);
+        return result.IsSuccess ? result.Query : null;
+    }
+
+    /// <summary>
+    /// Convert AST back to SQL query using a JsonDocument. 
+    /// Note: requires the original query to be passed separately since it is not stored in the JSON.
+    /// </summary>
+    public static string? AstToSql(JsonDocument parseTree, string originalQuery)
+    {
+        var result = Parser.QuickDeparse(originalQuery);
         return result.IsSuccess ? result.Query : null;
     }
 
@@ -143,7 +153,7 @@ public static class QueryUtils
         if (parseResult.IsError || parseResult.ParseTree is null)
             return (false, null);
 
-        var deparseResult = Parser.QuickDeparse(parseResult.ParseTree);
+        var deparseResult = Parser.QuickDeparse(parseResult);
         return deparseResult.IsError ? (false, null) : (true, deparseResult.Query);
     }
 

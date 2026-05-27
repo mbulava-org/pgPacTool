@@ -255,14 +255,14 @@ public class QueryUtilsExtendedTests
     // AstToSql
     // ──────────────────────────────────────────────
 
-    [Fact(Skip = "AstToSql uses QuickDeparse (protobuf) - broken on Linux. See Issue #36")]
+    [Fact]
     public void AstToSql_ValidParseTree_ReturnsQuery()
     {
         var parseResult = Parser.QuickParse("SELECT id FROM users");
         Assert.True(parseResult.IsSuccess);
         Assert.NotNull(parseResult.ParseTree);
 
-        var sql = QueryUtils.AstToSql(parseResult.ParseTree!);
+        var sql = QueryUtils.AstToSql(parseResult);
         Assert.NotNull(sql);
         Assert.NotEmpty(sql);
     }
@@ -271,7 +271,7 @@ public class QueryUtilsExtendedTests
     // RoundTripTest
     // ──────────────────────────────────────────────
 
-    [Fact(Skip = "RoundTripTest uses QuickDeparse (protobuf) - broken on Linux. See Issue #36")]
+    [Fact]
     public void RoundTripTest_ValidQuery_SucceedsWithNonNullQuery()
     {
         var (success, roundTrip) = QueryUtils.RoundTripTest("SELECT id FROM users");
@@ -279,7 +279,7 @@ public class QueryUtilsExtendedTests
         Assert.NotNull(roundTrip);
     }
 
-    [Fact(Skip = "RoundTripTest uses QuickDeparse (protobuf) - broken on Linux. See Issue #36")]
+    [Fact]
     public void RoundTripTest_InvalidQuery_ReturnsFalseAndNull()
     {
         var (success, roundTrip) = QueryUtils.RoundTripTest("NOT SQL !!!");

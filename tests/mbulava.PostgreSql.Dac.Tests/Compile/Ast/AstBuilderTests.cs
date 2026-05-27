@@ -513,4 +513,55 @@ public class AstBuilderTests
         Assert.That(parser.Parse(sql2).IsSuccess, Is.True);
         Assert.That(parser.Parse(sql3).IsSuccess, Is.True);
     }
+
+    [Test]
+    [Category("Unit")]
+    [Category("AstSqlGeneration")]
+    public void AlterTableAddConstraint_CheckConstraint_GeneratesValidSQL()
+    {
+        // Arrange
+        var ast = AstBuilder.AlterTableAddConstraint("public", "orders", "chk_total_positive", "CHECK (total > 0)");
+
+        // Act
+        var sql = AstSqlGenerator.Generate(ast);
+
+        // Assert
+        Assert.That(sql.ToLower(), Does.Contain("add constraint"));
+        Assert.That(sql, Does.Contain("chk_total_positive"));
+        Assert.That(sql.ToUpper(), Does.Contain("CHECK"));
+        Assert.That(sql, Does.Contain("total > 0"));
+    }
+
+    [Test]
+    [Category("Unit")]
+    [Category("AstSqlGeneration")]
+    public void AlterTableAddConstraint_ForeignKeyConstraint_GeneratesValidSQL()
+    {
+        // Arrange
+        var ast = AstBuilder.AlterTableAddConstraint(
+            "public", "orders", "fk_orders_customer",
+            "FOREIGN KEY (customer_id) REFERENCES public.customers(id)");
+
+        // Act
+        var sql = AstSqlGenerator.Generate(ast);
+
+        // Assert
+        Assert.That(sql.ToLower(), Does.Contain("add constraint"));
+        Assert.That(sql, Does.Contain("fk_orders_customer"));
+        Assert.That(sql.ToUpper(), Does.Contain("FOREIGN KEY"));
+        Assert.That(sql.ToUpper(), Does.Contain("REFERENCES"));
+        Assert.That(sql.ToLower(), Does.Contain("customers"));
+        Assert.That(sql.ToLower(), Does.Contain("customer_id"));
+    }
+
+    [Test]
+    [Category("Unit")]
+    [Category("AstSqlGeneration")]
+    public void AlterTableAddConstraint_UnsupportedConstraint_ThrowsNotSupportedException()
+    {
+        // Act & Assert - constraint definitions that can't be parsed should throw
+        Assert.Throws<NotSupportedException>(() =>
+            AstBuilder.AlterTableAddConstraint("public", "orders", "bad_cons", "EXCLUDE (col1 WITH =)"));
+    }
 }
+

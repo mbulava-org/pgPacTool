@@ -95,7 +95,7 @@ public class AsyncParserComprehensiveTests
         _output.WriteLine($"✅ IsValidAsync works for {version.ToVersionString()}");
     }
 
-    [Theory(Skip = "DeparseAsync may not be available")]
+    [Theory]
     [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public async Task DeparseAsync_ValidAST_ReturnsSQL(PostgreSqlVersion version)
     {
@@ -104,7 +104,7 @@ public class AsyncParserComprehensiveTests
         Assert.True(parseResult.IsSuccess);
         Assert.NotNull(parseResult.ParseTree);
         
-        var result = await parser.DeparseAsync(parseResult.ParseTree);
+        var result = await parser.DeparseAsync(parseResult);
         Assert.True(result.IsSuccess);
     }
 
@@ -181,14 +181,14 @@ public class AsyncParserComprehensiveTests
         _output.WriteLine($"✅ QuickFingerprintAsync works");
     }
 
-    [Fact(Skip = "QuickDeparseAsync may not be available")]
+    [Fact]
     public async Task QuickDeparseAsync_ValidAST_Works()
     {
         var parseResult = await ParserAsync.QuickParseAsync("SELECT 1");
         Assert.True(parseResult.IsSuccess);
         Assert.NotNull(parseResult.ParseTree);
         
-        var result = await ParserAsync.QuickDeparseAsync(parseResult.ParseTree);
+        var result = await ParserAsync.QuickDeparseAsync(parseResult);
         Assert.True(result.IsSuccess);
     }
 

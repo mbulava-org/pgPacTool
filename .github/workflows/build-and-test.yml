@@ -54,7 +54,6 @@ jobs:
       run: |
         echo "📋 Test Configuration:"
         echo "  - Excluding: LinuxContainer.Tests (local development only)"
-        echo "  - Note: NpgqueryExtended.Tests now included - crash fixed in DEV-343"
         echo "  - Using: coverlet.runsettings (excludes generated code)"
         echo "  - Coverage scope: src/ folder ONLY"
         echo "  - Test projects excluded from coverage"
@@ -66,29 +65,48 @@ jobs:
         echo "Source projects (coverage measured):"
         find src -name "*.csproj" -type f | sed 's|src/||' | sed 's|/.*||' | sort -u
 
+    - name: Validate SQL generation consistency
+      # This step MUST pass — it guards against regressions in the AST-based SQL generator.
+      # SQL generation consistency is critical: broken generation produces wrong migration
+      # scripts at runtime, so we enforce these tests as a hard CI gate (no continue-on-error).
+      run: |
+        dotnet test tests/mbulava.PostgreSql.Dac.Tests/ \
+          --no-build --configuration ${{ env.CONFIGURATION }} \
+          --filter "Category=AstSqlGeneration" \
+          --verbosity normal \
+          --logger "console;verbosity=detailed"
+
     - name: Run tests with code coverage
       id: test-step
       continue-on-error: true # Don't fail build on test failures
       run: |
-        # Run specific test projects (exclude projects that crash the test host on Linux):
-        # - LinuxContainer.Tests: designed for local multi-platform dev testing
-        # Note: NpgqueryExtended.Tests was previously excluded due to post-run process crash (Issue #37).
-        # Fixed in DEV-343: tests using QuickDeparse/protobuf APIs (broken on Linux per Issue #36)
-        # now have proper [Fact(Skip=...)] attributes, eliminating the crash.
+        # Exclude LinuxContainer.Tests (designed for local multi-platform dev testing)
+        # Exclude NugetPackage.Tests from the solution-level run: those tests spawn child
+        # 'dotnet pack/install' processes internally, which conflicts with MSBuild node
+        # orchestration and causes MSB4166 "child node exited prematurely" crashes.
+        # NugetPackage.Tests is run in a dedicated step below instead.
         # Use coverlet.runsettings to exclude generated protobuf code and test projects
-        for proj in \
-          tests/mbulava.PostgreSql.Dac.Tests/mbulava.PostgreSql.Dac.Tests.csproj \
-          tests/ProjectExtract-Tests/ProjectExtract-Tests.csproj \
-          tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj; do
-          echo "Running tests: $proj"
-          dotnet test "$proj" --no-build --configuration ${{ env.CONFIGURATION }} \
-            --verbosity normal \
-            --collect:"XPlat Code Coverage" \
-            --settings coverlet.runsettings \
-            --results-directory ./coverage \
-            --logger "trx;LogFileName=test-results.trx" \
-            --logger "console;verbosity=detailed" || true
-        done
+        dotnet test --no-build --configuration ${{ env.CONFIGURATION }} \
+          --filter "FullyQualifiedName!~LinuxContainer.Tests&FullyQualifiedName!~NugetPackage.Tests" \
+          --verbosity normal \
+          --collect:"XPlat Code Coverage" \
+          --settings coverlet.runsettings \
+          --results-directory ./coverage \
+          --logger "trx;LogFileName=test-results.trx" \
+          --logger "console;verbosity=detailed"
+
+    - name: Run NugetPackage.Tests (standalone)
+      id: nugetpackage-test-step
+      continue-on-error: true # Don't fail build on test failures
+      run: |
+        # NugetPackage.Tests must run outside the solution-level MSBuild orchestration
+        # because its tests spawn child dotnet processes (dotnet pack, dotnet tool install)
+        # that conflict with the parent MSBuild node pool and cause MSB4166 crashes.
+        dotnet test tests/NugetPackage.Tests/NugetPackage.Tests.csproj \
+          --no-build --configuration ${{ env.CONFIGURATION }} \
+          --verbosity normal \
+          --logger "trx;LogFileName=test-results-nugetpackage.trx" \
+          --logger "console;verbosity=detailed"
 
     - name: Generate coverage report
       uses: danielpalme/ReportGenerator-GitHub-Action@5.2.0

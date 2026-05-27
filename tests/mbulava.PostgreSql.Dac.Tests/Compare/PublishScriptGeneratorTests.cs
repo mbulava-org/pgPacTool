@@ -529,4 +529,81 @@ public class PublishScriptGeneratorTests
         result.Should().Contain("CREATE SEQUENCE public.user_id_seq");
         result.Should().NotContain("ALTER SEQUENCE \"user_id_seq\"");
     }
+
+    [Test]
+    public void Generate_WithCheckConstraintAdd_IncludesCheckConstraint()
+    {
+        // Arrange - CHECK constraint missing in target should be added
+        var diff = new PgSchemaDiff
+        {
+            SchemaName = "public",
+            TableDiffs = new List<PgTableDiff>
+            {
+                new()
+                {
+                    TableName = "orders",
+                    ConstraintDiffs = new List<PgConstraintDiff>
+                    {
+                        new()
+                        {
+                            ConstraintName = "chk_total_positive",
+                            SourceDefinition = "CHECK (total > 0)",
+                            TargetDefinition = null
+                        }
+                    }
+                }
+            }
+        };
+
+        var options = new PublishOptions { IncludeComments = false };
+
+        // Act
+        var result = PublishScriptGenerator.Generate(diff, options);
+
+        // Assert
+        result.ToUpper().Should().Contain("ADD CONSTRAINT");
+        result.Should().Contain("chk_total_positive");
+        result.ToUpper().Should().Contain("CHECK");
+        result.Should().Contain("total > 0");
+    }
+
+    [Test]
+    public void Generate_WithForeignKeyConstraintAdd_IncludesForeignKey()
+    {
+        // Arrange - FOREIGN KEY constraint missing in target should be added
+        var diff = new PgSchemaDiff
+        {
+            SchemaName = "public",
+            TableDiffs = new List<PgTableDiff>
+            {
+                new()
+                {
+                    TableName = "orders",
+                    ConstraintDiffs = new List<PgConstraintDiff>
+                    {
+                        new()
+                        {
+                            ConstraintName = "fk_orders_customer",
+                            SourceDefinition = "FOREIGN KEY (customer_id) REFERENCES public.customers(id)",
+                            TargetDefinition = null
+                        }
+                    }
+                }
+            }
+        };
+
+        var options = new PublishOptions { IncludeComments = false };
+
+        // Act
+        var result = PublishScriptGenerator.Generate(diff, options);
+
+        // Assert
+        result.ToUpper().Should().Contain("ADD CONSTRAINT");
+        result.Should().Contain("fk_orders_customer");
+        result.ToUpper().Should().Contain("FOREIGN KEY");
+        result.ToUpper().Should().Contain("REFERENCES");
+        result.ToLower().Should().Contain("customer_id");
+        result.ToLower().Should().Contain("customers");
+    }
 }
+

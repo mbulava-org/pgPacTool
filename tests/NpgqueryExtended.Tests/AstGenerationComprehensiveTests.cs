@@ -234,7 +234,7 @@ $$ LANGUAGE plpgsql;";
     // Skip these tests if they cause crashes
     // ============================================
 
-    [Theory(Skip = "Deparse may not be available in all library builds")]
+    [Theory]
     [InlineData(PostgreSqlVersion.Postgres16)]
     [InlineData(PostgreSqlVersion.Postgres17)]
     public void Deparse_ValidAST_ReturnsSQL(PostgreSqlVersion version)
@@ -247,7 +247,7 @@ $$ LANGUAGE plpgsql;";
         Assert.NotNull(parseResult.ParseTree);
 
         // Then deparse back to SQL
-        var deparseResult = parser.Deparse(parseResult.ParseTree);
+        var deparseResult = parser.Deparse(parseResult);
         Assert.True(deparseResult.IsSuccess, $"Deparse failed: {deparseResult.Error}");
         Assert.NotNull(deparseResult.Query);
         Assert.Contains("SELECT", deparseResult.Query, StringComparison.OrdinalIgnoreCase);
@@ -256,21 +256,21 @@ $$ LANGUAGE plpgsql;";
         _output.WriteLine($"Deparsed: {deparseResult.Query}");
     }
 
-    [Fact(Skip = "Deparse may not be available")]
+    [Fact]
     public void Deparse_NullAST_ThrowsArgumentNullException()
     {
         using var parser = new Parser();
-        Assert.Throws<ArgumentNullException>(() => parser.Deparse(null!));
+        Assert.Throws<ArgumentNullException>(() => parser.Deparse((ParseResult)null!));
     }
 
-    [Fact(Skip = "Deparse may not be available")]
+    [Fact]
     public void Deparse_DisposedParser_ThrowsObjectDisposedException()
     {
         var parser = new Parser();
         var parseResult = parser.Parse("SELECT 1");
         parser.Dispose();
 
-        Assert.Throws<ObjectDisposedException>(() => parser.Deparse(parseResult.ParseTree!));
+        Assert.Throws<ObjectDisposedException>(() => parser.Deparse(parseResult));
     }
 
     // ============================================
@@ -419,14 +419,14 @@ $$ LANGUAGE plpgsql;";
         Assert.True(result.IsSuccess);
     }
 
-    [Fact(Skip = "QuickDeparse may not be available")]
+    [Fact]
     public void QuickDeparse_ValidAST_Works()
     {
         var parseResult = Parser.QuickParse("SELECT id FROM users");
         Assert.True(parseResult.IsSuccess);
         Assert.NotNull(parseResult.ParseTree);
 
-        var deparseResult = Parser.QuickDeparse(parseResult.ParseTree);
+        var deparseResult = Parser.QuickDeparse(parseResult);
         Assert.True(deparseResult.IsSuccess);
     }
 

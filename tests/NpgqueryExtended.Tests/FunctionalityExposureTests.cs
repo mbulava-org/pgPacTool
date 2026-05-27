@@ -157,7 +157,7 @@ $$ LANGUAGE plpgsql;";
         _output.WriteLine($"✅ ParseProtobuf() works on {version.ToVersionString()}");
     }
 
-    [Theory(Skip = "Deparse uses protobuf internally - broken on Linux. See Issue #36")]
+    [Theory]
     [MemberData(nameof(PostgreSqlVersionTestData.AvailableVersions), MemberType = typeof(PostgreSqlVersionTestData))]
     public void Parser_ExposesDeparseMethod(PostgreSqlVersion version)
     {
@@ -169,7 +169,7 @@ $$ LANGUAGE plpgsql;";
         Assert.NotNull(parseResult.ParseTree);
         
         // Then deparse
-        var deparseResult = parser.Deparse(parseResult.ParseTree);
+        var deparseResult = parser.Deparse(parseResult);
         Assert.True(deparseResult.IsSuccess);
         Assert.NotNull(deparseResult.Query);
         _output.WriteLine($"✅ Deparse() works on {version.ToVersionString()}");
@@ -310,19 +310,16 @@ $$ LANGUAGE plpgsql;";
         _output.WriteLine("✅ QuickScanWithProtobuf() static method works");
     }
 
-    [Fact(Skip = "QuickDeparse uses protobuf - broken on Linux. See Issue #36")]
+    [Fact]
     public void StaticMethods_QuickDeparse_Works()
     {
         var parseResult = Parser.QuickParse("SELECT id FROM users");
         Assert.True(parseResult.IsSuccess);
         Assert.NotNull(parseResult.ParseTree);
 
-        if (parseResult.ParseTree != null)
-        {
-            var deparseResult = Parser.QuickDeparse(parseResult.ParseTree);
-            Assert.True(deparseResult.IsSuccess);
-            _output.WriteLine("✅ QuickDeparse() static method works");
-        }
+        var deparseResult = Parser.QuickDeparse(parseResult);
+        Assert.True(deparseResult.IsSuccess);
+        _output.WriteLine("✅ QuickDeparse() static method works");
     }
 
     [Fact]

@@ -66,10 +66,12 @@ namespace ProjectExtract_Tests.Integration
         [OneTimeTearDown]
         public async Task BaseTeardown()
         {
+            // Container may be null if BaseSetup was skipped (e.g. Docker unavailable)
+            if (Container is null) return;
+
             // Clear connection pools before disposing
             NpgsqlConnection.ClearAllPools();
-            if (Container is not null)
-                await Container.DisposeAsync();
+            await Container.DisposeAsync();
             TestContext.Out.WriteLine($"✓ Disposed {PostgreSqlVersion} container");
         }
 

@@ -65,6 +65,54 @@ jobs:
         echo "Source projects (coverage measured):"
         find src -name "*.csproj" -type f | sed 's|src/||' | sed 's|/.*||' | sort -u
 
+    - name: Verify native library loading
+      # This step MUST pass — it confirms libpg_query .so files are present and loadable
+      # in the linux-x64 CI environment. Failures here indicate missing native binaries
+      # or an incompatible glibc/platform, and will block all parser-dependent tests.
+      run: |
+        echo "=== Native Library Pre-flight Check ==="
+        echo "Platform: $(uname -a)"
+        echo "Architecture: $(uname -m)"
+        echo ""
+
+        # 1. Verify .so files exist in the expected runtimes/ location
+        echo "--- Checking runtimes/linux-x64/native/ ---"
+        NATIVE_DIR="tests/NpgqueryExtended.Tests/bin/${{ env.CONFIGURATION }}/net10.0/runtimes/linux-x64/native"
+        for ver in 16 17 18; do
+          LIB="$NATIVE_DIR/libpg_query_${ver}.so"
+          if [ -f "$LIB" ]; then
+            echo "✅ Found: $LIB"
+            file "$LIB" || true
+          else
+            echo "❌ MISSING: $LIB"
+            echo "Contents of $NATIVE_DIR (if it exists):"
+            ls -la "$NATIVE_DIR" 2>/dev/null || echo "  (directory does not exist)"
+            exit 1
+          fi
+        done
+
+        # 2. Verify each .so is loadable (not corrupted, compatible glibc)
+        echo ""
+        echo "--- Checking library dependencies ---"
+        for ver in 16 17 18; do
+          LIB="$NATIVE_DIR/libpg_query_${ver}.so"
+          echo "ldd $LIB:"
+          ldd "$LIB" 2>&1 | sed 's/^/  /' || true
+        done
+
+        echo ""
+        echo "✅ Native library pre-flight check passed."
+
+    - name: Run native library integration tests
+      # Hard gate: if NativeLibraryIntegrationTests fail, the native .so files cannot
+      # be loaded by the .NET runtime. All subsequent parser tests would also fail.
+      run: |
+        dotnet test tests/NpgqueryExtended.Tests/ \
+          --no-build --configuration ${{ env.CONFIGURATION }} \
+          --filter "FullyQualifiedName~NativeLibraryIntegrationTests" \
+          --verbosity normal \
+          --logger "console;verbosity=detailed"
+
     - name: Validate SQL generation consistency
       # This step MUST pass — it guards against regressions in the AST-based SQL generator.
       # SQL generation consistency is critical: broken generation produces wrong migration

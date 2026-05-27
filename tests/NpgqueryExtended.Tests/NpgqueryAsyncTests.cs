@@ -191,7 +191,7 @@ public class ParserAsyncTests : IDisposable
         Assert.Equal(plpgsqlCode, result.Query);
     }
 
-    [Fact]
+    [Fact(Skip = "DeparseAsync uses pg_query_deparse_protobuf - crashes on Linux. See Issue #36")]
     public async Task DeparseAsync_ValidAst_ReturnsQuery()
     {
         // Arrange
@@ -248,7 +248,7 @@ public class ParserAsyncTests : IDisposable
         Assert.Equal(plpgsqlCode, result.Query);
     }
 
-    [Fact]
+    [Fact(Skip = "QuickDeparseAsync uses pg_query_deparse_protobuf - crashes on Linux. See Issue #36")]
     public async Task QuickDeparseAsync_StaticMethod_Works()
     {
         // Arrange

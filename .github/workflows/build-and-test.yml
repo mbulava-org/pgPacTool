@@ -153,6 +153,7 @@ jobs:
         dotnet test tests/NugetPackage.Tests/NugetPackage.Tests.csproj \
           --no-build --configuration ${{ env.CONFIGURATION }} \
           --verbosity normal \
+          --results-directory ./coverage \
           --logger "trx;LogFileName=test-results-nugetpackage.trx" \
           --logger "console;verbosity=detailed"
 

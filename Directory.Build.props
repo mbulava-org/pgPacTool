@@ -1,24 +1,23 @@
 <Project>
   <!-- Common properties for all projects in the solution -->
-  
+
+  <!-- Code coverage is collected via XPlat Code Coverage in CI using coverlet.collector.
+       CollectCoverage=true is intentionally NOT set here: that property enables the
+       coverlet.msbuild integration, which runs alongside the XPlat collector and causes
+       file-locking races on native DLLs (e.g. Npgquery.dll) when both mechanisms
+       instrument and restore the same files concurrently.
+       See: DEV-373 Investigate SQL Generation Edge Cases in CI -->
   <PropertyGroup>
-    <!-- Code Coverage Settings -->
-    <CoverletOutput>./TestResults/</CoverletOutput>
-    <CollectCoverage>true</CollectCoverage>
-    <CoverletOutputFormat>cobertura</CoverletOutputFormat>
-    <ExcludeByFile>$(ExcludeByFile);**/obj/**/*.cs;**/Protos/*.cs</ExcludeByFile>
-    <ExcludeByAttribute>Obsolete;GeneratedCodeAttribute;CompilerGeneratedAttribute;ExcludeFromCodeCoverageAttribute</ExcludeByAttribute>
+    <!-- coverlet.msbuild settings intentionally NOT active (CollectCoverage not set) -->
   </PropertyGroup>
 
-  <!-- Common package references for testing (only when project is a test project) -->
+  <!-- Common package references for testing (only when project is a test project).
+       Individual test projects should NOT also reference coverlet.collector separately;
+       that creates duplicate PackageReference warnings and version conflicts. -->
   <ItemGroup Condition="$(MSBuildProjectName.Contains('Tests'))">
     <PackageReference Include="coverlet.collector" Version="6.0.2">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="coverlet.msbuild" Version="6.0.2">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
   </ItemGroup>
 </Project>

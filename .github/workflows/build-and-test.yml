@@ -134,13 +134,17 @@ jobs:
         # orchestration and causes MSB4166 "child node exited prematurely" crashes.
         # NugetPackage.Tests is run in a dedicated step below instead.
         # Use coverlet.runsettings to exclude generated protobuf code and test projects
+        # Note: Do NOT specify LogFileName= for TRX logger — each test project writes its
+        # own TRX file into ./coverage and specifying a fixed name causes every project to
+        # overwrite the same file, leaving only the last project's results visible in the
+        # PR comment. Without LogFileName, dotnet test generates unique per-project names.
         dotnet test --no-build --configuration ${{ env.CONFIGURATION }} \
           --filter "FullyQualifiedName!~LinuxContainer.Tests&FullyQualifiedName!~NugetPackage.Tests" \
           --verbosity normal \
           --collect:"XPlat Code Coverage" \
           --settings coverlet.runsettings \
           --results-directory ./coverage \
-          --logger "trx;LogFileName=test-results.trx" \
+          --logger "trx" \
           --logger "console;verbosity=detailed"
 
     - name: Run NugetPackage.Tests (standalone)
@@ -273,8 +277,11 @@ jobs:
           } catch {}
 
           // Format test results
+          // Note: testStatus comes from continue-on-error step outcome, NOT from actual test pass/fail.
+          // A run can have testStatus=success but still have skipped or failed tests in the TRX data.
+          // Always show the actual counts so PR comments reflect reality.
           let testResultsSection = '';
-          if (testStatus === 'success') {
+          if (testStatus === 'success' && parseInt(failedTests) === 0 && parseInt(skippedTests) === 0) {
             testResultsSection = `✅ All ${totalTests} tests passed`;
           } else if (failedTests > 0) {
             testResultsSection = `⚠️ ${failedTests} test(s) failed, ${passedTests} passed, ${skippedTests} skipped`;

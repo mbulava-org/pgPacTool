@@ -98,6 +98,7 @@ public class CsprojProjectLoader
 
         // Phase 1: Parse all SQL files and extract object information from AST
         var parsedObjects = new List<ParsedSqlObject>();
+        var parseErrors = new List<string>();
         foreach (var sqlFile in sqlFiles)
         {
             var fullPath = Path.Combine(_projectDirectory, sqlFile);
@@ -108,11 +109,22 @@ public class CsprojProjectLoader
             }
 
             var sql = await File.ReadAllTextAsync(fullPath);
-            var parsed = await ParseAndClassifySqlFileAsync(sql, sqlFile);
+            var (parsed, parseError) = await ParseAndClassifySqlFileAsync(sql, sqlFile);
             if (parsed != null)
             {
                 parsedObjects.Add(parsed);
             }
+            else if (parseError != null)
+            {
+                parseErrors.Add(parseError);
+            }
+        }
+
+        // Surface parse errors to the caller rather than silently discarding broken files
+        if (parseErrors.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"Failed to parse {parseErrors.Count} SQL file(s):\n{string.Join("\n", parseErrors)}");
         }
 
         // Phase 2: Build dependency graph and order objects
@@ -143,19 +155,36 @@ public class CsprojProjectLoader
 
     /// <summary>
     /// Parses a SQL file and extracts object information from AST.
+    /// Returns (parsed, null) on success, (null, errorMessage) on parse failure, or (null, null) for unknown types.
     /// </summary>
-    private async Task<ParsedSqlObject?> ParseAndClassifySqlFileAsync(string sql, string filePath)
+    private async Task<(ParsedSqlObject? parsed, string? error)> ParseAndClassifySqlFileAsync(string sql, string filePath)
     {
         try
         {
             var result = _parser.Parse(sql);
             if (!result.IsSuccess || result.ParseTree == null)
             {
+                var errorMsg = $"{filePath}: {result.Error}";
                 Console.WriteLine($"Warning: Failed to parse {filePath}: {result.Error}");
-                return null;
+                return (null, errorMsg);
             }
 
             var astJson = result.ParseTree.RootElement.GetRawText();
+
+            // Extract the first statement JSON for type-specific deserialization.
+            // The parse tree is {"version":..., "stmts":[{"stmt": {...}, "stmt_len": N},...]}
+            // Type-specific deserialization needs only the inner stmt object.
+            string firstStmtJson = astJson;
+            if (result.ParseTree.RootElement.TryGetProperty("stmts", out var stmtsEl) &&
+                stmtsEl.GetArrayLength() > 0)
+            {
+                var firstWrapper = stmtsEl.EnumerateArray().First();
+                if (firstWrapper.TryGetProperty("stmt", out var firstStmt))
+                {
+                    firstStmtJson = firstStmt.GetRawText();
+                }
+            }
+
             var parsed = new ParsedSqlObject
             {
                 Sql = sql,
@@ -163,17 +192,21 @@ public class CsprojProjectLoader
                 AstJson = astJson
             };
 
+            // Extract statement-level JSON for each statement type.
+            // firstStmtJson is like {"CreateStmt": {...}} or {"CreateFunctionStmt": {...}} etc.
+            // We need to unwrap the inner object for type-specific deserialization.
+
             // Determine object type and extract schema/name from AST
             if (sql.Contains("CREATE SCHEMA", StringComparison.OrdinalIgnoreCase))
             {
-                var stmt = JsonSerializer.Deserialize<CreateSchemaStmt>(astJson);
+                var stmt = DeserializeStmt<CreateSchemaStmt>(firstStmtJson, "CreateSchemaStmt");
                 parsed.ObjectType = SqlObjectType.Schema;
                 parsed.SchemaName = stmt?.Schemaname ?? "public";
                 parsed.ObjectName = stmt?.Schemaname ?? "public";
             }
             else if (sql.Contains("CREATE TABLE", StringComparison.OrdinalIgnoreCase))
             {
-                var stmt = JsonSerializer.Deserialize<CreateStmt>(astJson);
+                var stmt = DeserializeStmt<CreateStmt>(firstStmtJson, "CreateStmt");
                 parsed.ObjectType = SqlObjectType.Table;
                 ExtractSchemaAndName(stmt?.Relation, out var schema, out var name);
                 parsed.SchemaName = schema ?? "public";
@@ -183,7 +216,7 @@ public class CsprojProjectLoader
             else if (sql.Contains("CREATE INDEX", StringComparison.OrdinalIgnoreCase) || 
                      sql.Contains("CREATE UNIQUE INDEX", StringComparison.OrdinalIgnoreCase))
             {
-                var stmt = JsonSerializer.Deserialize<IndexStmt>(astJson);
+                var stmt = DeserializeStmt<IndexStmt>(firstStmtJson, "IndexStmt");
                 parsed.ObjectType = SqlObjectType.Index;
                 ExtractSchemaAndName(stmt?.Relation, out var schema, out var name);
                 parsed.SchemaName = schema ?? "public";
@@ -194,7 +227,7 @@ public class CsprojProjectLoader
                      sql.Contains("CREATE OR REPLACE VIEW", StringComparison.OrdinalIgnoreCase) ||
                      sql.Contains("CREATE MATERIALIZED VIEW", StringComparison.OrdinalIgnoreCase))
             {
-                var stmt = JsonSerializer.Deserialize<ViewStmt>(astJson);
+                var stmt = DeserializeStmt<ViewStmt>(firstStmtJson, "ViewStmt");
                 parsed.ObjectType = SqlObjectType.View;
                 ExtractSchemaAndName(stmt?.View, out var schema, out var name);
                 parsed.SchemaName = schema ?? "public";
@@ -206,7 +239,7 @@ public class CsprojProjectLoader
                      sql.Contains("CREATE PROCEDURE", StringComparison.OrdinalIgnoreCase) ||
                      sql.Contains("CREATE OR REPLACE PROCEDURE", StringComparison.OrdinalIgnoreCase))
             {
-                var stmt = JsonSerializer.Deserialize<CreateFunctionStmt>(astJson);
+                var stmt = DeserializeStmt<CreateFunctionStmt>(firstStmtJson, "CreateFunctionStmt");
                 parsed.ObjectType = SqlObjectType.Function;
                 // Function name is in Funcname array
                 if (stmt?.Funcname != null && stmt.Funcname.Any())
@@ -222,19 +255,36 @@ public class CsprojProjectLoader
                         parsed.SchemaName = "public";
                     }
                 }
+                else
+                {
+                    parsed.SchemaName = "public";
+                    parsed.ObjectName = "unknown";
+                }
             }
             else if (sql.Contains("CREATE TYPE", StringComparison.OrdinalIgnoreCase))
             {
-                var stmt = JsonSerializer.Deserialize<CompositeTypeStmt>(astJson);
-                parsed.ObjectType = SqlObjectType.Type;
-                ExtractSchemaAndName(stmt?.Typevar, out var schema, out var name);
-                parsed.SchemaName = schema ?? "public";
-                parsed.ObjectName = name ?? "unknown";
-                parsed.Ast = stmt;
+                // Try CompositeTypeStmt first, then CreateEnumStmt
+                var compositeStmt = DeserializeStmt<CompositeTypeStmt>(firstStmtJson, "CompositeTypeStmt");
+                if (compositeStmt?.Typevar != null)
+                {
+                    parsed.ObjectType = SqlObjectType.Type;
+                    ExtractSchemaAndName(compositeStmt.Typevar, out var schema, out var name);
+                    parsed.SchemaName = schema ?? "public";
+                    parsed.ObjectName = name ?? "unknown";
+                    parsed.Ast = compositeStmt;
+                }
+                else
+                {
+                    var enumStmt = DeserializeStmt<CreateEnumStmt>(firstStmtJson, "CreateEnumStmt");
+                    parsed.ObjectType = SqlObjectType.Type;
+                    parsed.SchemaName = "public";
+                    parsed.ObjectName = enumStmt?.TypeName?.LastOrDefault()?.String?.Sval ?? "unknown";
+                    parsed.Ast = enumStmt;
+                }
             }
             else if (sql.Contains("CREATE SEQUENCE", StringComparison.OrdinalIgnoreCase))
             {
-                var stmt = JsonSerializer.Deserialize<CreateSeqStmt>(astJson);
+                var stmt = DeserializeStmt<CreateSeqStmt>(firstStmtJson, "CreateSeqStmt");
                 parsed.ObjectType = SqlObjectType.Sequence;
                 ExtractSchemaAndName(stmt?.Sequence, out var schema, out var name);
                 parsed.SchemaName = schema ?? "public";
@@ -243,7 +293,7 @@ public class CsprojProjectLoader
             }
             else if (sql.Contains("CREATE TRIGGER", StringComparison.OrdinalIgnoreCase))
             {
-                var stmt = JsonSerializer.Deserialize<CreateTrigStmt>(astJson);
+                var stmt = DeserializeStmt<CreateTrigStmt>(firstStmtJson, "CreateTrigStmt");
                 parsed.ObjectType = SqlObjectType.Trigger;
                 ExtractSchemaAndName(stmt?.Relation, out var schema, out var name);
                 parsed.SchemaName = schema ?? "public";
@@ -252,7 +302,7 @@ public class CsprojProjectLoader
             }
             else if (sql.Contains("CREATE ROLE", StringComparison.OrdinalIgnoreCase))
             {
-                var stmt = JsonSerializer.Deserialize<CreateRoleStmt>(astJson);
+                var stmt = DeserializeStmt<CreateRoleStmt>(firstStmtJson, "CreateRoleStmt");
                 parsed.ObjectType = SqlObjectType.Role;
                 parsed.SchemaName = ""; // Roles are not schema-scoped
                 parsed.ObjectName = stmt?.Role ?? "unknown";
@@ -279,14 +329,36 @@ public class CsprojProjectLoader
             else
             {
                 Console.WriteLine($"Warning: Unknown object type in {filePath}");
-                return null;
+                return (null, null);
             }
 
-            return parsed;
+            return (parsed, null);
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error parsing {filePath}: {ex.Message}");
+            return (null, null);
+        }
+    }
+
+    /// <summary>
+    /// Deserializes a protobuf-style stmt JSON object into a typed statement.
+    /// The stmtJson is like {"CreateStmt": {...}}; this method unwraps the inner object.
+    /// </summary>
+    private static T? DeserializeStmt<T>(string stmtJson, string stmtKey) where T : class
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(stmtJson);
+            if (doc.RootElement.TryGetProperty(stmtKey, out var inner))
+            {
+                return JsonSerializer.Deserialize<T>(inner.GetRawText());
+            }
+            // Fallback: try deserializing the whole thing (e.g., if already unwrapped)
+            return JsonSerializer.Deserialize<T>(stmtJson);
+        }
+        catch
+        {
             return null;
         }
     }
@@ -457,9 +529,11 @@ public class CsprojProjectLoader
                 var relativePath = Path.GetRelativePath(_projectDirectory, file);
 
                 // Exclude bin, obj, and other build directories
-                if (relativePath.Contains("bin") || 
-                    relativePath.Contains("obj") || 
-                    relativePath.Contains(".vs") ||
+                // Use path-segment matching to avoid false positives (e.g. "db_objects" contains "obj")
+                var segments = relativePath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                if (segments.Any(s => s.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
+                                      s.Equals("obj", StringComparison.OrdinalIgnoreCase) ||
+                                      s.Equals(".vs", StringComparison.OrdinalIgnoreCase)) ||
                     relativePath.StartsWith("."))
                 {
                     continue;

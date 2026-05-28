@@ -51,7 +51,7 @@ namespace ProjectExtract_Tests.Privileges
         {
             // Clear connection pools before disposing container
             NpgsqlConnection.ClearAllPools();
-            await _pgContainer.DisposeAsync();
+            if (_pgContainer is not null) await _pgContainer.DisposeAsync();
         }
 
         private async Task ExecuteSqlAsync(string sql)

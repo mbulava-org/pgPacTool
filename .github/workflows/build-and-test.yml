@@ -229,6 +229,21 @@ jobs:
         echo "  Failed: $failed_count"
         echo "  Skipped: $skipped_count"
 
+        # Test discovery floor: warn if fewer tests than expected are discovered.
+        # The codebase currently contains 900+ tests across NpgqueryExtended.Tests,
+        # mbulava.PostgreSql.Dac.Tests, and ProjectExtract-Tests.
+        # A floor of 266 (original baseline) is intentionally conservative to catch
+        # catastrophic discovery regressions (e.g. build errors silently dropping
+        # entire test assemblies) without failing on normal variance.
+        TEST_FLOOR=266
+        if [ "$total_tests" -lt "$TEST_FLOOR" ]; then
+          echo "⚠️ WARNING: Only $total_tests tests discovered — below expected floor of $TEST_FLOOR."
+          echo "  This may indicate a test discovery regression (compile error, missing assembly, etc.)."
+          echo "  Investigate: check build output, TRX files, and whether all test projects compiled."
+        else
+          echo "✅ Test discovery floor passed: $total_tests >= $TEST_FLOOR"
+        fi
+
     - name: Upload coverage report
       uses: actions/upload-artifact@v4
       with:

@@ -329,4 +329,182 @@ public class AstSqlGeneratorTests
             Assert.That(result.IsSuccess, Is.True, $"Generated SQL failed to parse: {generated}");
         }
     }
+
+    // -----------------------------------------------------------------
+    // Edge cases that were identified as potential CI failures (DEV-405)
+    // -----------------------------------------------------------------
+
+    [Test]
+    [Category("AstSqlGeneration")]
+    public void Generate_DropFunction_ProducesValidSql()
+    {
+        // AstBuilder.DropFunction creates a DropStmt with removeType="OBJECT_FUNCTION"
+        // GenerateSqlFromDropStmt should produce DROP FUNCTION ...
+        var ast = AstBuilder.DropFunction("public", "my_func", ifExists: true, cascade: false);
+        var sql = AstSqlGenerator.Generate(ast);
+        Assert.That(sql, Is.Not.Null.And.Not.Empty, "DropFunction should produce SQL");
+        Assert.That(sql.ToUpper(), Does.Contain("DROP"), "Should start with DROP");
+        Assert.That(sql.ToUpper(), Does.Contain("FUNCTION"), "Should reference FUNCTION object type");
+    }
+
+    [Test]
+    [Category("AstSqlGeneration")]
+    public void Generate_DropSequence_ProducesValidSql()
+    {
+        // AstBuilder.DropSequence creates a DropStmt with removeType="OBJECT_SEQUENCE"
+        var ast = AstBuilder.DropSequence("public", "my_seq", ifExists: true, cascade: false);
+        var sql = AstSqlGenerator.Generate(ast);
+        Assert.That(sql, Is.Not.Null.And.Not.Empty, "DropSequence should produce SQL");
+        Assert.That(sql.ToUpper(), Does.Contain("DROP"), "Should start with DROP");
+        Assert.That(sql.ToUpper(), Does.Contain("SEQUENCE"), "Should reference SEQUENCE object type");
+    }
+
+    [Test]
+    [Category("AstSqlGeneration")]
+    public void Generate_DropTable_WithIfExistsAndCascade_ProducesValidSql()
+    {
+        var ast = AstBuilder.DropTable("public", "my_table", ifExists: true, cascade: true);
+        var sql = AstSqlGenerator.Generate(ast);
+        Assert.That(sql.ToUpper(), Does.Contain("DROP TABLE"), "Should be DROP TABLE");
+        Assert.That(sql.ToUpper(), Does.Contain("IF EXISTS"), "Should include IF EXISTS");
+        Assert.That(sql.ToUpper(), Does.Contain("CASCADE"), "Should include CASCADE");
+    }
+
+    [Test]
+    [Category("AstSqlGeneration")]
+    public void Generate_DropView_ProducesValidSql()
+    {
+        var ast = AstBuilder.DropView("public", "my_view", ifExists: true, cascade: true);
+        var sql = AstSqlGenerator.Generate(ast);
+        Assert.That(sql.ToUpper(), Does.Contain("DROP"), "Should start with DROP");
+        Assert.That(sql.ToUpper(), Does.Contain("VIEW"), "Should reference VIEW object type");
+        Assert.That(sql.ToUpper(), Does.Contain("IF EXISTS"), "Should include IF EXISTS");
+    }
+
+    [Test]
+    [Category("AstSqlGeneration")]
+    public void Generate_DropIndex_ProducesValidSql()
+    {
+        var ast = AstBuilder.DropIndex("public", "idx_users_email", ifExists: true);
+        var sql = AstSqlGenerator.Generate(ast);
+        Assert.That(sql.ToUpper(), Does.Contain("DROP"), "Should start with DROP");
+        Assert.That(sql.ToUpper(), Does.Contain("INDEX"), "Should reference INDEX object type");
+        Assert.That(sql.ToUpper(), Does.Contain("IF EXISTS"), "Should include IF EXISTS");
+    }
+
+    [Test]
+    [Category("AstSqlGeneration")]
+    public void Generate_Grant_ProducesValidGrantSql()
+    {
+        // Verifies GRANT ... TO ... SQL is generated correctly
+        var ast = AstBuilder.Grant("SELECT", "TABLE", "public", "users", "app_user");
+        var sql = AstSqlGenerator.Generate(ast);
+        Assert.That(sql.ToUpper(), Does.Contain("GRANT"), "Should be a GRANT statement");
+        Assert.That(sql.ToUpper(), Does.Contain("SELECT"), "Should reference SELECT privilege");
+        Assert.That(sql.ToUpper(), Does.Contain("TO"), "Should include TO clause");
+    }
+
+    [Test]
+    [Category("AstSqlGeneration")]
+    public void Generate_Revoke_ProducesValidRevokeSql()
+    {
+        // Verifies REVOKE ... FROM ... SQL is generated correctly.
+        // AstBuilder.Revoke sets is_grant=false (by omission); generator must handle this.
+        var ast = AstBuilder.Revoke("SELECT", "TABLE", "public", "users", "app_user");
+        var sql = AstSqlGenerator.Generate(ast);
+        Assert.That(sql.ToUpper(), Does.Contain("REVOKE"), "Should be a REVOKE statement");
+        Assert.That(sql.ToUpper(), Does.Contain("SELECT"), "Should reference SELECT privilege");
+        Assert.That(sql.ToUpper(), Does.Contain("FROM"), "Should include FROM clause");
+    }
+
+    [Test]
+    [Category("AstSqlGeneration")]
+    public void Generate_AlterTableAddColumn_WithVarcharPreservesType()
+    {
+        // VARCHAR type name must round-trip without being dropped/mangled
+        var ast = AstBuilder.AlterTableAddColumn("public", "users", "email", "VARCHAR(255)", notNull: true);
+        var sql = AstSqlGenerator.Generate(ast);
+        Assert.That(sql.ToUpper(), Does.Contain("ALTER TABLE"), "Should be ALTER TABLE");
+        Assert.That(sql.ToUpper(), Does.Contain("ADD COLUMN"), "Should ADD COLUMN");
+        Assert.That(sql.ToUpper(), Does.Contain("EMAIL"), "Should reference column name");
+        // Type should be present; length modifier may or may not be preserved
+        Assert.That(sql.ToUpper(), Does.Contain("VARCHAR").Or.Contain("CHARACTER VARYING"),
+            "Should include VARCHAR/CHARACTER VARYING type");
+    }
+
+    [Test]
+    [Category("AstSqlGeneration")]
+    public void Generate_AlterTableDropConstraint_WithIfExists_ProducesValidSql()
+    {
+        var ast = AstBuilder.AlterTableDropConstraint("public", "users", "uq_email", ifExists: true);
+        var sql = AstSqlGenerator.Generate(ast);
+        Assert.That(sql.ToUpper(), Does.Contain("ALTER TABLE"), "Should be ALTER TABLE");
+        Assert.That(sql.ToUpper(), Does.Contain("DROP CONSTRAINT"), "Should DROP CONSTRAINT");
+        Assert.That(sql.ToUpper(), Does.Contain("IF EXISTS"), "Should include IF EXISTS");
+    }
+
+    [Test]
+    [Category("AstSqlGeneration")]
+    public void Generate_AlterTableAddUniqueConstraint_ProducesValidSql()
+    {
+        // CONSTR_UNIQUE path in GenerateAddConstraint
+        var ast = AstBuilder.AlterTableAddConstraint("public", "users", "uq_email", "UNIQUE (email)");
+        var sql = AstSqlGenerator.Generate(ast);
+        Assert.That(sql.ToUpper(), Does.Contain("ALTER TABLE"), "Should be ALTER TABLE");
+        Assert.That(sql.ToUpper(), Does.Contain("ADD CONSTRAINT"), "Should ADD CONSTRAINT");
+        Assert.That(sql.ToUpper(), Does.Contain("UNIQUE"), "Should include UNIQUE keyword");
+    }
+
+    [Test]
+    [Category("AstSqlGeneration")]
+    public void Generate_DropTrigger_ProducesValidSql()
+    {
+        var ast = AstBuilder.DropTrigger("audit_trigger", "public", "users", ifExists: true);
+        var sql = AstSqlGenerator.Generate(ast);
+        Assert.That(sql.ToUpper(), Does.Contain("DROP TRIGGER"), "Should be DROP TRIGGER");
+        Assert.That(sql.ToUpper(), Does.Contain("IF EXISTS"), "Should include IF EXISTS");
+        Assert.That(sql.ToUpper(), Does.Contain("ON"), "Should include ON table clause");
+    }
+
+    [Test]
+    [Category("AstSqlGeneration")]
+    public void Generate_DoesNotContainGarbageCharacters_ForAllBuilderOutputs()
+    {
+        // Regression guard: all AST builder outputs must be free of protobuf garbage chars
+        var testCases = new (string label, System.Text.Json.JsonElement ast)[]
+        {
+            ("DropTable",             AstBuilder.DropTable("public", "t1")),
+            ("DropView",              AstBuilder.DropView("public", "v1")),
+            ("DropFunction",          AstBuilder.DropFunction("public", "f1")),
+            ("DropSequence",          AstBuilder.DropSequence("public", "s1")),
+            ("DropIndex",             AstBuilder.DropIndex("public", "idx1")),
+            ("DropTrigger",           AstBuilder.DropTrigger("trg1", "public", "t1")),
+            ("Grant",                 AstBuilder.Grant("SELECT", "TABLE", "public", "t1", "role1")),
+            ("Revoke",                AstBuilder.Revoke("SELECT", "TABLE", "public", "t1", "role1")),
+            ("AlterTableDropColumn",  AstBuilder.AlterTableDropColumn("public", "t1", "col1")),
+            ("AlterTableSetNotNull",  AstBuilder.AlterTableAlterColumnSetNotNull("public", "t1", "col1")),
+            ("AlterTableDropNotNull", AstBuilder.AlterTableAlterColumnDropNotNull("public", "t1", "col1")),
+            ("AlterTableDropDefault", AstBuilder.AlterTableAlterColumnDropDefault("public", "t1", "col1")),
+            ("AlterTableOwner",       AstBuilder.AlterTableOwner("public", "t1", "new_owner")),
+            ("AlterTableDropConstraint", AstBuilder.AlterTableDropConstraint("public", "t1", "con1")),
+        };
+
+        foreach (var (label, astElem) in testCases)
+        {
+            string sql;
+            try
+            {
+                sql = AstSqlGenerator.Generate(astElem);
+            }
+            catch (Exception ex)
+            {
+                Assert.Fail($"{label}: threw exception: {ex.Message}");
+                return;
+            }
+
+            var hasGarbage = sql.Any(c => c < 0x20 && c != '\n' && c != '\r' && c != '\t');
+            Assert.That(hasGarbage, Is.False, $"{label}: SQL contains garbage characters: {sql}");
+            Assert.That(sql, Is.Not.Null.And.Not.Empty, $"{label}: SQL should not be empty");
+        }
+    }
 }

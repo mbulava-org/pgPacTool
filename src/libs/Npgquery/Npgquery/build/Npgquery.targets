@@ -2,21 +2,15 @@
 	<!-- This file is automatically included by projects that reference Npgquery -->
 	<!-- It ensures native libraries are copied to runtime-specific directories (standard .NET approach) -->
 
-	<PropertyGroup>
-		<!-- Detect macOS ARM vs Intel -->
-		<_OsxRid Condition="$([MSBuild]::IsOSPlatform('OSX')) And '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'Arm64'">osx-arm64</_OsxRid>
-		<_OsxRid Condition="$([MSBuild]::IsOSPlatform('OSX')) And '$(_OsxRid)' == ''">osx-x64</_OsxRid>
-	</PropertyGroup>
-
 	<ItemGroup>
 		<!-- Define native library locations based on runtime -->
 		<!-- Use forward slashes for cross-platform MSBuild compatibility -->
 		<NativeLibraryWin Include="$(MSBuildThisFileDirectory)../runtimes/win-x64/native/*.dll" Condition="Exists('$(MSBuildThisFileDirectory)../runtimes/win-x64/native')" />
 		<NativeLibraryLinux Include="$(MSBuildThisFileDirectory)../runtimes/linux-x64/native/*.so" Condition="Exists('$(MSBuildThisFileDirectory)../runtimes/linux-x64/native')" />
 		<!-- macOS ARM64 (Apple Silicon) -->
-		<NativeLibraryOSX Include="$(MSBuildThisFileDirectory)../runtimes/osx-arm64/native/*.dylib" Condition="Exists('$(MSBuildThisFileDirectory)../runtimes/osx-arm64/native')" />
-		<!-- macOS Intel x64 fallback -->
-		<NativeLibraryOSX Include="$(MSBuildThisFileDirectory)../runtimes/osx-x64/native/*.dylib" Condition="Exists('$(MSBuildThisFileDirectory)../runtimes/osx-x64/native')" />
+		<NativeLibraryOSXArm64 Include="$(MSBuildThisFileDirectory)../runtimes/osx-arm64/native/*.dylib" Condition="Exists('$(MSBuildThisFileDirectory)../runtimes/osx-arm64/native')" />
+		<!-- macOS Intel x64 -->
+		<NativeLibraryOSXx64 Include="$(MSBuildThisFileDirectory)../runtimes/osx-x64/native/*.dylib" Condition="Exists('$(MSBuildThisFileDirectory)../runtimes/osx-x64/native')" />
 	</ItemGroup>
 
 	<!-- Copy native libraries to output directory after build -->
@@ -42,21 +36,23 @@
 		<Message Importance="High" Text="[Npgquery] Copied Linux native libraries: @(NativeLibraryLinux->'%(Filename)%(Extension)', ', ')" 
 				 Condition="'@(NativeLibraryLinux)' != ''" />
 
-		<!-- macOS ARM64: Copy to runtimes/osx-arm64/native/ -->
+		<!-- macOS ARM64: Copy osx-arm64 dylibs to runtimes/osx-arm64/native/ -->
 		<Copy 
-			SourceFiles="$(MSBuildThisFileDirectory)../runtimes/osx-arm64/native/%(Filename)%(Extension)" 
+			SourceFiles="@(NativeLibraryOSXArm64)" 
 			DestinationFolder="$(OutputPath)runtimes/osx-arm64/native/" 
 			SkipUnchangedFiles="true" 
-			Condition="Exists('$(MSBuildThisFileDirectory)../runtimes/osx-arm64/native')" />
+			Condition="'@(NativeLibraryOSXArm64)' != '' And $([MSBuild]::IsOSPlatform('OSX'))" />
+		<Message Importance="High" Text="[Npgquery] Copied macOS ARM64 native libraries: @(NativeLibraryOSXArm64->'%(Filename)%(Extension)', ', ')" 
+				 Condition="'@(NativeLibraryOSXArm64)' != '' And $([MSBuild]::IsOSPlatform('OSX'))" />
 
-		<!-- macOS Intel: Copy to runtimes/osx-x64/native/ (if available) -->
+		<!-- macOS Intel: Copy osx-x64 dylibs to runtimes/osx-x64/native/ -->
 		<Copy 
-			SourceFiles="@(NativeLibraryOSX)" 
-			DestinationFolder="$(OutputPath)runtimes/$(_OsxRid)/native/" 
+			SourceFiles="@(NativeLibraryOSXx64)" 
+			DestinationFolder="$(OutputPath)runtimes/osx-x64/native/" 
 			SkipUnchangedFiles="true" 
-			Condition="'@(NativeLibraryOSX)' != '' And '$(_OsxRid)' != ''" />
-		<Message Importance="High" Text="[Npgquery] Copied macOS native libraries: @(NativeLibraryOSX->'%(Filename)%(Extension)', ', ')" 
-				 Condition="'@(NativeLibraryOSX)' != ''" />
+			Condition="'@(NativeLibraryOSXx64)' != '' And $([MSBuild]::IsOSPlatform('OSX'))" />
+		<Message Importance="High" Text="[Npgquery] Copied macOS Intel native libraries: @(NativeLibraryOSXx64->'%(Filename)%(Extension)', ', ')" 
+				 Condition="'@(NativeLibraryOSXx64)' != '' And $([MSBuild]::IsOSPlatform('OSX'))" />
 
 		<Message Importance="High" Text="[Npgquery] Native library deployment complete. Libraries will be loaded from runtime-specific paths." />
 	</Target>

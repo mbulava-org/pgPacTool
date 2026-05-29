@@ -141,36 +141,16 @@ public static string Generate(JsonElement astElement)
 
 The `Generate(JsonDocument)` method uses `TryExtractSqlFromAstJson` which generates SQL by parsing the JSON AST structure directly, avoiding the protobuf path entirely.
 
-### Current Limitations
-**Status:** 🟡 Incomplete - Needs GrantStmt/RevokeStmt Support
+### Current Status
+**Status:** ✅ Complete - GrantStmt/RevokeStmt Support Implemented
 
 The JSON extractor currently supports:
 - ✅ **AlterTableStmt** (DROP COLUMN, ADD COLUMN, ALTER COLUMN TYPE, SET/DROP NOT NULL)
 - ✅ **DropStmt** (DROP TABLE, DROP FUNCTION, etc.)
-- ❌ **GrantStmt** (GRANT privileges) - **Missing**
-- ❌ **RevokeStmt** (REVOKE privileges) - **Missing**
+- ✅ **GrantStmt** (GRANT privileges) - **Implemented** (commit `292a18b`)
+- ✅ **RevokeStmt** (REVOKE privileges) - **Implemented** via `GrantStmt` with `is_grant=false` (commit `292a18b`)
 
-### Solution Required
-Add GrantStmt and RevokeStmt support to `TryExtractSqlFromAstJson`:
-
-1. **Add statement type checks:**
-```csharp
-if (stmtElement.TryGetProperty("GrantStmt", out var grantStmt))
-{
-    var sql = GenerateSqlFromGrantStmt(grantStmt);
-    return sql;
-}
-
-if (stmtElement.TryGetProperty("RevokeStmt", out var revokeStmt))
-{
-    var sql = GenerateSqlFromRevokeStmt(revokeStmt);
-    return sql;
-}
-```
-
-2. **Implement SQL generators:**
-   - `GenerateSqlFromGrantStmt(JsonElement)` - Extract privileges, object, grantee
-   - `GenerateSqlFromRevokeStmt(JsonElement)` - Extract privileges, object, grantee
+GrantStmt and RevokeStmt support was added to `TryExtractSqlFromAstJson` in `AstSqlGenerator.cs` (lines 101–103) and the full `GenerateSqlFromGrant` method handles both GRANT and REVOKE statements by checking the `is_grant` flag.
 
 ### AST Structure Reference
 **GrantStmt Structure:**
@@ -256,10 +236,10 @@ public void Generate_PrivilegeChanges_CreatesGrantRevoke()
 
 ### Next Steps
 1. ✅ Fix `Generate(JsonElement)` to use JSON extraction (DONE)
-2. ⏳ Add GrantStmt support to JSON extractor (IN PROGRESS)
-3. ⏳ Add RevokeStmt support to JSON extractor (IN PROGRESS)
-4. ⏳ Run tests on Linux to verify fix
-5. ⏳ Document JSON extraction patterns for future statement types
+2. ✅ Add GrantStmt support to JSON extractor (DONE - commit `292a18b`)
+3. ✅ Add RevokeStmt support to JSON extractor (DONE - via GrantStmt `is_grant=false`, commit `292a18b`)
+4. ✅ Run tests on Linux to verify fix (DONE - 451/451 passed, 0 failed, 22 skipped - 2026-05-23)
+5. ✅ Document JSON extraction patterns for future statement types (see `AstSqlGenerator.cs`)
 
 ### Related Files
 ```
@@ -302,9 +282,9 @@ The JSON-based SQL extraction (`TryExtractSqlFromAstJson`) only supports a subse
 - AlterTableStmt (various subtypes)
 - DropStmt
 
-### Missing Support
-- **GrantStmt** (HIGH priority - blocks tests)
-- **RevokeStmt** (HIGH priority - blocks tests)
+### Missing Support (previously blocking)
+- ✅ **GrantStmt** (HIGH priority - previously blocked tests) — **RESOLVED** (commit `292a18b`)
+- ✅ **RevokeStmt** (HIGH priority - previously blocked tests) — **RESOLVED** (commit `292a18b`)
 - CreateStmt (table creation)
 - CreateFunctionStmt
 - CreateTriggerStmt
@@ -312,11 +292,8 @@ The JSON-based SQL extraction (`TryExtractSqlFromAstJson`) only supports a subse
 - CreateIndexStmt
 - And many others...
 
-### Solution
-Incrementally add support for statement types as needed. Priority:
-1. GrantStmt / RevokeStmt (blocks tests)
-2. CreateStmt (needed for schema deployment)
-3. CreateFunctionStmt / CreateTriggerStmt (needed for full DDL support)
+### Priority Queue (previously)
+1. ~~GrantStmt / RevokeStmt (blocks tests)~~ ✅ RESOLVED
 
 ---
 

@@ -1,0 +1,25 @@
+# Auto-detect text files and perform line-ending normalization
+* text=auto
+
+# Binary native libraries - never apply CRLF transformation
+*.so binary
+*.dll binary
+*.dylib binary
+*.a binary
+*.lib binary
+
+# Archive files
+*.zip binary
+*.tar.gz binary
+*.nupkg binary
+*.snupkg binary
+
+# Image files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+
+# Protobuf compiled files
+*.pb.go binary

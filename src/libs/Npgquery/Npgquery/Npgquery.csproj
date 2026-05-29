@@ -75,14 +75,24 @@
 		<None Include="build\Npgquery.targets" Pack="true" PackagePath="build\" />
 	</ItemGroup>
 
-	<!-- Copy native DLLs to output root for runtime discovery -->
+	<!-- Copy native DLLs to output runtimes/ and root for runtime discovery -->
+	<!-- Use forward slashes for cross-platform MSBuild compatibility on Linux/macOS -->
 	<Target Name="CopyNativeDllsToRoot" AfterTargets="Build">
 		<ItemGroup>
-			<NativeDlls Include="runtimes\win-x64\native\*.dll" Condition="'$(OS)' == 'Windows_NT'" />
-			<NativeDlls Include="runtimes\linux-x64\native\*.so" Condition="'$(OS)' != 'Windows_NT'" />
+			<NativeDllsWin Include="runtimes/win-x64/native/*.dll" Condition="'$(OS)' == 'Windows_NT'" />
+			<NativeDllsLinux Include="runtimes/linux-x64/native/*.so" Condition="'$(OS)' != 'Windows_NT' And $([MSBuild]::IsOSPlatform('Linux'))" />
+			<NativeDllsOsx Include="runtimes/osx-arm64/native/*.dylib" Condition="$([MSBuild]::IsOSPlatform('OSX'))" />
+			<NativeDllsOsx Include="runtimes/osx-x64/native/*.dylib" Condition="$([MSBuild]::IsOSPlatform('OSX'))" />
 		</ItemGroup>
-		<Copy SourceFiles="@(NativeDlls)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" Condition="'@(NativeDlls)' != ''" />
-		<Message Text="Copied native libraries: @(NativeDlls) to $(OutDir)" Importance="high" Condition="'@(NativeDlls)' != ''" />
+		<!-- Copy to output base dir (fallback for runtime discovery) -->
+		<Copy SourceFiles="@(NativeDllsWin)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" Condition="'@(NativeDllsWin)' != ''" />
+		<Copy SourceFiles="@(NativeDllsLinux)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" Condition="'@(NativeDllsLinux)' != ''" />
+		<Copy SourceFiles="@(NativeDllsOsx)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" Condition="'@(NativeDllsOsx)' != ''" />
+		<!-- Also copy to runtime-specific paths (primary discovery path for .NET) -->
+		<Copy SourceFiles="@(NativeDllsWin)" DestinationFolder="$(OutDir)runtimes/win-x64/native/" SkipUnchangedFiles="true" Condition="'@(NativeDllsWin)' != ''" />
+		<Copy SourceFiles="@(NativeDllsLinux)" DestinationFolder="$(OutDir)runtimes/linux-x64/native/" SkipUnchangedFiles="true" Condition="'@(NativeDllsLinux)' != ''" />
+		<Copy SourceFiles="@(NativeDllsOsx)" DestinationFolder="$(OutDir)runtimes/osx-arm64/native/" SkipUnchangedFiles="true" Condition="Exists('runtimes/osx-arm64/native') And '@(NativeDllsOsx)' != ''" />
+		<Message Text="Copied native libraries to $(OutDir)" Importance="high" Condition="'@(NativeDllsWin)' != '' Or '@(NativeDllsLinux)' != '' Or '@(NativeDllsOsx)' != ''" />
 	</Target>
 
 	<ItemGroup>

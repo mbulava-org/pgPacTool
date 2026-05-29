@@ -2,11 +2,21 @@
 	<!-- This file is automatically included by projects that reference Npgquery -->
 	<!-- It ensures native libraries are copied to runtime-specific directories (standard .NET approach) -->
 
+	<PropertyGroup>
+		<!-- Detect macOS ARM vs Intel -->
+		<_OsxRid Condition="$([MSBuild]::IsOSPlatform('OSX')) And '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'Arm64'">osx-arm64</_OsxRid>
+		<_OsxRid Condition="$([MSBuild]::IsOSPlatform('OSX')) And '$(_OsxRid)' == ''">osx-x64</_OsxRid>
+	</PropertyGroup>
+
 	<ItemGroup>
 		<!-- Define native library locations based on runtime -->
-		<NativeLibraryWin Include="$(MSBuildThisFileDirectory)..\runtimes\win-x64\native\*.dll" Condition="Exists('$(MSBuildThisFileDirectory)..\runtimes\win-x64\native')" />
-		<NativeLibraryLinux Include="$(MSBuildThisFileDirectory)..\runtimes\linux-x64\native\*.so" Condition="Exists('$(MSBuildThisFileDirectory)..\runtimes\linux-x64\native')" />
-		<NativeLibraryOSX Include="$(MSBuildThisFileDirectory)..\runtimes\osx-x64\native\*.dylib" Condition="Exists('$(MSBuildThisFileDirectory)..\runtimes\osx-x64\native')" />
+		<!-- Use forward slashes for cross-platform MSBuild compatibility -->
+		<NativeLibraryWin Include="$(MSBuildThisFileDirectory)../runtimes/win-x64/native/*.dll" Condition="Exists('$(MSBuildThisFileDirectory)../runtimes/win-x64/native')" />
+		<NativeLibraryLinux Include="$(MSBuildThisFileDirectory)../runtimes/linux-x64/native/*.so" Condition="Exists('$(MSBuildThisFileDirectory)../runtimes/linux-x64/native')" />
+		<!-- macOS ARM64 (Apple Silicon) -->
+		<NativeLibraryOSX Include="$(MSBuildThisFileDirectory)../runtimes/osx-arm64/native/*.dylib" Condition="Exists('$(MSBuildThisFileDirectory)../runtimes/osx-arm64/native')" />
+		<!-- macOS Intel x64 fallback -->
+		<NativeLibraryOSX Include="$(MSBuildThisFileDirectory)../runtimes/osx-x64/native/*.dylib" Condition="Exists('$(MSBuildThisFileDirectory)../runtimes/osx-x64/native')" />
 	</ItemGroup>
 
 	<!-- Copy native libraries to output directory after build -->
@@ -17,7 +27,7 @@
 		<!-- Windows: Copy to runtimes/win-x64/native/ -->
 		<Copy 
 			SourceFiles="@(NativeLibraryWin)" 
-			DestinationFolder="$(OutputPath)runtimes\win-x64\native\" 
+			DestinationFolder="$(OutputPath)runtimes/win-x64/native/" 
 			SkipUnchangedFiles="true" 
 			Condition="'@(NativeLibraryWin)' != ''" />
 		<Message Importance="High" Text="[Npgquery] Copied Windows native libraries: @(NativeLibraryWin->'%(Filename)%(Extension)', ', ')" 
@@ -26,18 +36,25 @@
 		<!-- Linux: Copy to runtimes/linux-x64/native/ -->
 		<Copy 
 			SourceFiles="@(NativeLibraryLinux)" 
-			DestinationFolder="$(OutputPath)runtimes\linux-x64\native\" 
+			DestinationFolder="$(OutputPath)runtimes/linux-x64/native/" 
 			SkipUnchangedFiles="true" 
 			Condition="'@(NativeLibraryLinux)' != ''" />
 		<Message Importance="High" Text="[Npgquery] Copied Linux native libraries: @(NativeLibraryLinux->'%(Filename)%(Extension)', ', ')" 
 				 Condition="'@(NativeLibraryLinux)' != ''" />
 
-		<!-- macOS: Copy to runtimes/osx-x64/native/ -->
+		<!-- macOS ARM64: Copy to runtimes/osx-arm64/native/ -->
+		<Copy 
+			SourceFiles="$(MSBuildThisFileDirectory)../runtimes/osx-arm64/native/%(Filename)%(Extension)" 
+			DestinationFolder="$(OutputPath)runtimes/osx-arm64/native/" 
+			SkipUnchangedFiles="true" 
+			Condition="Exists('$(MSBuildThisFileDirectory)../runtimes/osx-arm64/native')" />
+
+		<!-- macOS Intel: Copy to runtimes/osx-x64/native/ (if available) -->
 		<Copy 
 			SourceFiles="@(NativeLibraryOSX)" 
-			DestinationFolder="$(OutputPath)runtimes\osx-x64\native\" 
+			DestinationFolder="$(OutputPath)runtimes/$(_OsxRid)/native/" 
 			SkipUnchangedFiles="true" 
-			Condition="'@(NativeLibraryOSX)' != ''" />
+			Condition="'@(NativeLibraryOSX)' != '' And '$(_OsxRid)' != ''" />
 		<Message Importance="High" Text="[Npgquery] Copied macOS native libraries: @(NativeLibraryOSX->'%(Filename)%(Extension)', ', ')" 
 				 Condition="'@(NativeLibraryOSX)' != ''" />
 

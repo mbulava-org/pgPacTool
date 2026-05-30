@@ -200,6 +200,9 @@ jobs:
           # Link into shared library
           gcc -shared -fPIC -o libpg_query.so *.o -pthread
 
+          # Ensure execute bit is set (required for dlopen on Linux)
+          chmod +x libpg_query.so
+
           echo "✓ Built libpg_query.so"
           ls -lh libpg_query.so
 
@@ -356,6 +359,9 @@ jobs:
               
               # Copy files
               cp "$artifact_dir"/* "$target_dir/" || true
+
+              # Ensure execute bit is set on .so files (required for dlopen on Linux)
+              find "$target_dir" -name "*.so" -exec chmod +x {} \;
               
               echo "✓ Copied libraries to $target_dir"
               ls -lh "$target_dir"

@@ -65,6 +65,67 @@ jobs:
         echo "Source projects (coverage measured):"
         find src -name "*.csproj" -type f | sed 's|src/||' | sed 's|/.*||' | sort -u
 
+    - name: Verify native library loading
+      # This step runs early to catch native library loading failures with clear diagnostics.
+      # It checks that all versioned libpg_query_*.so files:
+      #   1. Exist in the expected runtimes/linux-x64/native/ directory (Linux CI)
+      #   2. Have no missing dependencies (ldd check)
+      #   3. Load correctly via .NET NativeLibrary (integration test)
+      # A failure here means something is wrong with the native build artifacts, not the C# code.
+      run: |
+        echo "=== Native Library Verification ==="
+        echo "Platform: $(uname -m)"
+        echo "OS: $(uname -a)"
+        echo ""
+
+        # 1. Locate the linux-x64 native directory in the built output
+        NATIVE_DIR=$(find . -path "*/bin/${{ env.CONFIGURATION }}/*/runtimes/linux-x64/native" -type d | head -1)
+        if [ -z "$NATIVE_DIR" ]; then
+          echo "ERROR: No runtimes/linux-x64/native directory found under bin/${{ env.CONFIGURATION }}"
+          exit 1
+        fi
+        echo "Native library directory: $NATIVE_DIR"
+
+        # 2. Verify at least one versioned .so file exists
+        SO_FILES=$(ls "$NATIVE_DIR"/libpg_query_*.so 2>/dev/null)
+        if [ -z "$SO_FILES" ]; then
+          echo "ERROR: No libpg_query_*.so files found in $NATIVE_DIR"
+          ls -la "$NATIVE_DIR" || true
+          exit 1
+        fi
+        echo "Found native libraries:"
+        for f in $SO_FILES; do
+          echo "  $f ($(stat -c '%s bytes, permissions: %a' "$f"))"
+        done
+        echo ""
+
+        # 3. Check each .so file has no missing dependencies
+        echo "Dependency check (ldd):"
+        ALL_OK=true
+        for f in $SO_FILES; do
+          echo "  --- $(basename "$f") ---"
+          ldd_output=$(ldd "$f" 2>&1)
+          echo "$ldd_output" | sed 's/^/    /'
+          if echo "$ldd_output" | grep -q "not found"; then
+            echo "  ERROR: Missing dependency in $(basename "$f")"
+            ALL_OK=false
+          fi
+        done
+        if [ "$ALL_OK" != "true" ]; then
+          echo ""
+          echo "FATAL: One or more native libraries have missing dependencies. Check the ldd output above."
+          exit 1
+        fi
+        echo ""
+        echo "All dependency checks passed."
+
+        # 4. Run dedicated .NET integration tests that verify loading via NativeLibrary API
+        dotnet test tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj \
+          --no-build --configuration ${{ env.CONFIGURATION }} \
+          --filter "FullyQualifiedName~NativeLibraryIntegrationTests.NativeLibraryLoader_IsVersionAvailable_ReturnsTrue|FullyQualifiedName~NativeLibraryDiagnosticsTests|FullyQualifiedName~LibraryDiscoveryTests" \
+          --verbosity normal \
+          --logger "console;verbosity=detailed"
+
     - name: Validate SQL generation consistency
       # This step MUST pass — it guards against regressions in the AST-based SQL generator.
       # SQL generation consistency is critical: broken generation produces wrong migration

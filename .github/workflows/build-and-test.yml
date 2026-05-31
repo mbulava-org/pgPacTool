@@ -65,6 +65,61 @@ jobs:
         echo "Source projects (coverage measured):"
         find src -name "*.csproj" -type f | sed 's|src/||' | sed 's|/.*||' | sort -u
 
+    - name: Verify test discovery
+      # Guard against silent test discovery failures: NUnit adapter caching, assembly load
+      # errors, or protobuf crashes during discovery can silently reduce the discovered count.
+      # This step lists tests per-project and enforces a minimum floor so the build fails fast
+      # with a clear message rather than reporting misleadingly low pass/fail counts.
+      # Floor value: 900 (well below the ~1150 currently discovered; adjust upward as tests grow).
+      run: |
+        echo "=== Test Discovery Verification ==="
+        DISCOVERY_FAILED=false
+        TOTAL_DISCOVERED=0
+
+        # List tests per project (excluding LinuxContainer.Tests and NugetPackage.Tests
+        # for the same reasons they're excluded from the main test run)
+        for proj in $(find tests -name "*.csproj" \
+            ! -path "*/LinuxContainer.Tests/*" \
+            ! -path "*/NugetPackage.Tests/*" \
+            | sort); do
+          proj_name=$(basename "$proj" .csproj)
+          echo ""
+          echo "--- $proj_name ---"
+          count=$(dotnet test "$proj" \
+            --no-build --configuration ${{ env.CONFIGURATION }} \
+            --list-tests 2>&1 \
+            | grep -cE "^\s+[A-Za-z]" || true)
+          echo "  Discovered: $count tests"
+          TOTAL_DISCOVERED=$((TOTAL_DISCOVERED + count))
+          if [ "$count" -eq 0 ]; then
+            echo "  WARNING: Zero tests discovered in $proj_name — possible discovery failure"
+            DISCOVERY_FAILED=true
+          fi
+        done
+
+        echo ""
+        echo "Total tests discovered (excluding LinuxContainer & NugetPackage): $TOTAL_DISCOVERED"
+
+        # Minimum floor: fail CI if total drops below this threshold
+        FLOOR=900
+        if [ "$TOTAL_DISCOVERED" -lt "$FLOOR" ]; then
+          echo ""
+          echo "FATAL: Only $TOTAL_DISCOVERED tests discovered — below floor of $FLOOR."
+          echo "This likely indicates a test discovery or assembly loading failure."
+          echo "Check for:"
+          echo "  - NUnit adapter caching issues"
+          echo "  - Missing [TestFixture] / [Test] attributes"
+          echo "  - Assembly load errors during discovery (enable --verbosity detailed)"
+          echo "  - Protobuf/native library crashes during discovery startup"
+          DISCOVERY_FAILED=true
+        fi
+
+        if [ "$DISCOVERY_FAILED" = "true" ]; then
+          exit 1
+        fi
+
+        echo "Test discovery check passed."
+
     - name: Verify native library loading
       # This step runs early to catch native library loading failures with clear diagnostics.
       # It checks that all versioned libpg_query_*.so files:

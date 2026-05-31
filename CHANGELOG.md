@@ -9,19 +9,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Planned for v1.0.0 (Stable Release)
-- Complete multi-schema improvements
-- Visual Studio project templates
-- Performance optimizations for large databases (10,000+ objects)
-- Enhanced error messages and validation
+---
+
+## [1.0.0] - 2026-05-31
+
+This is the stable 1.0.0 release of pgPacTool, consolidating all improvements from preview1 through preview10.
+
+### Added
+
+- **PostgreSQL 18 support** — bundled `libpg_query_18` native libraries and version-aware parser selection ([DEV-79](/DEV/issues/DEV-79))
+- **Security, roles, and permissions extraction** — full GrantStmt/RevokeStmt support; GrantStmt/RevokeStmt protobuf issues resolved ([DEV-416](/DEV/issues/DEV-416))
+- **Multi-version native library distribution** — all-platform native libs included in `MSBuild.Sdk.PostgreSql` NuGet package ([DEV-76](/DEV/issues/DEV-76))
+- **AST compilation API** — fixed and tested for CI ([DEV-320](/DEV/issues/DEV-320))
+- **ProjectPublisher integration tests** — end-to-end publisher coverage ([DEV-46](/DEV/issues/DEV-46))
+- **44 edge/corner-case schema comparer tests** — covering column, constraint, index, and multi-schema diffs ([DEV-188](/DEV/issues/DEV-188))
+- **CI test discovery floor check** — gate requires ≥ 266 discovered tests ([DEV-392](/DEV/issues/DEV-392))
+- **CI native library loading verification steps** ([DEV-361](/DEV/issues/DEV-361))
+- **Hard-gate SQL generation consistency step** in CI pipeline
+- `NativeLibraryLoader.EnsureLoaded` public API for explicit native library initialization
+- Extraction tests for Composite types, Domain types, Extensions, and multi-schema databases
+- `DockerAvailability.SkipIfUnavailable()` guards on all Testcontainer-based tests
+- `[FactRequiresDocker]` attribute for Docker-dependent facts
+- SDK builds routed through `pgpac` CLI (preview5)
+- Visual Studio-compatible `.csproj` project format with convention-based SQL file discovery
+
+### Fixed
+
+- `CompareOwners=false` not respected at schema/table/type level
+- DROP TRIGGER statements now idempotent with `IF EXISTS` and correct syntax ([DEV-294](/DEV/issues/DEV-294))
+- `AT_DropConstraint` now emits `IF EXISTS` in generated SQL ([DEV-324](/DEV/issues/DEV-324))
+- CHECK and FOREIGN KEY constraint SQL generation implemented ([DEV-337](/DEV/issues/DEV-337))
+- `CsprojProjectLoader` now correctly detects `CREATE OR REPLACE VIEW`, `CREATE MATERIALIZED VIEW`, `CREATE OR REPLACE FUNCTION`, and `CREATE OR REPLACE PROCEDURE` SQL variants
+- `CsprojProjectLoader` now propagates SQL parse errors instead of silently discarding them
+- `PostgresVersion` is optional in `CsprojProjectLoader`, defaulting to 16
+- `ContainerBuilder` updated to Testcontainers v4.x image constructor API ([DEV-312](/DEV/issues/DEV-312))
+- `NpgqueryExtended.Tests` re-enabled on Linux (Issue #37 resolved)
+- `NpgqueryExtended.Tests` host process crash on exit fixed ([DEV-78](/DEV/issues/DEV-78))
+- `Google.Protobuf` explicit reference added to `postgresPacTools` CLI to fix missing assembly on publish ([DEV-52](/DEV/issues/DEV-52))
+- `osx-arm64` RID and `.gitattributes` line-ending normalization ([DEV-413](/DEV/issues/DEV-413))
+- CI TRX overwrite fixed to prevent incorrect test counts in PR comments
+- `NugetPackage.Tests` TRX included in test analysis
+- Parallel extraction disabled in `NpgqueryExtended.Tests` with crash-safe cleanup ([DEV-69](/DEV/issues/DEV-69))
+- `PagilaIntegrationTests` Docker-skip now shows `Skipped` instead of `Failed` ([DEV-64](/DEV/issues/DEV-64))
+- `PostgreSqlVersion` enum usage conflicts and duplicate class conflicts resolved
+- Null reference in sequence extraction
+- Connection pool management improvements
+
+### Changed
+
+- `PostgreSQL 15` support removed (Windows-only limitation)
+- NuGet packaging switched to `--no-restore` (removed `--no-build` flag) to allow `CopyNativeLibraries` target to run correctly
+- `AssemblyVersion` in Npgquery restricted to numeric-only segments (CS7034 fix)
+
+### Supported PostgreSQL Versions
+
+- ✅ **PostgreSQL 16** (default)
+- ✅ **PostgreSQL 17**
+- ✅ **PostgreSQL 18**
+- ❌ PostgreSQL 14, 15 (not supported)
+
+### Package Information
+
+- **mbulava.PostgreSql.Dac** v1.0.0 — Core library for programmatic access (.NET 10, MIT)
+- **postgresPacTools** v1.0.0 — Global CLI tool (`pgpac`) (.NET 10, MIT)
+- **MSBuild.Sdk.PostgreSql** v1.0.0 — MSBuild SDK for database projects (.NET 10, MIT)
 
 ---
 
 ## [1.0.0-preview9] - 2026-05-18
 
-**⚠️ PREVIEW RELEASE** - Not recommended for production use. Please test and provide feedback!
-
-### 🔧 Fixes
+### Fixed
 
 - Merged all recent test coverage improvements from main branch
 - Fixed `DockerAvailability.SkipIfUnavailable()` guards in Testcontainer-based tests (Extensions, MultiSchema, CompositeType, DomainType, PostgresVersionTestBase)
@@ -34,225 +91,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0-preview1] - 2026-03-17
 
-**⚠️ PREVIEW RELEASE** - Not recommended for production use. Please test and provide feedback!
-
-### 🎉 Initial Preview Release
-
-This is the first public preview of pgPacTool, bringing SQL Server-style database project workflow to PostgreSQL.
-
-### ✨ Features
+### Added
 
 #### Core Library (mbulava.PostgreSql.Dac)
-- **Schema Extraction**
-  - Extract complete database schemas with full metadata
-  - Support for all major PostgreSQL object types
-  - AST-based parsing using libpg_query
-  - Privilege and permission extraction
-  - Column comments and descriptions
 
-- **Object Types Supported**
-  - ✅ Tables (with columns, constraints, indexes)
-  - ✅ Views (regular and materialized)
-  - ✅ Functions (all languages: SQL, PL/pgSQL, C)
-  - ✅ Stored Procedures
-  - ✅ Types (ENUM, composite, domains)
-  - ✅ Sequences
-  - ✅ Triggers
-  - ✅ Schemas
-  - ✅ Roles and permissions
-  - ✅ Extensions
-  - ⚠️ Multi-schema support (basic implementation)
-
-- **Compilation & Validation**
-  - Dependency analysis and resolution
-  - Circular dependency detection with severity levels
-  - Topological sorting for deployment ordering
-  - Parallel deployment grouping
-  - Comprehensive error reporting
-
-- **Schema Comparison**
-  - Compare databases and identify differences
-  - Generate CREATE/DROP/ALTER migration scripts
-  - Pre-deployment and post-deployment script support
-  - SQLCMD variable substitution ($(VarName) syntax)
-  - Transaction-wrapped deployments
-
-- **Project Formats**
-  - JSON format (`.pgproj.json`) for data exchange
-  - SDK-style project format (`.csproj`) for version control
-  - DACPAC-style package format (`.pgpac`) for deployment
+- **Schema Extraction** — extract complete database schemas with full metadata
+- Support for all major PostgreSQL object types (Tables, Views, Functions, Stored Procedures, Types, Sequences, Triggers, Schemas, Roles, Extensions)
+- AST-based parsing using libpg_query
+- Privilege and permission extraction
+- Column comments and descriptions
+- Dependency analysis, circular dependency detection, topological sorting for deployment ordering
+- Parallel deployment grouping
+- Schema comparison: generate CREATE/DROP/ALTER migration scripts
+- Pre/post-deployment script support with SQLCMD variable substitution
+- Transaction-wrapped deployments
+- JSON format (`.pgproj.json`) and SDK-style project format (`.csproj`)
+- DACPAC-style package format (`.pgpac`) for deployment
 
 #### CLI Tool (postgresPacTools)
-- **Global Tool Installation**
-  - Install via `dotnet tool install --global postgresPacTools`
-  - Command: `pgpac`
-
-- **Commands**
-  - `extract` - Export schema from database to JSON or .csproj
-  - `compile` - Validate and build projects into .pgpac packages
-  - `publish` - Deploy packages to target databases
-  - `script` - Generate deployment SQL scripts
-  - `deploy-report` - Preview changes as JSON report
-
-- **Features**
-  - Verbose mode for detailed output (`-v`)
-  - Connection string support for all PostgreSQL configurations
-  - Color-coded terminal output
-  - Progress indicators for long operations
+- `extract`, `compile`, `publish`, `script`, `deploy-report` commands
+- Verbose mode (`-v`), color-coded terminal output, progress indicators
 
 #### MSBuild SDK (MSBuild.Sdk.PostgreSql)
-- **SDK Integration**
-  - Standard `.csproj` format (no custom project types)
-  - Convention-based SQL file discovery
-  - Automatic dependency resolution
-  - Incremental build support
-  - Generates `.pgpac` deployment packages
+- Standard `.csproj` format with convention-based SQL file discovery
+- Automatic dependency resolution, incremental build support
+- Generates `.pgpac` deployment packages
 
-- **Project Structure**
-  - Organize SQL files by schema and object type
-  - Individual file per database object
-  - Git-friendly (easy diffing and merging)
-  - Visual Studio compatible
+### Testing
 
-### 🔧 PostgreSQL Version Support
+- 201 tests with 100% pass rate (171 unit + 30 Docker integration)
+- Tested against `world_happiness`, `dvdrental`, and `pagila` databases
 
-- ✅ **PostgreSQL 16** (default version)
-- ✅ **PostgreSQL 17** (full support)
-- ❌ PostgreSQL 14, 15 (not currently supported, may add if demand exists)
+### Fixed
 
-Multi-version support includes:
-- Version-aware parser selection
-- Automatic library loading
-- Version-specific feature detection
-- Clear error messages for unsupported versions
-
-### 🧪 Testing & Quality
-
-- **201 tests** with 100% pass rate (171 unit + 30 Docker integration tests)
-- Tested with real-world databases:
-  - Simple: `world_happiness` (9 SQL files)
-  - Medium: `dvdrental` (107 SQL files)
-  - Complex: `pagila` (145 SQL files)
-
-- **Test Coverage**
-  - Schema extraction for all object types
-  - Dependency resolution and cycle detection
-  - SDK-style project generation
-  - CLI command integration
-  - Round-trip validation (extract → compile → deploy)
-
-### 🐛 Bug Fixes
-
-- Fixed null reference in sequence extraction
-- Fixed aggregate function handling in function extraction
-- Added database existence validation with clear errors
-- Enhanced exception handling with verbose stack traces
-- Improved connection pool management
-
-### 📚 Documentation
-
-- Comprehensive README with quick start guide
-- CLI reference documentation
-- User guide with workflows
-- API reference for library usage
-- SDK project guide
-- Multi-version support documentation
-
-### ⚠️ Known Limitations
-
-1. **Multi-Schema Support**
-   - Basic implementation present
-   - Cross-schema dependency tracking limited
-   - Improvements planned for v1.1.0
-
-2. **Large Databases**
-   - Not yet optimized for 10,000+ objects
-   - Parallel extraction planned for v1.1.0
-
-3. **Deployment Features**
-   - Rollback support not yet implemented
-   - Data migration tools not included
-   - Schema drift detection planned
-
-4. **Visual Studio Integration**
-   - No project templates yet
-   - Limited IntelliSense support
-   - Planned for v1.1.0
-
-### 🔄 Breaking Changes
-
-N/A - Initial release
-
-### 📦 Package Information
-
-- **mbulava.PostgreSql.Dac** v1.0.0-preview1
-  - Core library for programmatic access
-  - Target Framework: .NET 10
-  - License: MIT
-
-- **postgresPacTools** v1.0.0-preview1
-  - Global CLI tool
-  - Command: `pgpac`
-  - Target Framework: .NET 10
-  - License: MIT
-
-- **MSBuild.Sdk.PostgreSql** v1.0.0-preview1
-  - MSBuild SDK for database projects
-  - Target Framework: .NET 10
-  - License: MIT
-
-### 🙏 Acknowledgments
-
-Inspired by:
-- [MSBuild.Sdk.SqlProj](https://github.com/rr-wfm/MSBuild.Sdk.SqlProj) - MSBuild SDK for SQL Server
-- [SqlPackage](https://learn.microsoft.com/sql/tools/sqlpackage/) - Microsoft's database deployment tool
-
-Built with:
-- [Npgquery](https://github.com/launchbadge/pg_query.net) - PostgreSQL query parser
-- [Npgsql](https://www.npgsql.org/) - PostgreSQL .NET client
-- [System.CommandLine](https://github.com/dotnet/command-line-api) - Modern CLI framework
+- Null reference in sequence extraction
+- Aggregate function handling in function extraction
+- Database existence validation with clear errors
+- Connection pool management
 
 ---
 
 ## Future Releases
 
-### [1.0.0-preview2] - Planned
-
-**Focus: Community Feedback & Bug Fixes**
-
-#### Planned Improvements
-- Address community feedback from preview1
-- Performance optimizations based on testing
-- Enhanced error messages
-- Documentation improvements
-- Additional test coverage
-
 ### [1.1.0] - Planned
 
-**Focus: Multi-Schema & Pre/Post Deployment**
+**Focus: Multi-Schema & Large Database Performance**
 
-#### Planned Features
-- Full multi-schema support
-- Cross-schema dependency tracking
-- Auto-discovery of deployment scripts
-- Script ordering configuration
-- Large database optimizations (10,000+ objects)
-- Parallel extraction
+- Full multi-schema support with cross-schema dependency tracking
+- Auto-discovery and ordering of deployment scripts
+- Large database optimizations (10,000+ objects) and parallel extraction
+- Rollback support
+- Visual Studio project templates and enhanced IntelliSense
 
 ### [2.0.0] - Future Ideas
 
 **Focus: Ecosystem Integration**
 
-#### Ideas Under Consideration
 - Azure DevOps pipeline tasks
 - GitHub Actions workflows
 - Docker images for CI/CD
-- Web UI for schema comparison
 - VS Code extension
 - Schema drift detection
-- Rollback support
 - Data migration tools
-- Auto-generated documentation
 
 ---
 
@@ -270,5 +170,7 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ---
 
-[Unreleased]: https://github.com/mbulava-org/pgPacTool/compare/v1.0.0-preview1...HEAD
+[Unreleased]: https://github.com/mbulava-org/pgPacTool/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/mbulava-org/pgPacTool/compare/v1.0.0-preview1...v1.0.0
+[1.0.0-preview9]: https://github.com/mbulava-org/pgPacTool/compare/v1.0.0-preview1...v1.0.0-preview9
 [1.0.0-preview1]: https://github.com/mbulava-org/pgPacTool/releases/tag/v1.0.0-preview1

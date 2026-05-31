@@ -6,13 +6,13 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%2B-336791)](https://www.postgresql.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Tests](https://img.shields.io/badge/tests-201%20passing-success)
-[![Version](https://img.shields.io/badge/version-1.0.0--preview8-orange)](https://github.com/mbulava-org/pgPacTool/releases)
+[![Version](https://img.shields.io/badge/version-1.0.0-orange)](https://github.com/mbulava-org/pgPacTool/releases)
 
-> **📦 Current Preview Target (v1.0.0-preview8)**:
-> - ✅ **MSBuild SDK** - Package version ready: `MSBuild.Sdk.PostgreSql/1.0.0-preview8`
-> - ✅ **CLI Tool (pgpac)** - Package version ready: `postgresPacTools/1.0.0-preview8`
+> **📦 Current Release (v1.0.0)**:
+> - ✅ **MSBuild SDK** - Package version ready: `MSBuild.Sdk.PostgreSql/1.0.0`
+> - ✅ **CLI Tool (pgpac)** - Package version ready: `postgresPacTools/1.0.0`
 
-> - ✅ **Core Library** - Package version ready: `mbulava.PostgreSql.Dac/1.0.0-preview8` (includes Npgquery)
+> - ✅ **Core Library** - Package version ready: `mbulava.PostgreSql.Dac/1.0.0` (includes Npgquery)
 >
 > **💡 PostgreSQL Version Support**: Currently supports **PostgreSQL 16 and 17**. Older versions (14, 15) may be added in the future based on demand. See [Multi-Version Support Documentation](docs/features/multi-version-support/README.md) for details.
 >
@@ -35,7 +35,7 @@ pgPacTool brings **SQL Server-style database project workflow** to PostgreSQL. I
 
 ---
 
-## ✨ Current Features (v1.0.0-preview8)
+## ✨ Current Features (v1.0.0)
 
 ### 🎯 Complete Functionality
 
@@ -148,7 +148,7 @@ cd MyDatabase
 <!-- MyDatabase.csproj -->
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0-preview8" />
+  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0" />
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -231,7 +231,7 @@ Perfect for **bringing existing databases** under version control:
 
 ```bash
 # Install globally from NuGet
-dotnet tool install -g postgresPacTools --version 1.0.0-preview8
+dotnet tool install -g postgresPacTools --version 1.0.0
 ```
 
 #### Step 2: Extract Your Database
@@ -333,7 +333,7 @@ pgpac deploy-report -sf MyDatabase.pgpac -tcs "Host=prod;..." -o report.json
 
 ```powershell
 # Install core DAC library (includes Npgquery parser)
-dotnet add package mbulava.PostgreSql.Dac --version 1.0.0-preview8
+dotnet add package mbulava.PostgreSql.Dac --version 1.0.0
 ```
 
 ```csharp
@@ -480,7 +480,7 @@ cd UserService.Database
 
 # Create UserService.Database.csproj
 @"
-<Project Sdk="MSBuild.Sdk.PostgreSql/1.0.0-preview8">
+<Project Sdk="MSBuild.Sdk.PostgreSql/1.0.0">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <DatabaseName>UserService</DatabaseName>
@@ -888,7 +888,7 @@ docker rm pgpac-test
 
 ### 📦 Post-Publish Priorities
 
-**Current release line:** `1.0.0-preview8`
+**Current release line:** `1.0.0`
 
 - [ ] **Release hardening**
   - [ ] Expand package-consumption and upgrade-path validation
@@ -959,7 +959,7 @@ docker rm pgpac-test
 
 ### Build Errors
 
-#### "SDK 'MSBuild.Sdk.PostgreSql/1.0.0-preview8' not found"
+#### "SDK 'MSBuild.Sdk.PostgreSql/1.0.0' not found"
 
 **Problem:** MSBuild cannot find the SDK package.
 
@@ -1246,9 +1246,9 @@ See [docs/PUBLISHING.md](docs/PUBLISHING.md) for detailed publishing instruction
 
 | Area | Status | Notes |
 |------|--------|-------|
-| Core DAC library | ✅ Ready | `mbulava.PostgreSql.Dac` `1.0.0-preview8` |
-| MSBuild SDK | ✅ Ready | `MSBuild.Sdk.PostgreSql/1.0.0-preview8` |
-| CLI tool | ✅ Ready | `dotnet tool install -g postgresPacTools --version 1.0.0-preview8` |
+| Core DAC library | ✅ Ready | `mbulava.PostgreSql.Dac` `1.0.0` |
+| MSBuild SDK | ✅ Ready | `MSBuild.Sdk.PostgreSql/1.0.0` |
+| CLI tool | ✅ Ready | `dotnet tool install -g postgresPacTools --version 1.0.0` |
 | PostgreSQL support | ✅ Active | Supported versions: PostgreSQL 16 and 17 |
 | Current development branch | ✅ Active | `preview1` |
 
@@ -1274,19 +1274,19 @@ Status: 100% Passing ✅
 
 | Package | Version | Status |
 |---------|---------|--------|
-| **mbulava.PostgreSql.Dac** | 1.0.0-preview8 | ✅ Published to NuGet |
-| **MSBuild.Sdk.PostgreSql** | 1.0.0-preview8 | ✅ Published to NuGet |
-| **postgresPacTools** | 1.0.0-preview8 | ✅ Published to NuGet |
+| **mbulava.PostgreSql.Dac** | 1.0.0 | ✅ Published to NuGet |
+| **MSBuild.Sdk.PostgreSql** | 1.0.0 | ✅ Published to NuGet |
+| **postgresPacTools** | 1.0.0 | ✅ Published to NuGet |
 
 **Publication:** Published for the `preview1` release line and validated with README install/build flows.
 
 **Install:**
 ```bash
 # CLI tool
-dotnet tool install --global postgresPacTools --version 1.0.0-preview8
+dotnet tool install --global postgresPacTools --version 1.0.0
 
 # Library
-dotnet add package mbulava.PostgreSql.Dac --version 1.0.0-preview8
+dotnet add package mbulava.PostgreSql.Dac --version 1.0.0
 ```
 
 ---
@@ -1532,5 +1532,5 @@ MIT License - see [LICENSE](LICENSE) for details.
 ---
 
 **Status:** Preview 6 ready for local validation ✅  
-**Version:** 1.0.0-preview8  
+**Version:** 1.0.0  
 **Last Updated:** 2026-04-21

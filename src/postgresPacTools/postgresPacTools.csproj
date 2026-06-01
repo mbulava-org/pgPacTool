@@ -28,6 +28,7 @@
 	<RepositoryUrl>https://github.com/mbulava-org/pgPacTool</RepositoryUrl>
 	<RepositoryType>git</RepositoryType>
 	<PackageReadmeFile>README.md</PackageReadmeFile>
+	<PackageIcon>icon.png</PackageIcon>
 	<PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
   </PropertyGroup>
 
@@ -48,6 +49,7 @@
   <ItemGroup>
 	<None Include="README.md" Pack="true" PackagePath="\" />
 	<None Include="LICENSE.txt" Pack="true" PackagePath="\" />
+	<None Include="icon.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <!-- Import Npgquery native library copy targets -->

@@ -20,6 +20,7 @@
     <RepositoryUrl>https://github.com/mbulava-org/pgPacTool</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
 
     <!-- SDK Package Configuration -->
     <IsPackable>true</IsPackable>
@@ -42,6 +43,7 @@
     <None Include="Sdk\**\*" Pack="true" PackagePath="Sdk\" />
     <None Include="README.md" Pack="true" PackagePath="\" />
     <None Include="LICENSE.txt" Pack="true" PackagePath="\" />
+    <None Include="icon.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <!-- Dependencies for build tasks -->

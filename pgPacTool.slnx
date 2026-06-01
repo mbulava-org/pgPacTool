@@ -21,5 +21,10 @@
     </Project>
     <Project Path="tests/NugetPackage.Tests/NugetPackage.Tests.csproj" />
     <Project Path="tests/ProjectExtract-Tests/ProjectExtract-Tests.csproj" />
+    <Project Path="tests/pgPacTool.Benchmarks/pgPacTool.Benchmarks.csproj">
+      <!-- Benchmarks should only be run explicitly, not as part of the default solution build -->
+      <Build Solution="Debug|*" Project="false" />
+      <Build Solution="Release|*" Project="false" />
+    </Project>
   </Folder>
 </Solution>

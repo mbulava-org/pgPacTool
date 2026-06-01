@@ -656,12 +656,6 @@ public class CsprojProjectLoader
         // Load the project
         var project = await LoadProjectAsync();
 
-        // Always save the full pgproj.json to obj folder for debugging/inspection
-        var objDir = Path.Combine(_projectDirectory, "obj");
-        Directory.CreateDirectory(objDir);
-        var objJsonPath = Path.Combine(objDir, $"{project.DatabaseName}.pgproj.json");
-        await GenerateJsonAsync(project, objJsonPath);
-
         // Determine output path
         if (string.IsNullOrWhiteSpace(outputPath))
         {
@@ -674,6 +668,18 @@ public class CsprojProjectLoader
                 OutputFormat.Json => Path.Combine(outputDir, $"{project.DatabaseName}.pgproj.json"),
                 _ => throw new ArgumentOutOfRangeException(nameof(format))
             };
+        }
+
+        // Save the full pgproj.json for debugging/inspection alongside the output file.
+        // Using the output file's directory (rather than the project's obj/ folder) prevents
+        // parallel test runs from competing for the same file-system lock.
+        var objDir = Path.GetDirectoryName(outputPath) ?? Path.GetTempPath();
+        Directory.CreateDirectory(objDir);
+        var objJsonPath = Path.Combine(objDir, $"{project.DatabaseName}.pgproj.json");
+        // Only write the debug JSON when the output format is not already Json (avoid duplicate write).
+        if (format != OutputFormat.Json)
+        {
+            await GenerateJsonAsync(project, objJsonPath);
         }
 
         // Generate output

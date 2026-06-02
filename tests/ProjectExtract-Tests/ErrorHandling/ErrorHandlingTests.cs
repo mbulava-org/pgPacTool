@@ -68,7 +68,9 @@ public class ErrorHandlingTests
 
             -- Create a restricted user with minimal privileges
             CREATE ROLE restricted_user LOGIN PASSWORD 'restricted_pass';
-            -- Explicitly revoke CONNECT to restrict DB access
+            -- Explicitly revoke CONNECT to restrict DB access.
+            -- Must also revoke from PUBLIC; otherwise the PUBLIC grant allows any login role to connect.
+            REVOKE CONNECT ON DATABASE testdb FROM PUBLIC;
             REVOKE CONNECT ON DATABASE testdb FROM restricted_user;
         ";
         await cmd.ExecuteNonQueryAsync();

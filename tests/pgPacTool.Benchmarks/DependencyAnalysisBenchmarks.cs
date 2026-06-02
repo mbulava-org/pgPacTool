@@ -10,7 +10,7 @@ namespace pgPacTool.Benchmarks;
 /// Benchmarks for DependencyAnalyzer — measures time to collect and resolve
 /// dependency graphs of various project sizes.
 /// </summary>
-[SimpleJob(RuntimeMoniker.Net90)]
+[SimpleJob(RuntimeMoniker.Net10_0)]
 [MemoryDiagnoser]
 public class DependencyAnalysisBenchmarks
 {

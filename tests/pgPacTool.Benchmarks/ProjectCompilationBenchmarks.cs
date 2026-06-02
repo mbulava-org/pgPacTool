@@ -9,7 +9,7 @@ namespace pgPacTool.Benchmarks;
 /// Benchmarks for ProjectCompiler — measures time to compile PostgreSQL
 /// projects of varying sizes through dependency analysis and topological sort.
 /// </summary>
-[SimpleJob(RuntimeMoniker.Net90)]
+[SimpleJob(RuntimeMoniker.Net10_0)]
 [MemoryDiagnoser]
 public class ProjectCompilationBenchmarks
 {

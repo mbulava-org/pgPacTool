@@ -9,7 +9,7 @@ namespace pgPacTool.Benchmarks;
 /// Measures parse time for SQL statements of increasing complexity.
 /// These map to the pgprojBuilder AST compilation path.
 /// </summary>
-[SimpleJob(RuntimeMoniker.Net90)]
+[SimpleJob(RuntimeMoniker.Net10_0)]
 [MemoryDiagnoser]
 public class SqlParsingBenchmarks
 {

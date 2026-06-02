@@ -65,6 +65,18 @@ jobs:
         echo "Source projects (coverage measured):"
         find src -name "*.csproj" -type f | sed 's|src/||' | sed 's|/.*||' | sort -u
 
+    - name: List discovered tests (diagnostic)
+      # DEV-507: Add --list-tests to compare local vs CI test discovery
+      run: |
+        echo "🔍 Discovered tests in CI (excluding LinuxContainer.Tests):"
+        dotnet test --no-build --configuration ${{ env.CONFIGURATION }} \
+          --filter "FullyQualifiedName!~LinuxContainer.Tests" \
+          --list-tests \
+          2>&1 | tee /tmp/discovered-tests.txt
+        echo ""
+        echo "Total test count:"
+        grep -c "^\s" /tmp/discovered-tests.txt || echo "0"
+
     - name: Run tests with code coverage
       id: test-step
       continue-on-error: true # Don't fail build on test failures

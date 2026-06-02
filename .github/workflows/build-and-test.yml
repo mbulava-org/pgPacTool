@@ -431,6 +431,105 @@ jobs:
           echo "Check PR comment for details on failed/skipped tests."
         fi
 
+  build-and-test-windows:
+    name: Build and Test (.NET 10, Windows)
+    runs-on: windows-latest
+
+    env:
+      # No Docker-in-Docker on the hosted Windows runner — skip container-based tests gracefully.
+      # DockerAvailability.SkipIfUnavailable() will call Assert.Ignore() instead of failing.
+      SKIP_DOCKER_TESTS: '1'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Display .NET info
+      run: dotnet --info
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build solution
+      run: dotnet build --no-restore --configuration ${{ env.CONFIGURATION }}
+
+    - name: Verify native library loading (Windows)
+      # Confirms win-x64 .dll files are present after the build.
+      # No equivalent of ldd on Windows; existence check is sufficient to catch packaging regressions.
+      shell: bash
+      run: |
+        echo "=== Native Library Pre-flight Check (Windows) ==="
+        echo "Runner OS: $RUNNER_OS"
+        NATIVE_DIR="tests/NpgqueryExtended.Tests/bin/${{ env.CONFIGURATION }}/net10.0/runtimes/win-x64/native"
+        for ver in 16 17 18; do
+          LIB="$NATIVE_DIR/libpg_query_${ver}.dll"
+          if [ -f "$LIB" ]; then
+            echo "OK: $LIB"
+          else
+            echo "MISSING: $LIB"
+            echo "Contents of $NATIVE_DIR (if it exists):"
+            ls -la "$NATIVE_DIR" 2>/dev/null || echo "  (directory does not exist)"
+            exit 1
+          fi
+        done
+        echo "Native library pre-flight check passed."
+
+    - name: Run native library integration tests
+      run: |
+        dotnet test tests/NpgqueryExtended.Tests/ `
+          --no-build --configuration ${{ env.CONFIGURATION }} `
+          --filter "FullyQualifiedName~NativeLibraryIntegrationTests" `
+          --verbosity normal `
+          --logger "console;verbosity=detailed"
+
+    - name: Validate SQL generation consistency
+      run: |
+        dotnet test tests/mbulava.PostgreSql.Dac.Tests/ `
+          --no-build --configuration ${{ env.CONFIGURATION }} `
+          --filter "Category=AstSqlGeneration" `
+          --verbosity normal `
+          --logger "console;verbosity=detailed"
+
+    - name: Run tests with code coverage
+      id: test-step
+      continue-on-error: true
+      run: |
+        dotnet test --no-build --configuration ${{ env.CONFIGURATION }} `
+          --filter "FullyQualifiedName!~LinuxContainer.Tests&FullyQualifiedName!~NugetPackage.Tests" `
+          --verbosity normal `
+          --results-directory ./coverage `
+          --logger "trx" `
+          --logger "console;verbosity=detailed"
+
+    - name: Summarize test outcomes (Windows)
+      if: always()
+      shell: bash
+      run: |
+        echo "=== Windows Build and Test Summary ==="
+        echo "Test step outcome: ${{ steps.test-step.outcome }}"
+        trx_count=$(find coverage -name "*.trx" 2>/dev/null | wc -l)
+        echo "TRX files found: $trx_count"
+        if [ "${{ steps.test-step.outcome }}" != "success" ]; then
+          echo "Some tests failed or were skipped — see log above for details."
+        else
+          echo "All tests passed (container-based tests skipped via Assert.Ignore)."
+        fi
+
+    - name: Upload test results (Windows)
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results-windows
+        path: '**/*.trx'
+        retention-days: 30
+
   # Uncomment the following job to enable multi-version testing against PostgreSQL 16 and 17, but it's already happening in the Tests ;/
   # multi-version-test:
   #   name: Test against PostgreSQL ${{ matrix.postgres }}

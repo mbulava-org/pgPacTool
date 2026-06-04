@@ -83,6 +83,19 @@ public class CsprojProjectGenerator
                 // Add CREATE TABLE statement
                 tableDefinition.AppendLine(table.Definition);
 
+                // Add RLS statements when Row Level Security is enabled
+                if (table.RowLevelSecurity)
+                {
+                    tableDefinition.AppendLine();
+                    tableDefinition.AppendLine($"ALTER TABLE {schema.Name}.{table.Name} ENABLE ROW LEVEL SECURITY;");
+                }
+
+                if (table.ForceRowLevelSecurity)
+                {
+                    if (!table.RowLevelSecurity) tableDefinition.AppendLine(); // blank line if not already added
+                    tableDefinition.AppendLine($"ALTER TABLE {schema.Name}.{table.Name} FORCE ROW LEVEL SECURITY;");
+                }
+
                 // Add column comments if any exist
                 var columnsWithComments = table.Columns.Where(c => !string.IsNullOrWhiteSpace(c.Comment)).ToList();
                 if (columnsWithComments.Count > 0)

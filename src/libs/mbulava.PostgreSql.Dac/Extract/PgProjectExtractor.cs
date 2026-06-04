@@ -535,30 +535,48 @@ namespace mbulava.PostgreSql.Dac.Extract
             await using var conn = await CreateConnectionAsync();
             await using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-        SELECT c.oid, c.relname, r.rolname
+        SELECT c.oid,
+               c.relname,
+               r.rolname,
+               c.relrowsecurity,
+               c.relforcerowsecurity,
+               COALESCE(ts.spcname, '') AS tablespace_name,
+               (SELECT option_value
+                FROM pg_options_to_table(c.reloptions)
+                WHERE option_name = 'fillfactor') AS fillfactor
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
         JOIN pg_roles r ON r.oid = c.relowner
+        LEFT JOIN pg_tablespace ts ON ts.oid = c.reltablespace AND c.reltablespace <> 0
         WHERE c.relkind = 'r' AND n.nspname = @schema;";
 
             cmd.Parameters.AddWithValue("schema", schema);
 
             await using var reader = await cmd.ExecuteReaderAsync();
-            var tableOids = new List<(UInt32 oid, string name, string owner)>();
+            var tableOids = new List<(UInt32 oid, string name, string owner, bool rls, bool forceRls, string tablespace, int? fillFactor)>();
             while (reader.Read())
             {
-                tableOids.Add((reader.GetFieldValue<UInt32>(0), reader.GetString(1), reader.GetString(2)));
-                //UInt32 oid = reader.GetDataTypeOID(0);   // ✅ OID-safe
-                //var name = reader.GetString(1);
-                //var owner = reader.GetString(2);
-                //tableOids.Add((oid, name, owner));
+                var fillFactorStr = reader.IsDBNull(6) ? null : reader.GetString(6);
+                int? fillFactor = fillFactorStr != null && int.TryParse(fillFactorStr, out var ff) ? ff : (int?)null;
+                tableOids.Add((
+                    reader.GetFieldValue<UInt32>(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetBoolean(3),
+                    reader.GetBoolean(4),
+                    reader.GetString(5),
+                    fillFactor
+                ));
             }
             await reader.CloseAsync();
 
-            foreach (var (oid, name, owner) in tableOids)
+            foreach (var (oid, name, owner, rls, forceRls, tablespace, fillFactor) in tableOids)
             {
-                // Build CREATE TABLE SQL
-                var sql = await BuildCreateTableSqlAsync(oid, schema, name);
+                // Extract inheritance (INHERITS clause) — must happen before building SQL
+                var inheritedFrom = await ExtractInheritanceAsync(oid);
+
+                // Build CREATE TABLE SQL (includes TABLESPACE and WITH fillfactor if set)
+                var sql = await BuildCreateTableSqlAsync(oid, schema, name, tablespace, fillFactor, inheritedFrom);
 
                 // Parse into AST
                 var parser = new Parser();
@@ -589,7 +607,12 @@ namespace mbulava.PostgreSql.Dac.Extract
                     Name = name,
                     Definition = sql,
                     Ast = ast,
-                    Owner = owner
+                    Owner = owner,
+                    RowLevelSecurity = rls,
+                    ForceRowLevelSecurity = forceRls,
+                    Tablespace = string.IsNullOrEmpty(tablespace) ? null : tablespace,
+                    FillFactor = fillFactor,
+                    InheritedFrom = inheritedFrom
                 };
 
                 var privilegesSql = "SELECT c.relacl::text[] FROM pg_class c WHERE c.oid = @oid;";
@@ -611,18 +634,52 @@ namespace mbulava.PostgreSql.Dac.Extract
             return tables;
         }
 
-        private async Task<string> BuildCreateTableSqlAsync(UInt32 oid, string schema, string name)
+        /// <summary>
+        /// Extracts the list of parent tables (schema-qualified) for a given table via pg_inherits.
+        /// Returns qualified names like "schema.tablename".
+        /// </summary>
+        private async Task<List<string>> ExtractInheritanceAsync(UInt32 tableOid)
+        {
+            var parents = new List<string>();
+
+            await using var conn = await CreateConnectionAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+        SELECT n.nspname, c.relname
+        FROM pg_inherits i
+        JOIN pg_class c ON c.oid = i.inhparent
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE i.inhrelid = @oid
+        ORDER BY i.inhseqno;";
+
+            cmd.Parameters.AddWithValue("oid", (int)tableOid);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var parentSchema = reader.GetString(0);
+                var parentName = reader.GetString(1);
+                parents.Add($"{parentSchema}.{parentName}");
+            }
+
+            return parents;
+        }
+
+        private async Task<string> BuildCreateTableSqlAsync(UInt32 oid, string schema, string name,
+            string? tablespace = null, int? fillFactor = null, List<string>? inheritedFrom = null)
         {
             var sb = new StringBuilder();
             sb.AppendLine($"CREATE TABLE {QuoteIdent(schema)}.{QuoteIdent(name)} (");
 
             await using var conn = await CreateConnectionAsync();
             await using var colCmd = conn.CreateCommand();
+            // Include attinhcount so we can skip columns inherited from parent tables
             colCmd.CommandText = @"
         SELECT a.attname,
                pg_catalog.format_type(a.atttypid, a.atttypmod),
                a.attnotnull,
-               pg_get_expr(d.adbin, d.adrelid)
+               pg_get_expr(d.adbin, d.adrelid),
+               a.attinhcount
         FROM pg_attribute a
         LEFT JOIN pg_attrdef d ON a.attrelid = d.adrelid AND a.attnum = d.adnum
         WHERE a.attrelid = @oid AND a.attnum > 0 AND NOT a.attisdropped;";
@@ -633,6 +690,10 @@ namespace mbulava.PostgreSql.Dac.Extract
             var cols = new List<string>();
             while (colReader.Read())
             {
+                // Skip columns inherited from a parent table — they are implied by INHERITS
+                var inhCount = colReader.GetInt16(4);
+                if (inhCount > 0) continue;
+
                 var colName = QuoteIdent(colReader.GetString(0));
                 var colDef = $"{colName} {colReader.GetString(1)}";
                 if (colReader.GetBoolean(2)) colDef += " NOT NULL";
@@ -642,7 +703,41 @@ namespace mbulava.PostgreSql.Dac.Extract
             await colReader.CloseAsync();
 
             sb.AppendLine(string.Join(",\n", cols));
-            sb.AppendLine(");");
+
+            // WITH clause for storage parameters (e.g. fillfactor)
+            if (fillFactor.HasValue)
+            {
+                sb.Append($") WITH (fillfactor={fillFactor.Value})");
+            }
+            else
+            {
+                sb.Append(")");
+            }
+
+            // INHERITS clause — emit parent tables in declaration order
+            if (inheritedFrom != null && inheritedFrom.Count > 0)
+            {
+                var parents = string.Join(", ", inheritedFrom.Select(p =>
+                {
+                    var parts = p.Split('.', 2);
+                    return parts.Length == 2
+                        ? $"{QuoteIdent(parts[0])}.{QuoteIdent(parts[1])}"
+                        : QuoteIdent(p);
+                }));
+                sb.AppendLine();
+                sb.Append($"INHERITS ({parents})");
+            }
+
+            // TABLESPACE clause (only when non-default)
+            if (!string.IsNullOrEmpty(tablespace))
+            {
+                sb.AppendLine();
+                sb.AppendLine($"TABLESPACE {QuoteIdent(tablespace)};");
+            }
+            else
+            {
+                sb.AppendLine(";");
+            }
 
             return sb.ToString();
         }

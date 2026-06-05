@@ -44,7 +44,7 @@
 | RowLevelSecurity | Not currently extracted | ⚠️ TODO |
 | ForceRowLevelSecurity | Not currently extracted | ⚠️ TODO |
 | FillFactor | Not currently extracted | ⚠️ TODO |
-| InheritedFrom[] | Not currently extracted | ⚠️ TODO |
+| InheritedFrom[] | In CREATE TABLE ... INHERITS(...) clause | ✅ |
 | PartitionStrategy | Not currently extracted | ⚠️ TODO |
 | PartitionExpression | Not currently extracted | ⚠️ TODO |
 
@@ -191,9 +191,9 @@
    - FillFactor: `ALTER TABLE ... SET (fillfactor = ...);`
    - Should be: `{schema}/Tables/{table}_alter.sql`
 
-5. **Table Inheritance**
-   - InheritedFrom[]: In CREATE TABLE ... INHERITS(...)
-   - Might already be in Definition
+5. **Table Inheritance** ✅ IMPLEMENTED (DEV-541)
+   - InheritedFrom[]: Extracted via `pg_inherits`, emitted in INHERITS(...) clause
+   - Inherited columns filtered from child table definition (attinhcount > 0)
 
 6. **Table Partitioning**
    - PartitionStrategy/Expression: In CREATE TABLE ... PARTITION BY ...

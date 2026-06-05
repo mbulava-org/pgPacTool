@@ -548,7 +548,7 @@ namespace mbulava.PostgreSql.Dac.Extract
         JOIN pg_namespace n ON n.oid = c.relnamespace
         JOIN pg_roles r ON r.oid = c.relowner
         LEFT JOIN pg_tablespace ts ON ts.oid = c.reltablespace AND c.reltablespace <> 0
-        WHERE c.relkind = 'r' AND n.nspname = @schema;";
+        WHERE c.relkind IN ('r', 'p') AND n.nspname = @schema;";
 
             cmd.Parameters.AddWithValue("schema", schema);
 
@@ -575,8 +575,11 @@ namespace mbulava.PostgreSql.Dac.Extract
                 // Extract inheritance (INHERITS clause) — must happen before building SQL
                 var inheritedFrom = await ExtractInheritanceAsync(oid);
 
-                // Build CREATE TABLE SQL (includes TABLESPACE and WITH fillfactor if set)
-                var sql = await BuildCreateTableSqlAsync(oid, schema, name, tablespace, fillFactor, inheritedFrom);
+                // Extract partition info (PARTITION BY) — must happen before building SQL
+                var (partitionStrategy, partitionExpression) = await ExtractPartitionInfoAsync(oid);
+
+                // Build CREATE TABLE SQL (includes TABLESPACE and WITH fillfactor if set, and PARTITION BY if applicable)
+                var sql = await BuildCreateTableSqlAsync(oid, schema, name, tablespace, fillFactor, inheritedFrom, partitionStrategy, partitionExpression);
 
                 // Parse into AST
                 var parser = new Parser();
@@ -612,7 +615,9 @@ namespace mbulava.PostgreSql.Dac.Extract
                     ForceRowLevelSecurity = forceRls,
                     Tablespace = string.IsNullOrEmpty(tablespace) ? null : tablespace,
                     FillFactor = fillFactor,
-                    InheritedFrom = inheritedFrom
+                    InheritedFrom = inheritedFrom,
+                    PartitionStrategy = partitionStrategy,
+                    PartitionExpression = partitionExpression
                 };
 
                 var privilegesSql = "SELECT c.relacl::text[] FROM pg_class c WHERE c.oid = @oid;";
@@ -665,8 +670,43 @@ namespace mbulava.PostgreSql.Dac.Extract
             return parents;
         }
 
+        /// <summary>
+        /// Returns partition strategy (RANGE/LIST/HASH) and key expression for a partitioned table,
+        /// or (null, null) if the table is not partitioned.
+        /// </summary>
+        private async Task<(string? strategy, string? expression)> ExtractPartitionInfoAsync(UInt32 tableOid)
+        {
+            await using var conn = await CreateConnectionAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+        SELECT p.partstrat,
+               pg_get_partkeydef(p.partrelid) AS partkey
+        FROM pg_partitioned_table p
+        WHERE p.partrelid = @oid;";
+
+            cmd.Parameters.AddWithValue("oid", (int)tableOid);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                var stratChar = reader.GetChar(0);
+                var keyDef = reader.GetString(1);
+                var strategy = stratChar switch
+                {
+                    'r' => "RANGE",
+                    'l' => "LIST",
+                    'h' => "HASH",
+                    _ => stratChar.ToString()
+                };
+                return (strategy, keyDef);
+            }
+
+            return (null, null);
+        }
+
         private async Task<string> BuildCreateTableSqlAsync(UInt32 oid, string schema, string name,
-            string? tablespace = null, int? fillFactor = null, List<string>? inheritedFrom = null)
+            string? tablespace = null, int? fillFactor = null, List<string>? inheritedFrom = null,
+            string? partitionStrategy = null, string? partitionExpression = null)
         {
             var sb = new StringBuilder();
             sb.AppendLine($"CREATE TABLE {QuoteIdent(schema)}.{QuoteIdent(name)} (");
@@ -726,6 +766,13 @@ namespace mbulava.PostgreSql.Dac.Extract
                 }));
                 sb.AppendLine();
                 sb.Append($"INHERITS ({parents})");
+            }
+
+            // PARTITION BY clause — emit for partitioned parent tables
+            if (!string.IsNullOrEmpty(partitionStrategy) && !string.IsNullOrEmpty(partitionExpression))
+            {
+                sb.AppendLine();
+                sb.Append($"PARTITION BY {partitionStrategy} ({partitionExpression})");
             }
 
             // TABLESPACE clause (only when non-default)

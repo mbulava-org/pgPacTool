@@ -129,15 +129,16 @@ public class CsprojProjectLoader
             }
 
             var sql = await File.ReadAllTextAsync(fullPath);
+            foreach (var roleName in ExtractRoleNames(sql))
+            {
+                AddRoleToProject(project, roleName);
+            }
+
             var (parsed, parseError) = await ParseAndClassifySqlFileAsync(sql, sqlFile);
             if (parsed != null)
             {
                 parsedObjects.Add(parsed);
                 RegisterSourceLocation(project, parsed);
-                if (parsed.ObjectType == SqlObjectType.Role && !string.IsNullOrWhiteSpace(parsed.ObjectName))
-                {
-                    AddRoleToProject(project, parsed.ObjectName);
-                }
             }
             else if (parseError != null)
             {
@@ -157,7 +158,7 @@ public class CsprojProjectLoader
 
         // Phase 3: Group by schema (extracted from AST, not folder structure)
         var schemaGroups = orderedObjects
-            .Where(o => !string.IsNullOrWhiteSpace(o.SchemaName))
+            .Where(o => o.ObjectType != SqlObjectType.Role && !string.IsNullOrWhiteSpace(o.SchemaName))
             .GroupBy(o => o.SchemaName);
 
         foreach (var schemaGroup in schemaGroups)
@@ -341,7 +342,7 @@ public class CsprojProjectLoader
                 var stmt = DeserializeStmt<CreateRoleStmt>(firstStmtJson, "CreateRoleStmt");
                 var (_, fallbackName) = TryExtractQualifiedObjectFromSql(sql, "ROLE");
                 parsed.ObjectType = SqlObjectType.Role;
-                parsed.SchemaName = _defaultSchema;
+                parsed.SchemaName = string.Empty; // Roles are not schema-scoped
                 parsed.ObjectName = stmt?.Role ?? fallbackName ?? "unknown";
                 parsed.Ast = stmt;
             }
@@ -715,7 +716,7 @@ public class CsprojProjectLoader
             }
             else if (stmt.TryGetProperty("CreateRoleStmt", out var roleStmt))
             {
-                await ProcessCreateRoleAsync(roleStmt);
+                ProcessCreateRole(roleStmt);
             }
             else if (stmt.TryGetProperty("AlterOwnerStmt", out _))
             {
@@ -994,23 +995,20 @@ public class CsprojProjectLoader
         await Task.CompletedTask;
     }
 
-    private async Task ProcessCreateRoleAsync(JsonElement roleStmt)
+    private void ProcessCreateRole(JsonElement roleStmt)
     {
         if (_currentProject == null || !roleStmt.TryGetProperty("role", out var roleElement))
         {
-            await Task.CompletedTask;
             return;
         }
 
         var roleName = roleElement.GetString();
         if (string.IsNullOrWhiteSpace(roleName))
         {
-            await Task.CompletedTask;
             return;
         }
 
         AddRoleToProject(_currentProject, roleName);
-        await Task.CompletedTask;
     }
 
     private static void ProcessAlterOwnerStatement(string sql, PgSchema schema)
@@ -1037,14 +1035,22 @@ public class CsprojProjectLoader
 
     private static PostgreSqlVersion ParsePostgreSqlVersion(string versionText)
     {
-        return versionText.Trim().ToLowerInvariant() switch
+        var normalized = versionText.Trim().ToLowerInvariant();
+        return normalized switch
         {
-            "15" or "postgres15" => PostgreSqlVersion.Postgres15,
             "16" or "postgres16" => PostgreSqlVersion.Postgres16,
             "17" or "postgres17" => PostgreSqlVersion.Postgres17,
-            "18" or "postgres18" => PostgreSqlVersion.Postgres18,
-            _ => PostgreSqlVersion.Postgres16
+            "15" or "postgres15" =>
+                WarnAndFallbackToPostgres16(versionText),
+            _ => WarnAndFallbackToPostgres16(versionText)
         };
+    }
+
+    private static PostgreSqlVersion WarnAndFallbackToPostgres16(string requestedVersion)
+    {
+        Console.WriteLine(
+            $"Warning: Unsupported PostgresVersion '{requestedVersion}'. Falling back to PostgreSQL 16 parser.");
+        return PostgreSqlVersion.Postgres16;
     }
 
     private static void RegisterSourceLocation(PgProject project, ParsedSqlObject parsed)
@@ -1070,6 +1076,22 @@ public class CsprojProjectLoader
         }
 
         project.Roles.Add(new PgRole { Name = roleName });
+    }
+
+    private static IEnumerable<string> ExtractRoleNames(string sql)
+    {
+        var matches = System.Text.RegularExpressions.Regex.Matches(
+            sql,
+            @"CREATE\s+ROLE\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        foreach (System.Text.RegularExpressions.Match match in matches)
+        {
+            if (match.Groups["name"].Success)
+            {
+                yield return match.Groups["name"].Value;
+            }
+        }
     }
 
     private static (string? SchemaName, string? ObjectName) TryExtractQualifiedObjectFromSql(string sql, string objectType)

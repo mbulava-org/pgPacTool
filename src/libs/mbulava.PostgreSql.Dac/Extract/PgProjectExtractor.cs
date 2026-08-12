@@ -774,14 +774,7 @@ namespace mbulava.PostgreSql.Dac.Extract
                 return (strategy, null);
             }
 
-            var expression = rawExpression.Trim();
-            var match = Regex.Match(expression, @"^[A-Z]+\s*\((.*)\)$", RegexOptions.IgnoreCase);
-            if (match.Success)
-            {
-                expression = match.Groups[1].Value.Trim();
-            }
-
-            return (strategy, expression);
+            return (strategy, rawExpression.Trim());
         }
 
         private static int? ParseFillFactor(string[]? reloptions)

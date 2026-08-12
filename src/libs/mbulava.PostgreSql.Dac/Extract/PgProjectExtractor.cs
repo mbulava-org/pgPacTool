@@ -527,19 +527,32 @@ namespace mbulava.PostgreSql.Dac.Extract
             await using var conn = await CreateConnectionAsync();
             await using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-        SELECT c.oid, c.relname, r.rolname
+        SELECT c.oid,
+               c.relname,
+               r.rolname,
+               c.relkind,
+               c.relrowsecurity,
+               c.relforcerowsecurity,
+               c.reloptions
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
         JOIN pg_roles r ON r.oid = c.relowner
-        WHERE c.relkind = 'r' AND n.nspname = @schema;";
+        WHERE c.relkind IN ('r', 'p') AND n.nspname = @schema;";
 
             cmd.Parameters.AddWithValue("schema", schema);
 
             await using var reader = await cmd.ExecuteReaderAsync();
-            var tableOids = new List<(UInt32 oid, string name, string owner)>();
+            var tableOids = new List<(UInt32 oid, string name, string owner, char relkind, bool rls, bool forceRls, string[]? reloptions)>();
             while (reader.Read())
             {
-                tableOids.Add((reader.GetFieldValue<UInt32>(0), reader.GetString(1), reader.GetString(2)));
+                tableOids.Add((
+                    reader.GetFieldValue<UInt32>(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetChar(3),
+                    reader.GetBoolean(4),
+                    reader.GetBoolean(5),
+                    reader.IsDBNull(6) ? null : reader.GetFieldValue<string[]>(6)));
                 //UInt32 oid = reader.GetDataTypeOID(0);   // ✅ OID-safe
                 //var name = reader.GetString(1);
                 //var owner = reader.GetString(2);
@@ -547,10 +560,23 @@ namespace mbulava.PostgreSql.Dac.Extract
             }
             await reader.CloseAsync();
 
-            foreach (var (oid, name, owner) in tableOids)
+            foreach (var (oid, name, owner, relkind, rowLevelSecurity, forceRowLevelSecurity, reloptions) in tableOids)
             {
+                var inheritedFrom = await ExtractInheritedParentsAsync(oid);
+                var (partitionStrategy, partitionExpression) = await ExtractPartitionInfoAsync(oid);
+                var fillFactor = ParseFillFactor(reloptions);
+
                 // Build CREATE TABLE SQL
-                var sql = await BuildCreateTableSqlAsync(oid, schema, name);
+                var sql = await BuildCreateTableSqlAsync(
+                    oid,
+                    schema,
+                    name,
+                    inheritedFrom,
+                    partitionStrategy,
+                    partitionExpression,
+                    fillFactor,
+                    rowLevelSecurity,
+                    forceRowLevelSecurity);
 
                 // Parse into AST
                 var parser = new Parser();
@@ -581,7 +607,13 @@ namespace mbulava.PostgreSql.Dac.Extract
                     Name = name,
                     Definition = sql,
                     Ast = ast,
-                    Owner = owner
+                    Owner = owner,
+                    RowLevelSecurity = rowLevelSecurity,
+                    ForceRowLevelSecurity = forceRowLevelSecurity,
+                    FillFactor = fillFactor,
+                    InheritedFrom = inheritedFrom,
+                    PartitionStrategy = partitionStrategy,
+                    PartitionExpression = partitionExpression
                 };
 
                 var privilegesSql = "SELECT c.relacl::text[] FROM pg_class c WHERE c.oid = @oid;";
@@ -603,10 +635,20 @@ namespace mbulava.PostgreSql.Dac.Extract
             return tables;
         }
 
-        private async Task<string> BuildCreateTableSqlAsync(UInt32 oid, string schema, string name)
+        private async Task<string> BuildCreateTableSqlAsync(
+            UInt32 oid,
+            string schema,
+            string name,
+            List<string> inheritedFrom,
+            string? partitionStrategy,
+            string? partitionExpression,
+            int? fillFactor,
+            bool rowLevelSecurity,
+            bool forceRowLevelSecurity)
         {
             var sb = new StringBuilder();
-            sb.AppendLine($"CREATE TABLE {QuoteIdent(schema)}.{QuoteIdent(name)} (");
+            var qualifiedName = $"{QuoteIdent(schema)}.{QuoteIdent(name)}";
+            sb.AppendLine($"CREATE TABLE {qualifiedName} (");
 
             await using var conn = await CreateConnectionAsync();
             await using var colCmd = conn.CreateCommand();
@@ -617,7 +659,10 @@ namespace mbulava.PostgreSql.Dac.Extract
                pg_get_expr(d.adbin, d.adrelid)
         FROM pg_attribute a
         LEFT JOIN pg_attrdef d ON a.attrelid = d.adrelid AND a.attnum = d.adnum
-        WHERE a.attrelid = @oid AND a.attnum > 0 AND NOT a.attisdropped;";
+        WHERE a.attrelid = @oid
+          AND a.attnum > 0
+          AND NOT a.attisdropped
+          AND a.attinhcount = 0;";
 
             colCmd.Parameters.AddWithValue("oid", (int)oid);
 
@@ -634,9 +679,133 @@ namespace mbulava.PostgreSql.Dac.Extract
             await colReader.CloseAsync();
 
             sb.AppendLine(string.Join(",\n", cols));
-            sb.AppendLine(");");
+
+            sb.Append(")");
+
+            if (fillFactor.HasValue)
+            {
+                sb.Append($" WITH (fillfactor={fillFactor.Value})");
+            }
+
+            if (inheritedFrom.Count > 0)
+            {
+                var parentList = string.Join(", ", inheritedFrom.Select(parent =>
+                {
+                    var parts = parent.Split('.', 2);
+                    return parts.Length == 2
+                        ? $"{QuoteIdent(parts[0])}.{QuoteIdent(parts[1])}"
+                        : QuoteIdent(parent);
+                }));
+
+                sb.Append($" INHERITS ({parentList})");
+            }
+
+            if (!string.IsNullOrWhiteSpace(partitionStrategy) && !string.IsNullOrWhiteSpace(partitionExpression))
+            {
+                sb.Append($" PARTITION BY {partitionStrategy} ({partitionExpression})");
+            }
+
+            sb.AppendLine(";");
+
+            if (rowLevelSecurity)
+            {
+                sb.AppendLine($"ALTER TABLE {qualifiedName} ENABLE ROW LEVEL SECURITY;");
+            }
+
+            if (forceRowLevelSecurity)
+            {
+                sb.AppendLine($"ALTER TABLE {qualifiedName} FORCE ROW LEVEL SECURITY;");
+            }
 
             return sb.ToString();
+        }
+
+        private async Task<List<string>> ExtractInheritedParentsAsync(UInt32 tableOid)
+        {
+            var parents = new List<string>();
+
+            await using var conn = await CreateConnectionAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+        SELECT pn.nspname, pc.relname
+        FROM pg_inherits i
+        JOIN pg_class pc ON pc.oid = i.inhparent
+        JOIN pg_namespace pn ON pn.oid = pc.relnamespace
+        WHERE i.inhrelid = @oid
+        ORDER BY i.inhseqno;";
+            cmd.Parameters.AddWithValue("oid", (int)tableOid);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                parents.Add($"{reader.GetString(0)}.{reader.GetString(1)}");
+            }
+
+            return parents;
+        }
+
+        private async Task<(string? Strategy, string? Expression)> ExtractPartitionInfoAsync(UInt32 tableOid)
+        {
+            await using var conn = await CreateConnectionAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+        SELECT p.partstrat, pg_get_partkeydef(p.partrelid)
+        FROM pg_partitioned_table p
+        WHERE p.partrelid = @oid;";
+            cmd.Parameters.AddWithValue("oid", (int)tableOid);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (!await reader.ReadAsync())
+            {
+                return (null, null);
+            }
+
+            var strategy = reader.GetChar(0) switch
+            {
+                'r' => "RANGE",
+                'l' => "LIST",
+                'h' => "HASH",
+                _ => null
+            };
+
+            var rawExpression = reader.IsDBNull(1) ? null : reader.GetString(1);
+            if (string.IsNullOrWhiteSpace(rawExpression))
+            {
+                return (strategy, null);
+            }
+
+            var expression = rawExpression.Trim();
+            var match = Regex.Match(expression, @"^[A-Z]+\s*\((.*)\)$", RegexOptions.IgnoreCase);
+            if (match.Success)
+            {
+                expression = match.Groups[1].Value.Trim();
+            }
+
+            return (strategy, expression);
+        }
+
+        private static int? ParseFillFactor(string[]? reloptions)
+        {
+            if (reloptions == null)
+            {
+                return null;
+            }
+
+            foreach (var option in reloptions)
+            {
+                if (!option.StartsWith("fillfactor=", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var valueText = option.Substring("fillfactor=".Length);
+                if (int.TryParse(valueText, out var value))
+                {
+                    return value;
+                }
+            }
+
+            return null;
         }
 
         private async Task<List<PgColumn>> ExtractColumnsAsync(UInt32 oid)
@@ -818,8 +987,10 @@ namespace mbulava.PostgreSql.Dac.Extract
          FROM pg_type t
          JOIN pg_namespace n ON n.oid = t.typnamespace
          JOIN pg_roles r ON r.oid = t.typowner
+         LEFT JOIN pg_class c ON c.oid = t.typrelid
          WHERE n.nspname = @schema
-           AND t.typtype IN ('d','e','c');";
+           AND t.typtype IN ('d','e','c')
+           AND (t.typtype <> 'c' OR c.relkind = 'c');";
 
             cmd.Parameters.AddWithValue("schema", schema);
 
@@ -897,7 +1068,10 @@ namespace mbulava.PostgreSql.Dac.Extract
                         pgType.Kind = PgTypeKind.Enum;
                         pgType.Definition = sql;
                         pgType.EnumLabels = labels;
-                        pgType.AstEnum = JsonSerializer.Deserialize<CreateEnumStmt>(enumAstJson!);
+                        if (!string.IsNullOrWhiteSpace(enumAstJson))
+                        {
+                            pgType.AstEnum = JsonSerializer.Deserialize<CreateEnumStmt>(enumAstJson);
+                        }
                         break;
 
                     case 'c': // Composite
@@ -919,9 +1093,7 @@ namespace mbulava.PostgreSql.Dac.Extract
                                 attrs.Add(new PgAttribute
                                 {
                                     Name = compReader.GetString(0),
-                                    //DataType = compReader.GetString(1),
-                                    // Composite attributes don’t support NOT NULL directly, but you can capture it
-                                    DataType = compReader.GetString(1) + (compReader.GetBoolean(2) ? " NOT NULL" : "")
+                                    DataType = compReader.GetString(1)
                                 });
                             }
                         }
@@ -934,7 +1106,10 @@ namespace mbulava.PostgreSql.Dac.Extract
                         pgType.Kind = PgTypeKind.Composite;
                         pgType.Definition = sql;
                         pgType.CompositeAttributes = attrs;
-                        pgType.AstComposite = JsonSerializer.Deserialize<CompositeTypeStmt>(compAstJson!);
+                        if (!string.IsNullOrWhiteSpace(compAstJson))
+                        {
+                            pgType.AstComposite = JsonSerializer.Deserialize<CompositeTypeStmt>(compAstJson);
+                        }
                         break;
                 }
 

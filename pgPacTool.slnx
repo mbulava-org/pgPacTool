@@ -14,6 +14,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/LinuxContainer.Tests/LinuxContainer.Tests.csproj">
       <Build Solution="Debug|*" Project="false" />
+      <Build Solution="Release|*" Project="false" />
     </Project>
     <Project Path="tests/mbulava.PostgreSql.Dac.Tests/mbulava.PostgreSql.Dac.Tests.csproj" />
     <Project Path="tests/NpgqueryExtended.Tests/NpgqueryExtended.Tests.csproj">

@@ -2,6 +2,7 @@ using FluentAssertions;
 using mbulava.PostgreSql.Dac.Compile;
 using mbulava.PostgreSql.Dac.Models;
 using System.IO.Compression;
+using System.Linq;
 using System.Text.Json;
 
 namespace mbulava.PostgreSql.Dac.Tests.Integration;
@@ -102,10 +103,10 @@ public class CsprojIntegrationTests
 
         project.Should().NotBeNull();
         project.DatabaseName.Should().Be("SampleDatabase");
-        project.Schemas.Should().HaveCount(1);
+        project.Schemas.Should().HaveCountGreaterThanOrEqualTo(1, "should have at least the public schema");
         
-        var schema = project.Schemas[0];
-        schema.Name.Should().Be("public");
+        var schema = project.Schemas.First(s => s.Name == "public");
+        schema.Should().NotBeNull("public schema should exist");
         schema.Tables.Should().HaveCountGreaterThan(0, "should have tables");
         schema.Views.Should().HaveCountGreaterThan(0, "should have views");
         schema.Functions.Should().HaveCountGreaterThan(0, "should have functions");

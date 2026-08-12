@@ -170,14 +170,24 @@ namespace mbulava.PostgreSql.Dac.Extract
             // Sanitize connection string for documentation (remove password)
             var sourceConnection = SanitizeConnectionString(_conn);
 
-            var defaultOwner = await ExtractDatabaseOwnerAsync(databaseName);
+            // Extract username from connection string for default owner
+            var defaultOwner = "postgres"; // fallback
+            try
+            {
+                var connBuilder = new NpgsqlConnectionStringBuilder(_conn);
+                defaultOwner = connBuilder.Username ?? "postgres";
+            }
+            catch
+            {
+                // If parsing fails, use default
+            }
 
             var project = new PgProject
             {
                 DatabaseName = databaseName,
                 PostgresVersion = majorVersion, // Only major version
                 SourceConnection = sourceConnection, // Sanitized connection string
-                DefaultOwner = defaultOwner,
+                DefaultOwner = defaultOwner, // Use connection user as default
                 DefaultTablespace = "pg_default"
             };
 
@@ -209,24 +219,6 @@ namespace mbulava.PostgreSql.Dac.Extract
             project.Roles = roles;
 
             return project;
-        }
-
-        private async Task<string> ExtractDatabaseOwnerAsync(string databaseName)
-        {
-            ArgumentException.ThrowIfNullOrWhiteSpace(databaseName);
-
-            return await ExecuteQueryAsync(
-                "SELECT pg_catalog.pg_get_userbyid(datdba) FROM pg_database WHERE datname = @databaseName;",
-                async reader =>
-                {
-                    if (await reader.ReadAsync() && !reader.IsDBNull(0))
-                    {
-                        return reader.GetString(0);
-                    }
-
-                    return string.Empty;
-                },
-                ("databaseName", databaseName));
         }
 
         private async Task<List<PgSchema>> ExtractSchemasAsync()
@@ -535,51 +527,30 @@ namespace mbulava.PostgreSql.Dac.Extract
             await using var conn = await CreateConnectionAsync();
             await using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-        SELECT c.oid,
-               c.relname,
-               r.rolname,
-               c.relrowsecurity,
-               c.relforcerowsecurity,
-               COALESCE(ts.spcname, '') AS tablespace_name,
-               (SELECT option_value
-                FROM pg_options_to_table(c.reloptions)
-                WHERE option_name = 'fillfactor') AS fillfactor
+        SELECT c.oid, c.relname, r.rolname
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
         JOIN pg_roles r ON r.oid = c.relowner
-        LEFT JOIN pg_tablespace ts ON ts.oid = c.reltablespace AND c.reltablespace <> 0
-        WHERE c.relkind IN ('r', 'p') AND n.nspname = @schema;";
+        WHERE c.relkind = 'r' AND n.nspname = @schema;";
 
             cmd.Parameters.AddWithValue("schema", schema);
 
             await using var reader = await cmd.ExecuteReaderAsync();
-            var tableOids = new List<(UInt32 oid, string name, string owner, bool rls, bool forceRls, string tablespace, int? fillFactor)>();
+            var tableOids = new List<(UInt32 oid, string name, string owner)>();
             while (reader.Read())
             {
-                var fillFactorStr = reader.IsDBNull(6) ? null : reader.GetString(6);
-                int? fillFactor = fillFactorStr != null && int.TryParse(fillFactorStr, out var ff) ? ff : (int?)null;
-                tableOids.Add((
-                    reader.GetFieldValue<UInt32>(0),
-                    reader.GetString(1),
-                    reader.GetString(2),
-                    reader.GetBoolean(3),
-                    reader.GetBoolean(4),
-                    reader.GetString(5),
-                    fillFactor
-                ));
+                tableOids.Add((reader.GetFieldValue<UInt32>(0), reader.GetString(1), reader.GetString(2)));
+                //UInt32 oid = reader.GetDataTypeOID(0);   // ✅ OID-safe
+                //var name = reader.GetString(1);
+                //var owner = reader.GetString(2);
+                //tableOids.Add((oid, name, owner));
             }
             await reader.CloseAsync();
 
-            foreach (var (oid, name, owner, rls, forceRls, tablespace, fillFactor) in tableOids)
+            foreach (var (oid, name, owner) in tableOids)
             {
-                // Extract inheritance (INHERITS clause) — must happen before building SQL
-                var inheritedFrom = await ExtractInheritanceAsync(oid);
-
-                // Extract partition info (PARTITION BY) — must happen before building SQL
-                var (partitionStrategy, partitionExpression) = await ExtractPartitionInfoAsync(oid);
-
-                // Build CREATE TABLE SQL (includes TABLESPACE and WITH fillfactor if set, and PARTITION BY if applicable)
-                var sql = await BuildCreateTableSqlAsync(oid, schema, name, tablespace, fillFactor, inheritedFrom, partitionStrategy, partitionExpression);
+                // Build CREATE TABLE SQL
+                var sql = await BuildCreateTableSqlAsync(oid, schema, name);
 
                 // Parse into AST
                 var parser = new Parser();
@@ -610,14 +581,7 @@ namespace mbulava.PostgreSql.Dac.Extract
                     Name = name,
                     Definition = sql,
                     Ast = ast,
-                    Owner = owner,
-                    RowLevelSecurity = rls,
-                    ForceRowLevelSecurity = forceRls,
-                    Tablespace = string.IsNullOrEmpty(tablespace) ? null : tablespace,
-                    FillFactor = fillFactor,
-                    InheritedFrom = inheritedFrom,
-                    PartitionStrategy = partitionStrategy,
-                    PartitionExpression = partitionExpression
+                    Owner = owner
                 };
 
                 var privilegesSql = "SELECT c.relacl::text[] FROM pg_class c WHERE c.oid = @oid;";
@@ -639,87 +603,18 @@ namespace mbulava.PostgreSql.Dac.Extract
             return tables;
         }
 
-        /// <summary>
-        /// Extracts the list of parent tables (schema-qualified) for a given table via pg_inherits.
-        /// Returns qualified names like "schema.tablename".
-        /// </summary>
-        private async Task<List<string>> ExtractInheritanceAsync(UInt32 tableOid)
-        {
-            var parents = new List<string>();
-
-            await using var conn = await CreateConnectionAsync();
-            await using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-        SELECT n.nspname, c.relname
-        FROM pg_inherits i
-        JOIN pg_class c ON c.oid = i.inhparent
-        JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE i.inhrelid = @oid
-        ORDER BY i.inhseqno;";
-
-            cmd.Parameters.AddWithValue("oid", (int)tableOid);
-
-            await using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-            {
-                var parentSchema = reader.GetString(0);
-                var parentName = reader.GetString(1);
-                parents.Add($"{parentSchema}.{parentName}");
-            }
-
-            return parents;
-        }
-
-        /// <summary>
-        /// Returns partition strategy (RANGE/LIST/HASH) and key expression for a partitioned table,
-        /// or (null, null) if the table is not partitioned.
-        /// </summary>
-        private async Task<(string? strategy, string? expression)> ExtractPartitionInfoAsync(UInt32 tableOid)
-        {
-            await using var conn = await CreateConnectionAsync();
-            await using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-        SELECT p.partstrat,
-               pg_get_partkeydef(p.partrelid) AS partkey
-        FROM pg_partitioned_table p
-        WHERE p.partrelid = @oid;";
-
-            cmd.Parameters.AddWithValue("oid", (int)tableOid);
-
-            await using var reader = await cmd.ExecuteReaderAsync();
-            if (await reader.ReadAsync())
-            {
-                var stratChar = reader.GetChar(0);
-                var keyDef = reader.GetString(1);
-                var strategy = stratChar switch
-                {
-                    'r' => "RANGE",
-                    'l' => "LIST",
-                    'h' => "HASH",
-                    _ => stratChar.ToString()
-                };
-                return (strategy, keyDef);
-            }
-
-            return (null, null);
-        }
-
-        private async Task<string> BuildCreateTableSqlAsync(UInt32 oid, string schema, string name,
-            string? tablespace = null, int? fillFactor = null, List<string>? inheritedFrom = null,
-            string? partitionStrategy = null, string? partitionExpression = null)
+        private async Task<string> BuildCreateTableSqlAsync(UInt32 oid, string schema, string name)
         {
             var sb = new StringBuilder();
             sb.AppendLine($"CREATE TABLE {QuoteIdent(schema)}.{QuoteIdent(name)} (");
 
             await using var conn = await CreateConnectionAsync();
             await using var colCmd = conn.CreateCommand();
-            // Include attinhcount so we can skip columns inherited from parent tables
             colCmd.CommandText = @"
         SELECT a.attname,
                pg_catalog.format_type(a.atttypid, a.atttypmod),
                a.attnotnull,
-               pg_get_expr(d.adbin, d.adrelid),
-               a.attinhcount
+               pg_get_expr(d.adbin, d.adrelid)
         FROM pg_attribute a
         LEFT JOIN pg_attrdef d ON a.attrelid = d.adrelid AND a.attnum = d.adnum
         WHERE a.attrelid = @oid AND a.attnum > 0 AND NOT a.attisdropped;";
@@ -730,10 +625,6 @@ namespace mbulava.PostgreSql.Dac.Extract
             var cols = new List<string>();
             while (colReader.Read())
             {
-                // Skip columns inherited from a parent table — they are implied by INHERITS
-                var inhCount = colReader.GetInt16(4);
-                if (inhCount > 0) continue;
-
                 var colName = QuoteIdent(colReader.GetString(0));
                 var colDef = $"{colName} {colReader.GetString(1)}";
                 if (colReader.GetBoolean(2)) colDef += " NOT NULL";
@@ -743,48 +634,7 @@ namespace mbulava.PostgreSql.Dac.Extract
             await colReader.CloseAsync();
 
             sb.AppendLine(string.Join(",\n", cols));
-
-            // WITH clause for storage parameters (e.g. fillfactor)
-            if (fillFactor.HasValue)
-            {
-                sb.Append($") WITH (fillfactor={fillFactor.Value})");
-            }
-            else
-            {
-                sb.Append(")");
-            }
-
-            // INHERITS clause — emit parent tables in declaration order
-            if (inheritedFrom != null && inheritedFrom.Count > 0)
-            {
-                var parents = string.Join(", ", inheritedFrom.Select(p =>
-                {
-                    var parts = p.Split('.', 2);
-                    return parts.Length == 2
-                        ? $"{QuoteIdent(parts[0])}.{QuoteIdent(parts[1])}"
-                        : QuoteIdent(p);
-                }));
-                sb.AppendLine();
-                sb.Append($"INHERITS ({parents})");
-            }
-
-            // PARTITION BY clause — emit for partitioned parent tables
-            if (!string.IsNullOrEmpty(partitionStrategy) && !string.IsNullOrEmpty(partitionExpression))
-            {
-                sb.AppendLine();
-                sb.Append($"PARTITION BY {partitionStrategy} ({partitionExpression})");
-            }
-
-            // TABLESPACE clause (only when non-default)
-            if (!string.IsNullOrEmpty(tablespace))
-            {
-                sb.AppendLine();
-                sb.AppendLine($"TABLESPACE {QuoteIdent(tablespace)};");
-            }
-            else
-            {
-                sb.AppendLine(";");
-            }
+            sb.AppendLine(");");
 
             return sb.ToString();
         }
@@ -964,37 +814,29 @@ namespace mbulava.PostgreSql.Dac.Extract
             await using var conn = await CreateConnectionAsync();
             await using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-        SELECT t.oid,
-               t.typname,
-               t.typtype,
-               r.rolname,
-               t.typrelid
-        FROM pg_type t
-        JOIN pg_namespace n ON n.oid = t.typnamespace
-        JOIN pg_roles r ON r.oid = t.typowner
-        LEFT JOIN pg_class c ON c.oid = t.typrelid
-        WHERE n.nspname = @schema
-          AND (
-              t.typtype IN ('d','e')
-              OR (t.typtype = 'c' AND c.relkind = 'c')
-          );";
+         SELECT t.oid, t.typname, t.typtype, r.rolname, t.typrelid
+         FROM pg_type t
+         JOIN pg_namespace n ON n.oid = t.typnamespace
+         JOIN pg_roles r ON r.oid = t.typowner
+         WHERE n.nspname = @schema
+           AND t.typtype IN ('d','e','c');";
 
             cmd.Parameters.AddWithValue("schema", schema);
 
             await using var reader = await cmd.ExecuteReaderAsync();
-            var typeInfos = new List<(uint oid, string name, char typtype, string owner, uint relationOid)>();
+            var typeInfos = new List<(uint oid, string name, char typtype, string owner, uint typrelid)>();
             while (await reader.ReadAsync())
             {
                 var oid = reader.GetFieldValue<uint>(0);
                 var name = reader.GetString(1);
                 var typtype = reader.GetChar(2);
                 var owner = reader.GetString(3);
-                var relationOid = reader.GetFieldValue<uint>(4);
-                typeInfos.Add((oid, name, typtype, owner, relationOid));
+                var typrelid = reader.GetFieldValue<uint>(4);
+                typeInfos.Add((oid, name, typtype, owner, typrelid));
             }
             await reader.CloseAsync();
 
-            foreach (var (oid, name, typtype, owner, relationOid) in typeInfos)
+            foreach (var (oid, name, typtype, owner, typrelid) in typeInfos)
             {
                 string sql;
                 PgType pgType = new PgType { Name = name, Owner = owner };
@@ -1068,9 +910,9 @@ namespace mbulava.PostgreSql.Dac.Extract
                            pg_catalog.format_type(a.atttypid, a.atttypmod) AS datatype,
                            a.attnotnull
                     FROM pg_attribute a
-                    WHERE a.attrelid = @oid AND a.attnum > 0 AND NOT a.attisdropped
+                    WHERE a.attrelid = @reloid AND a.attnum > 0 AND NOT a.attisdropped
                     ORDER BY a.attnum;";
-                            compCmd.Parameters.AddWithValue("oid", (int)relationOid);
+                            compCmd.Parameters.AddWithValue("reloid", (int)typrelid);
                             await using var compReader = await compCmd.ExecuteReaderAsync();
                             while (await compReader.ReadAsync())
                             {

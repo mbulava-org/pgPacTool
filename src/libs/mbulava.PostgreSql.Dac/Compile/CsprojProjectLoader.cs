@@ -33,7 +33,7 @@ public class CsprojProjectLoader
 {
     private readonly string _projectPath;
     private readonly string _projectDirectory;
-    private PgProject? _currentProject;
+    private readonly Parser _parser = new();
 
     public CsprojProjectLoader(string projectPath)
     {
@@ -57,7 +57,6 @@ public class CsprojProjectLoader
         {
             DatabaseName = Path.GetFileNameWithoutExtension(_projectPath)
         };
-        _currentProject = project;
 
         // Parse .csproj XML
         var doc = XDocument.Load(_projectPath);
@@ -70,15 +69,21 @@ public class CsprojProjectLoader
             project.DatabaseName = dbNameElement.Value;
         }
 
-        project.PostgresVersion = GetRequiredPostgresVersion(doc);
-        project.DefaultSchema = GetDefaultSchema(doc);
+        // Get PostgreSQL version from project properties if specified
+        var pgVersionElement = doc.Descendants()
+            .FirstOrDefault(e => e.Name.LocalName == "PostgresVersion");
+        if (pgVersionElement != null && !string.IsNullOrWhiteSpace(pgVersionElement.Value))
+        {
+            project.PostgresVersion = pgVersionElement.Value;
+        }
 
-        // Get default owner from project properties (empty string means "not configured")
+        // Get default owner from project properties
         var defaultOwnerElement = doc.Descendants()
             .FirstOrDefault(e => e.Name.LocalName == "DefaultOwner");
-        project.DefaultOwner = (defaultOwnerElement != null && !string.IsNullOrWhiteSpace(defaultOwnerElement.Value))
-            ? defaultOwnerElement.Value
-            : string.Empty;
+        if (defaultOwnerElement != null && !string.IsNullOrWhiteSpace(defaultOwnerElement.Value))
+        {
+            project.DefaultOwner = defaultOwnerElement.Value;
+        }
 
         // Get default tablespace from project properties
         var defaultTablespaceElement = doc.Descendants()
@@ -93,7 +98,7 @@ public class CsprojProjectLoader
 
         // Phase 1: Parse all SQL files and extract object information from AST
         var parsedObjects = new List<ParsedSqlObject>();
-        using var parser = CreateParser(project.PostgresVersion);
+        var parseErrors = new List<string>();
         foreach (var sqlFile in sqlFiles)
         {
             var fullPath = Path.Combine(_projectDirectory, sqlFile);
@@ -104,32 +109,32 @@ public class CsprojProjectLoader
             }
 
             var sql = await File.ReadAllTextAsync(fullPath);
-            var parsed = await ParseAndClassifySqlFileAsync(parser, project.DefaultSchema, sql, sqlFile);
+            var (parsed, parseError) = await ParseAndClassifySqlFileAsync(sql, sqlFile);
             if (parsed != null)
             {
                 parsedObjects.Add(parsed);
             }
+            else if (parseError != null)
+            {
+                parseErrors.Add(parseError);
+            }
+        }
+
+        // Surface parse errors to the caller rather than silently discarding broken files
+        if (parseErrors.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"Failed to parse {parseErrors.Count} SQL file(s):\n{string.Join("\n", parseErrors)}");
         }
 
         // Phase 2: Build dependency graph and order objects
         var orderedObjects = OrderObjectsByDependencies(parsedObjects);
 
-        // Separate roles from schema-scoped objects (roles are database-level)
-        var roles = orderedObjects.Where(o => o.ObjectType == SqlObjectType.Role).ToList();
-        var schemaObjects = orderedObjects.Where(o => o.ObjectType != SqlObjectType.Role).ToList();
-
         // Phase 3: Group by schema (extracted from AST, not folder structure)
-        var schemaGroups = schemaObjects.GroupBy(o => o.SchemaName ?? project.DefaultSchema);
+        var schemaGroups = orderedObjects.GroupBy(o => o.SchemaName);
 
         foreach (var schemaGroup in schemaGroups)
         {
-            // Skip empty schema names (defensive)
-            if (string.IsNullOrWhiteSpace(schemaGroup.Key))
-            {
-                Console.WriteLine("Warning: Skipping objects with empty schema name");
-                continue;
-            }
-
             var schema = new PgSchema
             {
                 Name = schemaGroup.Key,
@@ -145,43 +150,39 @@ public class CsprojProjectLoader
             project.Schemas.Add(schema);
         }
 
-        // Phase 4: Add roles to project (roles are database-level, not schema-scoped)
-        foreach (var roleObj in roles)
-        {
-            if (!string.IsNullOrWhiteSpace(roleObj.ObjectName))
-            {
-                project.Roles.Add(new PgRole
-                {
-                    Name = roleObj.ObjectName,
-                    Definition = roleObj.Sql
-                });
-            }
-        }
-
-        _currentProject = null;
         return project;
     }
 
     /// <summary>
     /// Parses a SQL file and extracts object information from AST.
+    /// Returns (parsed, null) on success, (null, errorMessage) on parse failure, or (null, null) for unknown types.
     /// </summary>
-    private async Task<ParsedSqlObject?> ParseAndClassifySqlFileAsync(Parser parser, string defaultSchema, string sql, string filePath)
+    private async Task<(ParsedSqlObject? parsed, string? error)> ParseAndClassifySqlFileAsync(string sql, string filePath)
     {
         try
         {
-            var result = parser.Parse(sql);
+            var result = _parser.Parse(sql);
             if (!result.IsSuccess || result.ParseTree == null)
             {
-                throw new InvalidOperationException(
-                    $"Failed to parse SQL in project file '{filePath}': {result.Error}. " +
-                    "Fix the syntax error in the SQL file before loading the project.");
+                var errorMsg = $"{filePath}: {result.Error}";
+                Console.WriteLine($"Warning: Failed to parse {filePath}: {result.Error}");
+                return (null, errorMsg);
             }
 
             var astJson = result.ParseTree.RootElement.GetRawText();
-            if (!TryGetFirstStatement(result.ParseTree.RootElement, out var stmtObject))
+
+            // Extract the first statement JSON for type-specific deserialization.
+            // The parse tree is {"version":..., "stmts":[{"stmt": {...}, "stmt_len": N},...]}
+            // Type-specific deserialization needs only the inner stmt object.
+            string firstStmtJson = astJson;
+            if (result.ParseTree.RootElement.TryGetProperty("stmts", out var stmtsEl) &&
+                stmtsEl.GetArrayLength() > 0)
             {
-                Console.WriteLine($"Warning: Could not find first statement in {filePath}");
-                return null;
+                var firstWrapper = stmtsEl.EnumerateArray().First();
+                if (firstWrapper.TryGetProperty("stmt", out var firstStmt))
+                {
+                    firstStmtJson = firstStmt.GetRawText();
+                }
             }
 
             var parsed = new ParsedSqlObject
@@ -191,275 +192,175 @@ public class CsprojProjectLoader
                 AstJson = astJson
             };
 
+            // Extract statement-level JSON for each statement type.
+            // firstStmtJson is like {"CreateStmt": {...}} or {"CreateFunctionStmt": {...}} etc.
+            // We need to unwrap the inner object for type-specific deserialization.
+
             // Determine object type and extract schema/name from AST
-            if (stmtObject.TryGetProperty("CreateSchemaStmt", out var createSchemaStmt))
+            if (sql.Contains("CREATE SCHEMA", StringComparison.OrdinalIgnoreCase))
             {
+                var stmt = DeserializeStmt<CreateSchemaStmt>(firstStmtJson, "CreateSchemaStmt");
                 parsed.ObjectType = SqlObjectType.Schema;
-                var schemaName = GetStringProperty(createSchemaStmt, "schemaname") ?? defaultSchema;
-                parsed.SchemaName = schemaName;
-                parsed.ObjectName = schemaName;
+                parsed.SchemaName = stmt?.Schemaname ?? "public";
+                parsed.ObjectName = stmt?.Schemaname ?? "public";
             }
-            else if (stmtObject.TryGetProperty("CreateStmt", out var createStmt))
+            else if (sql.Contains("CREATE TABLE", StringComparison.OrdinalIgnoreCase))
             {
+                var stmt = DeserializeStmt<CreateStmt>(firstStmtJson, "CreateStmt");
                 parsed.ObjectType = SqlObjectType.Table;
-                ExtractSchemaAndName(createStmt, "relation", defaultSchema, out var schema, out var name);
-                parsed.SchemaName = schema ?? defaultSchema;
+                ExtractSchemaAndName(stmt?.Relation, out var schema, out var name);
+                parsed.SchemaName = schema ?? "public";
                 parsed.ObjectName = name ?? "unknown";
+                parsed.Ast = stmt;
             }
-            else if (stmtObject.TryGetProperty("IndexStmt", out var indexStmt))
+            else if (sql.Contains("CREATE INDEX", StringComparison.OrdinalIgnoreCase) || 
+                     sql.Contains("CREATE UNIQUE INDEX", StringComparison.OrdinalIgnoreCase))
             {
+                var stmt = DeserializeStmt<IndexStmt>(firstStmtJson, "IndexStmt");
                 parsed.ObjectType = SqlObjectType.Index;
-                ExtractSchemaAndName(indexStmt, "relation", defaultSchema, out var schema, out var name);
-                parsed.SchemaName = schema ?? defaultSchema;
-                parsed.ObjectName = GetStringProperty(indexStmt, "idxname") ?? name ?? "unknown";
+                ExtractSchemaAndName(stmt?.Relation, out var schema, out var name);
+                parsed.SchemaName = schema ?? "public";
+                parsed.ObjectName = stmt?.Idxname ?? name ?? "unknown";
+                parsed.Ast = stmt;
             }
-            else if (stmtObject.TryGetProperty("ViewStmt", out var viewStmt))
+            else if (sql.Contains("CREATE VIEW", StringComparison.OrdinalIgnoreCase) ||
+                     sql.Contains("CREATE OR REPLACE VIEW", StringComparison.OrdinalIgnoreCase) ||
+                     sql.Contains("CREATE MATERIALIZED VIEW", StringComparison.OrdinalIgnoreCase))
             {
+                var stmt = DeserializeStmt<ViewStmt>(firstStmtJson, "ViewStmt");
                 parsed.ObjectType = SqlObjectType.View;
-                ExtractSchemaAndName(viewStmt, "view", defaultSchema, out var schema, out var name);
-                parsed.SchemaName = schema ?? defaultSchema;
+                ExtractSchemaAndName(stmt?.View, out var schema, out var name);
+                parsed.SchemaName = schema ?? "public";
                 parsed.ObjectName = name ?? "unknown";
+                parsed.Ast = stmt;
             }
-            else if (stmtObject.TryGetProperty("CreateFunctionStmt", out var functionStmt))
+            else if (sql.Contains("CREATE FUNCTION", StringComparison.OrdinalIgnoreCase) ||
+                     sql.Contains("CREATE OR REPLACE FUNCTION", StringComparison.OrdinalIgnoreCase) ||
+                     sql.Contains("CREATE PROCEDURE", StringComparison.OrdinalIgnoreCase) ||
+                     sql.Contains("CREATE OR REPLACE PROCEDURE", StringComparison.OrdinalIgnoreCase))
             {
+                var stmt = DeserializeStmt<CreateFunctionStmt>(firstStmtJson, "CreateFunctionStmt");
                 parsed.ObjectType = SqlObjectType.Function;
-                ExtractQualifiedName(functionStmt, "funcname", defaultSchema, out var schema, out var name);
-                parsed.SchemaName = schema ?? defaultSchema;
-                parsed.ObjectName = name ?? "unknown";
+                // Function name is in Funcname array
+                if (stmt?.Funcname != null && stmt.Funcname.Any())
+                {
+                    var nameNode = stmt.Funcname.Last();
+                    parsed.ObjectName = nameNode?.String?.Sval ?? "unknown";
+                    if (stmt.Funcname.Count > 1)
+                    {
+                        parsed.SchemaName = stmt.Funcname[0]?.String?.Sval ?? "public";
+                    }
+                    else
+                    {
+                        parsed.SchemaName = "public";
+                    }
+                }
+                else
+                {
+                    parsed.SchemaName = "public";
+                    parsed.ObjectName = "unknown";
+                }
             }
-            else if (stmtObject.TryGetProperty("CompositeTypeStmt", out var compositeTypeStmt))
+            else if (sql.Contains("CREATE TYPE", StringComparison.OrdinalIgnoreCase))
             {
-                parsed.ObjectType = SqlObjectType.Type;
-                ExtractSchemaAndName(compositeTypeStmt, "typevar", defaultSchema, out var schema, out var name);
-                parsed.SchemaName = schema ?? defaultSchema;
-                parsed.ObjectName = name ?? "unknown";
+                // Try CompositeTypeStmt first, then CreateEnumStmt
+                var compositeStmt = DeserializeStmt<CompositeTypeStmt>(firstStmtJson, "CompositeTypeStmt");
+                if (compositeStmt?.Typevar != null)
+                {
+                    parsed.ObjectType = SqlObjectType.Type;
+                    ExtractSchemaAndName(compositeStmt.Typevar, out var schema, out var name);
+                    parsed.SchemaName = schema ?? "public";
+                    parsed.ObjectName = name ?? "unknown";
+                    parsed.Ast = compositeStmt;
+                }
+                else
+                {
+                    var enumStmt = DeserializeStmt<CreateEnumStmt>(firstStmtJson, "CreateEnumStmt");
+                    parsed.ObjectType = SqlObjectType.Type;
+                    parsed.SchemaName = "public";
+                    parsed.ObjectName = enumStmt?.TypeName?.LastOrDefault()?.String?.Sval ?? "unknown";
+                    parsed.Ast = enumStmt;
+                }
             }
-            else if (stmtObject.TryGetProperty("CreateEnumStmt", out var enumTypeStmt))
+            else if (sql.Contains("CREATE SEQUENCE", StringComparison.OrdinalIgnoreCase))
             {
-                parsed.ObjectType = SqlObjectType.Type;
-                ExtractQualifiedName(enumTypeStmt, "typeName", defaultSchema, out var schema, out var name);
-                parsed.SchemaName = schema ?? defaultSchema;
-                parsed.ObjectName = name ?? "unknown";
-            }
-            else if (stmtObject.TryGetProperty("CreateDomainStmt", out var domainTypeStmt))
-            {
-                parsed.ObjectType = SqlObjectType.Type;
-                ExtractQualifiedName(domainTypeStmt, "domainname", defaultSchema, out var schema, out var name);
-                parsed.SchemaName = schema ?? defaultSchema;
-                parsed.ObjectName = name ?? "unknown";
-            }
-            else if (stmtObject.TryGetProperty("CreateSeqStmt", out var sequenceStmt))
-            {
+                var stmt = DeserializeStmt<CreateSeqStmt>(firstStmtJson, "CreateSeqStmt");
                 parsed.ObjectType = SqlObjectType.Sequence;
-                ExtractSchemaAndName(sequenceStmt, "sequence", defaultSchema, out var schema, out var name);
-                parsed.SchemaName = schema ?? defaultSchema;
+                ExtractSchemaAndName(stmt?.Sequence, out var schema, out var name);
+                parsed.SchemaName = schema ?? "public";
                 parsed.ObjectName = name ?? "unknown";
+                parsed.Ast = stmt;
             }
-            else if (stmtObject.TryGetProperty("CreateTrigStmt", out var triggerStmt))
+            else if (sql.Contains("CREATE TRIGGER", StringComparison.OrdinalIgnoreCase))
             {
+                var stmt = DeserializeStmt<CreateTrigStmt>(firstStmtJson, "CreateTrigStmt");
                 parsed.ObjectType = SqlObjectType.Trigger;
-                ExtractSchemaAndName(triggerStmt, "relation", defaultSchema, out var schema, out var name);
-                parsed.SchemaName = schema ?? defaultSchema;
-                parsed.ObjectName = GetStringProperty(triggerStmt, "trigname") ?? "unknown";
+                ExtractSchemaAndName(stmt?.Relation, out var schema, out var name);
+                parsed.SchemaName = schema ?? "public";
+                parsed.ObjectName = stmt?.Trigname ?? "unknown";
+                parsed.Ast = stmt;
             }
-            else if (stmtObject.TryGetProperty("CreateRoleStmt", out _))
+            else if (sql.Contains("CREATE ROLE", StringComparison.OrdinalIgnoreCase))
             {
+                var stmt = DeserializeStmt<CreateRoleStmt>(firstStmtJson, "CreateRoleStmt");
                 parsed.ObjectType = SqlObjectType.Role;
                 parsed.SchemaName = ""; // Roles are not schema-scoped
-                parsed.ObjectName = ExtractRoleName(sql) ?? "unknown";
+                parsed.ObjectName = stmt?.Role ?? "unknown";
+                parsed.Ast = stmt;
             }
-            else if (stmtObject.TryGetProperty("GrantStmt", out _) && sql.Contains("GRANT", StringComparison.OrdinalIgnoreCase))
+            else if (sql.Contains("GRANT", StringComparison.OrdinalIgnoreCase))
             {
                 parsed.ObjectType = SqlObjectType.Permission;
-                parsed.SchemaName = defaultSchema; // Will be refined later
+                parsed.SchemaName = "public"; // Will be refined later
                 parsed.ObjectName = "_permissions";
             }
-            else if (stmtObject.TryGetProperty("AlterOwnerStmt", out _) ||
-                     (stmtObject.TryGetProperty("AlterTableStmt", out _) && sql.Contains("OWNER", StringComparison.OrdinalIgnoreCase)))
+            else if (sql.Contains("ALTER", StringComparison.OrdinalIgnoreCase) && sql.Contains("OWNER", StringComparison.OrdinalIgnoreCase))
             {
                 parsed.ObjectType = SqlObjectType.Owner;
-                parsed.SchemaName = defaultSchema; // Will be refined later
+                parsed.SchemaName = "public"; // Will be refined later
                 parsed.ObjectName = "_owners";
             }
-            else if (stmtObject.TryGetProperty("CommentStmt", out _))
+            else if (sql.Contains("COMMENT ON", StringComparison.OrdinalIgnoreCase))
             {
                 parsed.ObjectType = SqlObjectType.Comment;
-                parsed.SchemaName = defaultSchema; // Will be refined later
+                parsed.SchemaName = "public"; // Will be refined later
                 parsed.ObjectName = "_comments";
             }
             else
             {
                 Console.WriteLine($"Warning: Unknown object type in {filePath}");
-                return null;
+                return (null, null);
             }
 
-            return parsed;
+            return (parsed, null);
         }
-        catch (Exception ex) when (ex is not InvalidOperationException)
+        catch (Exception ex)
         {
             Console.WriteLine($"Error parsing {filePath}: {ex.Message}");
-            return null;
+            return (null, null);
         }
     }
 
-    private static bool TryGetFirstStatement(JsonElement root, out JsonElement stmtObject)
+    /// <summary>
+    /// Deserializes a protobuf-style stmt JSON object into a typed statement.
+    /// The stmtJson is like {"CreateStmt": {...}}; this method unwraps the inner object.
+    /// </summary>
+    private static T? DeserializeStmt<T>(string stmtJson, string stmtKey) where T : class
     {
-        stmtObject = default;
-
-        if (!root.TryGetProperty("stmts", out var stmts) || stmts.GetArrayLength() == 0)
+        try
         {
-            return false;
-        }
-
-        var firstStmt = stmts[0];
-        if (!firstStmt.TryGetProperty("stmt", out stmtObject))
-        {
-            return false;
-        }
-
-        return true;
-    }
-
-    private static string? GetStringProperty(JsonElement element, string propertyName)
-    {
-        if (!element.TryGetProperty(propertyName, out var propertyValue))
-        {
-            return null;
-        }
-
-        var value = propertyValue.GetString();
-        return string.IsNullOrWhiteSpace(value) ? null : value;
-    }
-
-    private static void ExtractSchemaAndName(JsonElement element, string propertyName, string defaultSchema, out string? schema, out string? name)
-    {
-        schema = null;
-        name = null;
-
-        if (!element.TryGetProperty(propertyName, out var relation))
-        {
-            return;
-        }
-
-        schema = GetStringProperty(relation, "schemaname") ?? defaultSchema;
-        name = GetStringProperty(relation, "relname");
-    }
-
-    private static void ExtractQualifiedName(JsonElement element, string propertyName, string defaultSchema, out string? schema, out string? name)
-    {
-        schema = defaultSchema;
-        name = null;
-
-        if (!element.TryGetProperty(propertyName, out var nameArray))
-        {
-            return;
-        }
-
-        var nameParts = new List<string>();
-        foreach (var item in nameArray.EnumerateArray())
-        {
-            if (item.TryGetProperty("String", out var stringNode))
+            using var doc = JsonDocument.Parse(stmtJson);
+            if (doc.RootElement.TryGetProperty(stmtKey, out var inner))
             {
-                var part = GetStringProperty(stringNode, "sval");
-                if (!string.IsNullOrWhiteSpace(part))
-                {
-                    nameParts.Add(part);
-                }
+                return JsonSerializer.Deserialize<T>(inner.GetRawText());
             }
+            // Fallback: try deserializing the whole thing (e.g., if already unwrapped)
+            return JsonSerializer.Deserialize<T>(stmtJson);
         }
-
-        if (nameParts.Count == 0)
+        catch
         {
-            return;
+            return null;
         }
-
-        name = nameParts[^1];
-        if (nameParts.Count > 1)
-        {
-            schema = nameParts[^2];
-        }
-    }
-
-    private static string? ExtractRoleName(string sql)
-    {
-        var match = System.Text.RegularExpressions.Regex.Match(
-            sql,
-            @"CREATE\s+ROLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?<role>""[^""]+""|[a-zA-Z_][a-zA-Z0-9_]*)",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-        return match.Success
-            ? match.Groups["role"].Value.Trim('"')
-            : null;
-    }
-
-    private static (string? ObjectType, string? QualifiedName, string? Owner) ExtractExplicitOwner(string sql)
-    {
-        if (string.IsNullOrWhiteSpace(sql))
-        {
-            return (null, null, null);
-        }
-
-        var match = System.Text.RegularExpressions.Regex.Match(
-            sql,
-            @"ALTER\s+(?<type>SCHEMA|TABLE|VIEW|MATERIALIZED\s+VIEW|FUNCTION|PROCEDURE|SEQUENCE|TYPE)\s+(?<name>.+?)\s+OWNER\s+TO\s+(?<owner>""[^""]+""|[a-zA-Z_][a-zA-Z0-9_]*)",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline);
-
-        if (!match.Success)
-        {
-            return (null, null, null);
-        }
-
-        return (
-            match.Groups["type"].Value.Trim(),
-            match.Groups["name"].Value.Trim().TrimEnd(';'),
-            match.Groups["owner"].Value.Trim().Trim('"'));
-    }
-
-    private string GetRequiredPostgresVersion(XDocument doc)
-    {
-        var pgVersionElement = doc.Descendants()
-            .FirstOrDefault(e => e.Name.LocalName == "PostgresVersion");
-
-        if (pgVersionElement == null || string.IsNullOrWhiteSpace(pgVersionElement.Value))
-        {
-            // PostgresVersion is optional; default to 16 when not specified.
-            return "16";
-        }
-
-        return pgVersionElement.Value.Trim();
-    }
-
-    private static string GetDefaultSchema(XDocument doc)
-    {
-        var defaultSchemaElement = doc.Descendants()
-            .FirstOrDefault(e => e.Name.LocalName == "DefaultSchema");
-
-        return string.IsNullOrWhiteSpace(defaultSchemaElement?.Value)
-            ? "public"
-            : defaultSchemaElement.Value.Trim();
-    }
-
-    private Parser CreateParser(string projectPostgresVersion)
-    {
-        var majorVersionText = projectPostgresVersion
-            .Split('.', 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            .FirstOrDefault();
-
-        if (!int.TryParse(majorVersionText, out var majorVersion))
-        {
-            throw new InvalidOperationException(
-                $"Project '{_projectPath}' has an invalid PostgresVersion value '{projectPostgresVersion}'. Use a supported major version such as 16 or 17.");
-        }
-
-        var version = majorVersion switch
-        {
-            16 => PostgreSqlVersion.Postgres16,
-            17 => PostgreSqlVersion.Postgres17,
-            _ => throw new NotSupportedException(
-                $"Project '{_projectPath}' targets PostgreSQL {majorVersion}, but only PostgreSQL 16 and 17 are currently supported.")
-        };
-
-        return new Parser(version);
     }
 
     /// <summary>
@@ -469,16 +370,6 @@ public class CsprojProjectLoader
     {
         schema = rangeVar?.Schemaname;
         name = rangeVar?.Relname;
-
-        // Handle empty strings from protobuf deserialization
-        if (string.IsNullOrWhiteSpace(schema))
-        {
-            schema = null;
-        }
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            name = null;
-        }
     }
 
     /// <summary>
@@ -532,117 +423,8 @@ public class CsprojProjectLoader
     /// </summary>
     private async Task AddObjectToSchemaAsync(PgSchema schema, ParsedSqlObject obj)
     {
-        if (obj.ObjectType == SqlObjectType.Owner)
-        {
-            ApplyOwnerStatement(schema, obj.Sql);
-            return;
-        }
-
+        // For now, just parse and add - full implementation would use AST
         await ParseSqlFileAsync(obj.Sql, obj.FilePath, schema);
-    }
-
-    private static void ApplyOwnerStatement(PgSchema schema, string sql)
-    {
-        ArgumentNullException.ThrowIfNull(schema);
-
-        var (objectType, qualifiedName, owner) = ExtractExplicitOwner(sql);
-        if (string.IsNullOrWhiteSpace(objectType) || string.IsNullOrWhiteSpace(qualifiedName) || string.IsNullOrWhiteSpace(owner))
-        {
-            return;
-        }
-
-        var normalizedType = objectType.ToUpperInvariant();
-        var normalizedName = qualifiedName.Trim();
-
-        switch (normalizedType)
-        {
-            case "SCHEMA":
-                if (NameEquals(schema.Name, normalizedName))
-                {
-                    schema.Owner = owner;
-                }
-                break;
-
-            case "TABLE":
-                ApplyOwner(schema.Tables, normalizedName, owner);
-                break;
-
-            case "VIEW":
-            case "MATERIALIZED VIEW":
-                ApplyOwner(schema.Views, normalizedName, owner);
-                break;
-
-            case "FUNCTION":
-            case "PROCEDURE":
-                ApplyOwner(schema.Functions, normalizedName, owner);
-                break;
-
-            case "SEQUENCE":
-                ApplyOwner(schema.Sequences, normalizedName, owner);
-                break;
-
-            case "TYPE":
-                ApplyOwner(schema.Types, normalizedName, owner);
-                break;
-        }
-    }
-
-    private static void ApplyOwner<T>(IEnumerable<T> objects, string qualifiedName, string owner) where T : class
-    {
-        var name = ExtractObjectName(qualifiedName);
-        var target = objects.FirstOrDefault(obj => NameEquals(GetName(obj), qualifiedName) || NameEquals(GetName(obj), name));
-        if (target == null)
-        {
-            return;
-        }
-
-        SetOwner(target, owner);
-    }
-
-    private static string ExtractObjectName(string qualifiedName)
-    {
-        var parts = qualifiedName.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return parts.Length == 0 ? qualifiedName : parts[^1].Trim('"');
-    }
-
-    private static bool NameEquals(string? left, string? right)
-    {
-        return string.Equals(left?.Trim('"'), right?.Trim('"'), StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string? GetName<T>(T obj) where T : class
-    {
-        return obj switch
-        {
-            PgTable table => table.Name,
-            PgView view => view.Name,
-            PgFunction function => function.Name,
-            PgSequence sequence => sequence.Name,
-            PgType type => type.Name,
-            _ => null
-        };
-    }
-
-    private static void SetOwner<T>(T obj, string owner) where T : class
-    {
-        switch (obj)
-        {
-            case PgTable table:
-                table.Owner = owner;
-                break;
-            case PgView view:
-                view.Owner = owner;
-                break;
-            case PgFunction function:
-                function.Owner = owner;
-                break;
-            case PgSequence sequence:
-                sequence.Owner = owner;
-                break;
-            case PgType type:
-                type.Owner = owner;
-                break;
-        }
     }
 
     /// <summary>
@@ -656,6 +438,12 @@ public class CsprojProjectLoader
         // Load the project
         var project = await LoadProjectAsync();
 
+        // Always save the full pgproj.json to obj folder for debugging/inspection
+        var objDir = Path.Combine(_projectDirectory, "obj");
+        Directory.CreateDirectory(objDir);
+        var objJsonPath = Path.Combine(objDir, $"{project.DatabaseName}.pgproj.json");
+        await GenerateJsonAsync(project, objJsonPath);
+
         // Determine output path
         if (string.IsNullOrWhiteSpace(outputPath))
         {
@@ -668,18 +456,6 @@ public class CsprojProjectLoader
                 OutputFormat.Json => Path.Combine(outputDir, $"{project.DatabaseName}.pgproj.json"),
                 _ => throw new ArgumentOutOfRangeException(nameof(format))
             };
-        }
-
-        // Save the full pgproj.json for debugging/inspection alongside the output file.
-        // Using the output file's directory (rather than the project's obj/ folder) prevents
-        // parallel test runs from competing for the same file-system lock.
-        var objDir = Path.GetDirectoryName(outputPath) ?? Path.GetTempPath();
-        Directory.CreateDirectory(objDir);
-        var objJsonPath = Path.Combine(objDir, $"{project.DatabaseName}.pgproj.json");
-        // Only write the debug JSON when the output format is not already Json (avoid duplicate write).
-        if (format != OutputFormat.Json)
-        {
-            await GenerateJsonAsync(project, objJsonPath);
         }
 
         // Generate output
@@ -737,117 +513,43 @@ public class CsprojProjectLoader
     /// </summary>
     private List<string> GetSqlFilesFromProject(XDocument doc)
     {
-        var sqlFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var sqlFiles = new List<string>();
 
         // Get pre/post deployment scripts to exclude them from main objects
         var prePostScripts = GetPrePostDeploymentScripts(doc);
         var excludeFiles = new HashSet<string>(prePostScripts.Select(s => s.FilePath), StringComparer.OrdinalIgnoreCase);
 
-        var configuredSqlFiles = GetConfiguredSqlFiles(doc);
-        foreach (var configuredFile in configuredSqlFiles)
-        {
-            if (ShouldIncludeProjectFile(configuredFile, excludeFiles))
-            {
-                sqlFiles.Add(configuredFile);
-            }
-        }
-
-        // Scan convention-based SQL files recursively in project directory
+        // Scan all .sql files recursively in project directory
         if (Directory.Exists(_projectDirectory))
         {
-            foreach (var pattern in new[] { "*.sql", "*.pgsql" })
+            var allSqlFiles = Directory.GetFiles(_projectDirectory, "*.sql", SearchOption.AllDirectories);
+
+            foreach (var file in allSqlFiles)
             {
-                foreach (var file in Directory.GetFiles(_projectDirectory, pattern, SearchOption.AllDirectories))
+                var relativePath = Path.GetRelativePath(_projectDirectory, file);
+
+                // Exclude bin, obj, and other build directories
+                // Use path-segment matching to avoid false positives (e.g. "db_objects" contains "obj")
+                var segments = relativePath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                if (segments.Any(s => s.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
+                                      s.Equals("obj", StringComparison.OrdinalIgnoreCase) ||
+                                      s.Equals(".vs", StringComparison.OrdinalIgnoreCase)) ||
+                    relativePath.StartsWith("."))
                 {
-                    var relativePath = Path.GetRelativePath(_projectDirectory, file);
-                    if (ShouldIncludeProjectFile(relativePath, excludeFiles))
-                    {
-                        sqlFiles.Add(relativePath);
-                    }
+                    continue;
                 }
+
+                // Exclude pre/post deployment scripts
+                if (excludeFiles.Contains(relativePath))
+                {
+                    continue;
+                }
+
+                sqlFiles.Add(relativePath);
             }
         }
 
-        return sqlFiles.ToList();
-    }
-
-    private List<string> GetConfiguredSqlFiles(XDocument doc)
-    {
-        return doc.Descendants()
-            .Where(e => e.Attribute("Include") != null)
-            .Where(e => IsSupportedSqlElement(e.Name.LocalName))
-            .Select(e => e.Attribute("Include")?.Value)
-            .Where(static value => !string.IsNullOrWhiteSpace(value))
-            .SelectMany(value => ExpandConfiguredSqlFiles(value!))
-            .ToList();
-    }
-
-    private IEnumerable<string> ExpandConfiguredSqlFiles(string includeValue)
-    {
-        if (!includeValue.Contains('*') && !includeValue.Contains('?'))
-        {
-            yield return includeValue;
-            yield break;
-        }
-
-        var normalizedPattern = includeValue.Replace('/', Path.DirectorySeparatorChar)
-            .Replace('\\', Path.DirectorySeparatorChar);
-
-        var regexPattern = "^" + System.Text.RegularExpressions.Regex.Escape(normalizedPattern)
-            .Replace(@"\*\*", "__DOUBLE_WILDCARD__")
-            .Replace(@"\*", $"[^{System.Text.RegularExpressions.Regex.Escape(Path.DirectorySeparatorChar.ToString())}]*")
-            .Replace(@"\?", ".")
-            .Replace("__DOUBLE_WILDCARD__", ".*") + "$";
-
-        var matcher = new System.Text.RegularExpressions.Regex(regexPattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-        foreach (var file in Directory.EnumerateFiles(_projectDirectory, "*", SearchOption.AllDirectories))
-        {
-            var relativePath = Path.GetRelativePath(_projectDirectory, file);
-            var normalizedRelativePath = relativePath.Replace('/', Path.DirectorySeparatorChar)
-                .Replace('\\', Path.DirectorySeparatorChar);
-
-            if (matcher.IsMatch(normalizedRelativePath))
-            {
-                yield return relativePath;
-            }
-        }
-    }
-
-    private static bool IsSupportedSqlElement(string elementName)
-    {
-        return elementName is "None" or "Content" or "SqlFile";
-    }
-
-    private static bool ShouldIncludeProjectFile(string relativePath, HashSet<string> excludeFiles)
-    {
-        if (string.IsNullOrWhiteSpace(relativePath))
-        {
-            return false;
-        }
-
-        var normalizedPath = relativePath.Replace('/', Path.DirectorySeparatorChar)
-            .Replace('\\', Path.DirectorySeparatorChar);
-
-        var extension = Path.GetExtension(normalizedPath);
-        if (!string.Equals(extension, ".sql", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(extension, ".pgsql", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        if (normalizedPath.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
-            normalizedPath.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
-            normalizedPath.Contains($"{Path.DirectorySeparatorChar}.vs{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
-            normalizedPath.StartsWith($".{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
-            normalizedPath.StartsWith("bin" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
-            normalizedPath.StartsWith("obj" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
-            normalizedPath.StartsWith(".vs" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        return !excludeFiles.Contains(relativePath) && !excludeFiles.Contains(normalizedPath);
+        return sqlFiles.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     /// <summary>
@@ -894,15 +596,12 @@ public class CsprojProjectLoader
         try
         {
             // Parse with Npgquery
-            using var parser = CreateParser(GetRequiredPostgresVersion(XDocument.Load(_projectPath)));
-            var defaultSchema = GetDefaultSchema(XDocument.Load(_projectPath));
-            var result = parser.Parse(sql);
+            var result = _parser.Parse(sql);
 
             if (!result.IsSuccess)
             {
-                throw new InvalidOperationException(
-                    $"Failed to parse SQL in project file '{fileName}': {result.Error}. " +
-                    "Fix the syntax error in the SQL file before loading the project.");
+                Console.WriteLine($"Warning: Failed to parse {fileName}: {result.Error}");
+                return;
             }
 
             if (result.ParseTree == null)
@@ -918,12 +617,8 @@ public class CsprojProjectLoader
                 if (!stmtWrapper.TryGetProperty("stmt", out var stmt))
                     continue;
 
-                await ProcessStatementAsync(stmt, sql, fileName, schema, defaultSchema);
+                await ProcessStatementAsync(stmt, sql, fileName, schema);
             }
-        }
-        catch (InvalidOperationException)
-        {
-            throw;
         }
         catch (Exception ex)
         {
@@ -934,7 +629,7 @@ public class CsprojProjectLoader
     /// <summary>
     /// Processes a single parsed statement and adds the appropriate object to the schema.
     /// </summary>
-    private async Task ProcessStatementAsync(JsonElement stmt, string fullSql, string fileName, PgSchema schema, string defaultSchema)
+    private async Task ProcessStatementAsync(JsonElement stmt, string fullSql, string fileName, PgSchema schema)
     {
         try
         {
@@ -1005,11 +700,11 @@ public class CsprojProjectLoader
             var table = new PgTable
             {
                 Name = tableName,
-                Definition = tableDefinition ?? fullSql.Trim()
+                Definition = tableDefinition ?? fullSql.Trim(),
+                Owner = "postgres"
             };
 
             schema.Tables.Add(table);
-            RegisterSourceLocation(schema.Name, table.Name, fileName);
         }
         catch (Exception ex)
         {
@@ -1040,11 +735,11 @@ public class CsprojProjectLoader
             {
                 Name = viewName,
                 Definition = viewDefinition ?? fullSql.Trim(),
+                Owner = "postgres",
                 IsMaterialized = isMaterialized
             };
 
             schema.Views.Add(view);
-            RegisterSourceLocation(schema.Name, view.Name, fileName);
         }
         catch (Exception ex)
         {
@@ -1070,11 +765,11 @@ public class CsprojProjectLoader
             var function = new PgFunction
             {
                 Name = functionName,
-                Definition = functionDefinition ?? fullSql.Trim()
+                Definition = functionDefinition ?? fullSql.Trim(),
+                Owner = "postgres"
             };
 
             schema.Functions.Add(function);
-            RegisterSourceLocation(schema.Name, function.Name, fileName);
         }
         catch (Exception ex)
         {
@@ -1101,11 +796,11 @@ public class CsprojProjectLoader
             {
                 Name = typeName,
                 Definition = typeDefinition ?? fullSql.Trim(),
+                Owner = "postgres",
                 Kind = PgTypeKind.Composite
             };
 
             schema.Types.Add(type);
-            RegisterSourceLocation(schema.Name, type.Name, fileName);
         }
         catch (Exception ex)
         {
@@ -1132,11 +827,11 @@ public class CsprojProjectLoader
             {
                 Name = typeName,
                 Definition = typeDefinition ?? fullSql.Trim(),
+                Owner = "postgres",
                 Kind = PgTypeKind.Enum
             };
 
             schema.Types.Add(type);
-            RegisterSourceLocation(schema.Name, type.Name, fileName);
         }
         catch (Exception ex)
         {
@@ -1163,11 +858,11 @@ public class CsprojProjectLoader
             {
                 Name = typeName,
                 Definition = typeDefinition ?? fullSql.Trim(),
+                Owner = "postgres",
                 Kind = PgTypeKind.Domain
             };
 
             schema.Types.Add(type);
-            RegisterSourceLocation(schema.Name, type.Name, fileName);
         }
         catch (Exception ex)
         {
@@ -1193,11 +888,11 @@ public class CsprojProjectLoader
             var sequence = new PgSequence
             {
                 Name = sequenceName,
-                Definition = sequenceDefinition ?? fullSql.Trim()
+                Definition = sequenceDefinition ?? fullSql.Trim(),
+                Owner = "postgres"
             };
 
             schema.Sequences.Add(sequence);
-            RegisterSourceLocation(schema.Name, sequence.Name, fileName);
         }
         catch (Exception ex)
         {
@@ -1231,11 +926,11 @@ public class CsprojProjectLoader
             {
                 Name = triggerName,
                 TableName = tableName,
-                Definition = triggerDefinition ?? fullSql.Trim()
+                Definition = triggerDefinition ?? fullSql.Trim(),
+                Owner = "postgres"
             };
 
             schema.Triggers.Add(trigger);
-            RegisterSourceLocation(schema.Name, trigger.Name, fileName);
         }
         catch (Exception ex)
         {
@@ -1280,16 +975,6 @@ public class CsprojProjectLoader
         }
 
         return nameParts.Count > 0 ? nameParts[^1] : null; // Return last part (unqualified name)
-    }
-
-    private void RegisterSourceLocation(string schemaName, string objectName, string fileName)
-    {
-        if (_currentProject == null || string.IsNullOrWhiteSpace(schemaName) || string.IsNullOrWhiteSpace(objectName))
-        {
-            return;
-        }
-
-        _currentProject.RegisterSourceLocation($"{schemaName}.{objectName}", fileName);
     }
 
     /// <summary>

@@ -50,8 +50,7 @@ namespace ProjectExtract_Tests
         {
             // Clear connection pools before disposing
             NpgsqlConnection.ClearAllPools();
-            if (_pgContainer is not null)
-                await _pgContainer.DisposeAsync();
+            if (_pgContainer is not null) await _pgContainer.DisposeAsync();
         }
 
         private async Task SeedTestDataAsync()

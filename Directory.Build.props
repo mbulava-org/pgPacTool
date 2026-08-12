@@ -1,14 +1,23 @@
 <Project>
   <!-- Common properties for all projects in the solution -->
-  
-  <!--
-    Code coverage: use coverlet.collector (XPlat Code Coverage data collector) only.
-    coverlet.msbuild was removed because it instruments assemblies on disk, then
-    tries to restore the originals at process exit. When the native library
-    libpg_query is still mapped into the test host at that point, the copy of
-    Npgquery.dll fails with "file in use", crashing the host after all tests pass.
-    coverlet.collector is an in-process data collector and never modifies DLLs on
-    disk, so it is safe to use with projects that hold native library handles.
-    Each test .csproj already carries its own coverlet.collector reference.
-  -->
+
+  <!-- Code coverage is collected via XPlat Code Coverage in CI using coverlet.collector.
+       CollectCoverage=true is intentionally NOT set here: that property enables the
+       coverlet.msbuild integration, which runs alongside the XPlat collector and causes
+       file-locking races on native DLLs (e.g. Npgquery.dll) when both mechanisms
+       instrument and restore the same files concurrently.
+       See: DEV-373 Investigate SQL Generation Edge Cases in CI -->
+  <PropertyGroup>
+    <!-- coverlet.msbuild settings intentionally NOT active (CollectCoverage not set) -->
+  </PropertyGroup>
+
+  <!-- Common package references for testing (only when project is a test project).
+       Individual test projects should NOT also reference coverlet.collector separately;
+       that creates duplicate PackageReference warnings and version conflicts. -->
+  <ItemGroup Condition="$(MSBuildProjectName.Contains('Tests'))">
+    <PackageReference Include="coverlet.collector" Version="6.0.2">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
 </Project>

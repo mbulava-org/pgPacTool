@@ -6,20 +6,15 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%2B-336791)](https://www.postgresql.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Tests](https://img.shields.io/badge/tests-201%20passing-success)
-[![Version](https://img.shields.io/badge/version-1.0.0-orange)](https://github.com/mbulava-org/pgPacTool/releases)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue)](https://github.com/mbulava-org/pgPacTool/releases)
 
-> **📦 Current Release (v1.0.0)**:
-> - ✅ **MSBuild SDK** - Package version ready: `MSBuild.Sdk.PostgreSql/1.0.0`
-> - ✅ **CLI Tool (pgpac)** - Package version ready: `postgresPacTools/1.0.0`
+> **📦 Release Status (v1.0.0)**:
+> - ✅ **MSBuild SDK** - Published! Install: `MSBuild.Sdk.PostgreSql/1.0.0`
+> - ✅ **CLI Tool (pgpac)** - Published! Install: `dotnet tool install -g postgresPacTools`
 
-> - ✅ **Core Library** - Package version ready: `mbulava.PostgreSql.Dac/1.0.0` (includes Npgquery)
+> - ✅ **Core Library** - Published! `dotnet add package mbulava.PostgreSql.Dac` (includes Npgquery)
 >
 > **💡 PostgreSQL Version Support**: Currently supports **PostgreSQL 16 and 17**. Older versions (14, 15) may be added in the future based on demand. See [Multi-Version Support Documentation](docs/features/multi-version-support/README.md) for details.
->
-> **🧠 Embedded Copilot Skill**: Repository-aware PostgreSQL guidance is available in the
-> [PostgreSQL Expert Skill](.github/skills/postgresql-expert/README.md), backed by the
-> [Roles/Security](docs/version-differences/PG_ROLES_PERMISSIONS_SECURITY.md) and
-> [Database Objects](docs/version-differences/PG_DATABASE_OBJECTS.md) version references.
 
 ---
 
@@ -39,16 +34,16 @@ pgPacTool brings **SQL Server-style database project workflow** to PostgreSQL. I
 
 ### 🎯 Complete Functionality
 
-#### **MSBuild SDK Integration** 
+#### **MSBuild SDK Integration** ⭐ NEW!
 - ✅ `MSBuild.Sdk.PostgreSql` - SDK for database projects
 - ✅ Convention-based project structure
 - ✅ Automatic SQL file discovery
 - ✅ Build integration with `dotnet build`
 - ✅ Generates `.pgpac` packages
 - ✅ Incremental build support
-- ✅ Visual Studio compatible via the published SDK package
+- ✅ Visual Studio compatible (when packaged)
 
-#### **SDK-Style Project Extraction** 
+#### **SDK-Style Project Extraction** ⭐ NEW!
 - ✅ Extract databases directly to `.csproj` format
 - ✅ Automatic folder structure generation by object type
 - ✅ Individual SQL files per database object
@@ -108,26 +103,6 @@ pgPacTool brings **SQL Server-style database project workflow** to PostgreSQL. I
 - **.NET 10 SDK** - [Download here](https://dotnet.microsoft.com/download/dotnet/10.0)
 - **PostgreSQL 16 or 17** - Local or remote instance
 
-### Visual Studio / Solution Setup
-
-- **No separate project template install is required for `preview1`**. Create the `.csproj` manually or generate one with `pgpac extract --target-file output/mydb/mydb.csproj`.
-- **To load the custom SDK project in Visual Studio**, the SDK package must be restorable from a package source available to the solution:
-  - published preview: use `nuget.org`
-  - local SDK testing: add a `nuget.config` that points to your local package feed before opening the solution
-- If Visual Studio opens the project but cannot resolve `MSBuild.Sdk.PostgreSql`, run `dotnet restore` from the solution or project directory, then reload the project.
-
-**Example `nuget.config` for local SDK validation:**
-
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-  <packageSources>
-    <add key="LocalFeed" value="C:\LocalNuGet" />
-    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
-  </packageSources>
-</configuration>
-```
-
 ---
 
 ### 🎯 Option 1: Create New Database Project (MSBuild SDK)
@@ -146,22 +121,16 @@ cd MyDatabase
 
 ```xml
 <!-- MyDatabase.csproj -->
-<Project Sdk="Microsoft.NET.Sdk">
-
-  <Sdk Name="MSBuild.Sdk.PostgreSql" Version="1.0.0" />
+<Project Sdk="MSBuild.Sdk.PostgreSql/1.0.0">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <DatabaseName>MyDatabase</DatabaseName>
-    <PostgresVersion>16</PostgresVersion>
-    <DefaultSchema>public</DefaultSchema>
     <OutputFormat>pgpac</OutputFormat>
   </PropertyGroup>
 
 </Project>
 ```
-
-> **Visual Studio note:** open `MyDatabase.csproj` directly or add it to an existing `.sln` after restore succeeds. No separate template installation is required for the published SDK.
 
 #### Step 2: Add SQL Files
 
@@ -213,7 +182,7 @@ dotnet build
 - ✅ Objects are sorted topologically
 - ✅ `.pgpac` package is generated
 
-#### Step 4: Deploy
+#### Step 4: Deploy (Coming Soon)
 
 ```powershell
 # Deploy to PostgreSQL
@@ -231,7 +200,7 @@ Perfect for **bringing existing databases** under version control:
 
 ```bash
 # Install globally from NuGet
-dotnet tool install -g postgresPacTools --version 1.0.0
+dotnet tool install -g postgresPacTools
 ```
 
 #### Step 2: Extract Your Database
@@ -244,7 +213,7 @@ pgpac extract \
   --verbose
 ```
 
-**Result: Complete project with individual SQL files and an SDK-style `.csproj` that Visual Studio can restore and load.**
+**Result: Complete project with individual SQL files!**
 
 ```
 output/mydb/
@@ -609,7 +578,7 @@ git pull origin main
 dotnet build --configuration Release
 # Output: bin/Release/net10.0/MyDatabase.pgpac
 
-# 3. Preview changes before deployment
+# 3. Preview changes (coming soon with publish command)
 pgpac script \
   -sf bin/Release/net10.0/MyDatabase.pgpac \
   -tcs "Host=staging;Database=mydb;..." \
@@ -783,16 +752,11 @@ cd tests/TestProjects/SampleDatabase
 <configuration>
   <packageSources>
     <add key="LocalFeed" value="$HOME/LocalNuGet" />
-    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
   </packageSources>
 </configuration>
 "@ | Out-File -FilePath nuget.config
 
 # Update .csproj to use local version
-# Restore so Visual Studio/dotnet can resolve the SDK from the local feed
-dotnet restore
-
-# Open SampleDatabase.csproj or SampleDatabase.sln in Visual Studio if desired
 # Then build
 dotnet build
 ```
@@ -870,51 +834,40 @@ docker rm pgpac-test
 
 ### ✅ Recently Completed
 
-**Preview 1 publishing and install validation**
-- ✅ Published `mbulava.PostgreSql.Dac` to NuGet
-- ✅ Published `MSBuild.Sdk.PostgreSql` to NuGet
-- ✅ Published `postgresPacTools` as a .NET global tool
-- ✅ Validated README Quick Start flows against clean package installs
-- ✅ Validated SDK `.csproj` builds from restored NuGet packages
-- ✅ Validated CLI `compile` and `extract` workflows end-to-end
+**SDK-Style Project Extraction** (Completed January 2025)
+- ✅ Extract databases directly to `.csproj` format
+- ✅ Automatic folder structure generation
+- ✅ Individual SQL files per object
+- ✅ CLI help menus updated
+- ✅ Comprehensive documentation added
+- ✅ Tested with 3 production-like databases (9-145 files)
+- ✅ Fixed null reference bugs in sequence extraction
+- ✅ Fixed aggregate function handling in function extraction
+- ✅ Added graceful error handling for missing databases
 
-**Packaging and build reliability improvements**
-- ✅ MSBuild SDK package now carries its runtime/task assets correctly
-- ✅ SDK build output path defaults align with README examples
-- ✅ Extracted SDK-style projects build successfully after generation
-- ✅ NuGet package tests cover published package consumption scenarios
-
----
-
-### 📦 Post-Publish Priorities
-
-**Current release line:** `1.0.0`
-
-- [ ] **Release hardening**
-  - [ ] Expand package-consumption and upgrade-path validation
-  - [ ] Reduce remaining warnings in build and test output
-  - [ ] Add more end-to-end coverage for publish/script/deploy-report flows
-
-- [ ] **Documentation polish**
-  - [ ] Refresh walkthroughs and screenshots for the published preview
-  - [ ] Add troubleshooting for SDK restore/build/package scenarios
-  - [ ] Keep version support guidance explicit for PostgreSQL 16 and 17
-
-- [ ] **Release automation**
-  - [ ] Finalize repeatable versioning/release workflow
-  - [ ] Add publish verification gates for NuGet packages and tool install
-  - [ ] Attach release artifacts and notes automatically
-
-- [ ] **Product polish for v1**
-  - [ ] Improve multi-schema support
-  - [ ] Enhance deployment script discovery/configuration
-  - [ ] Continue Visual Studio workflow improvements
-
-**See:** [docs/NUGET_PUBLISHING_PLAN.md](docs/NUGET_PUBLISHING_PLAN.md)
+**Bug Fixes & Improvements:**
+- ✅ Null safety in `ExtractSequencesAsync` (parse result validation)
+- ✅ Aggregate functions excluded from extraction (prevent errors)
+- ✅ Database existence validation with clear error messages
+- ✅ Enhanced exception handling with verbose stack traces
+- ✅ PostgreSQL version checker with better error context
 
 ---
 
-### 🎯 v1.0.0 Features (Planned)
+### ✅ Publishing (Complete)
+
+All three packages are published to NuGet.org as v1.0.0:
+
+- ✅ **Package metadata** configured with LICENSE and README files
+- ✅ **All packages built and tested** locally and in CI
+- ✅ **NuGet.org publication** complete — mbulava.PostgreSql.Dac, MSBuild.Sdk.PostgreSql, postgresPacTools
+- ✅ **CI/CD automation** via GitHub Actions from `main` branch
+
+**See:** [docs/PUBLISHING.md](docs/PUBLISHING.md)
+
+---
+
+### 🎯 v1.1.0 Features (Planned)
 
 #### **Multi-Schema Improvements**
 - [ ] Full multi-schema support
@@ -965,12 +918,9 @@ docker rm pgpac-test
 
 **Solution:**
 ```powershell
-# Option 1: Refresh package caches and restore from NuGet
+# Clear NuGet cache and restore
 dotnet nuget locals all --clear
 dotnet restore --force
-
-# Option 2: For local SDK validation, pack locally and use a local package source
-# (see "Test MSBuild SDK Locally" section)
 ```
 
 #### "Could not load file or assembly 'libpg_query_16.dll'"
@@ -1213,12 +1163,12 @@ If you encounter issues not listed here:
 
 pgPacTool uses **GitHub Actions** to automatically publish packages to NuGet.org:
 
-- **Preview Releases** - Automatically published from `preview1` branch
-- **Stable Releases** - Will be published from `main` branch (coming soon)
+- **Stable Releases** - Automatically published from `main` branch
+- **Pre-release Builds** - Published from feature branches for testing
 
 **How it works:**
 
-1. Push to `preview1` branch → Workflow triggers automatically
+1. Push to `main` branch → Workflow triggers automatically
 2. Builds solution and runs tests
 3. Packs all 3 NuGet packages
 4. Verifies Npgquery embedding
@@ -1242,15 +1192,13 @@ See [docs/PUBLISHING.md](docs/PUBLISHING.md) for detailed publishing instruction
 
 ## 📊 Project Status
 
-### Current Release Status
+### Current Branch Status
 
-| Area | Status | Notes |
-|------|--------|-------|
-| Core DAC library | ✅ Ready | `mbulava.PostgreSql.Dac` `1.0.0` |
-| MSBuild SDK | ✅ Ready | `MSBuild.Sdk.PostgreSql/1.0.0` |
-| CLI tool | ✅ Ready | `dotnet tool install -g postgresPacTools --version 1.0.0` |
-| PostgreSQL support | ✅ Active | Supported versions: PostgreSQL 16 and 17 |
-| Current development branch | ✅ Active | `preview1` |
+| Branch | Status | Tests | Purpose |
+|--------|--------|-------|---------|
+| `main` | ✅ Stable | 183/183 | Production-ready features |
+| `feature/cli-implementation` | ✅ Complete | 201/201 | CLI tool + integration tests |
+| `feature/msbuild-sdk-integration` | 🚧 Active | N/A | MSBuild SDK + NuGet prep |
 
 ### Test Coverage
 
@@ -1274,11 +1222,11 @@ Status: 100% Passing ✅
 
 | Package | Version | Status |
 |---------|---------|--------|
-| **mbulava.PostgreSql.Dac** | 1.0.0 | ✅ Published to NuGet |
-| **MSBuild.Sdk.PostgreSql** | 1.0.0 | ✅ Published to NuGet |
-| **postgresPacTools** | 1.0.0 | ✅ Published to NuGet |
+| **mbulava.PostgreSql.Dac** | 1.0.0 | ✅ Published to NuGet (stable) |
+| **MSBuild.Sdk.PostgreSql** | 1.0.0 | ✅ Published to NuGet (stable) |
+| **postgresPacTools** | 1.0.0 | ✅ Published to NuGet (stable) |
 
-**Publication:** Published for the `preview1` release line and validated with README install/build flows.
+**Publication:** Automated via GitHub Actions from `main` branch
 
 **Install:**
 ```bash
@@ -1388,7 +1336,8 @@ else
 | **[📖 User Guide](docs/USER_GUIDE.md)** | Getting started, SDK projects, troubleshooting |
 | **[🔧 CLI Reference](docs/CLI_REFERENCE.md)** | Complete CLI command reference with SDK extraction |
 | **[📦 SDK Guide](docs/SDK_PROJECT_GUIDE.md)** | MSBuild SDK and project structure guide |
-| **[🔌 API Reference](docs/API_REFERENCE.md)** | Core library API documentation with code examples |
+| **[🔌 API Reference](docs/API_REFERENCE.md)** | Core library API documentation |
+| **[🔧 API Reference](docs/API_REFERENCE.md)** | Complete API with code examples |
 | **[⚙️ Workflows](docs/WORKFLOWS.md)** | CI/CD, testing, code coverage |
 
 ---
@@ -1412,28 +1361,19 @@ else
 - SQLCMD variables
 - Full publish pipeline
 
-### ✅ Milestone 4: Packaging & Distribution (COMPLETE FOR PREVIEW 1)
-- NuGet packages published
-- Global tool packaging published
-- Package install validation completed
-- README quick start validation added
-
-### ✅ Milestone 5: MSBuild SDK (COMPLETE FOR PREVIEW 1)
-- SDK-style `.csproj` support
-- MSBuild integration
-- Clean package restore/build validation
-- Extracted project build support
-
-### 📋 Milestone 6: Post-Publish Hardening (CURRENT)
-- Deployment automation improvements
+### 📋 Milestone 4: Deployment (Next)
+- Deployment automation
 - Rollback support
-- Publishing profiles and release polish
-- Expanded end-to-end publish/script validation
+- Publishing profiles
 
-### 📋 Milestone 7: Developer Experience
+### 📋 Milestone 5: Packaging
+- NuGet packages
+- Package references
+
+### 📋 Milestone 6: MSBuild SDK
+- .pgproj file support
+- MSBuild integration
 - Project templates
-- Additional Visual Studio workflow improvements
-- Documentation and troubleshooting polish
 
 **[📅 Full Roadmap](docs/README.md)**
 
@@ -1517,9 +1457,9 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ### Third-Party Licenses
 
-**libpg_query native libraries** - Licensed under the PostgreSQL License (similar to MIT). 
+**pg_query.dll** - Licensed under the PostgreSQL License (similar to MIT). 
 - [PostgreSQL License](https://www.postgresql.org/about/licence/)
-- Building versioned multi-platform libraries (Windows, Linux, macOS) for pgPacTool
+- Building multi-platform versions (Windows, Linux, macOS) for pgPacTool
 
 ---
 
@@ -1531,6 +1471,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-**Status:** Preview 6 ready for local validation ✅  
+**Status:** v1.0.0 Stable ✅  
 **Version:** 1.0.0  
-**Last Updated:** 2026-04-21
+**Last Updated:** 2026-05-31

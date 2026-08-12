@@ -1,33 +1,25 @@
-# Ensure native binary files are never modified by git line-ending normalization.
-# Without these rules, git on Windows may corrupt ELF .so / PE .dll / Mach-O .dylib
-# files by converting LF to CRLF, causing "not a valid ELF file" load errors in CI.
+# Auto-detect text files and perform line-ending normalization
+* text=auto
 
-# Native shared libraries - always binary
-*.so       binary
-*.so.*     binary
-*.dll      binary
-*.dylib    binary
-*.a        binary
-*.lib      binary
+# Binary native libraries - never apply CRLF transformation
+*.so binary
+*.dll binary
+*.dylib binary
+*.a binary
+*.lib binary
 
-# Protobuf generated files - text, Unix line endings
-*.proto    text eol=lf
+# Archive files
+*.zip binary
+*.tar.gz binary
+*.nupkg binary
+*.snupkg binary
 
-# Shell scripts - Unix line endings
-*.sh       text eol=lf
+# Image files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
 
-# Windows batch files - Windows line endings
-*.bat      text eol=crlf
-*.cmd      text eol=crlf
-
-# C# source - text, auto line endings
-*.cs       text=auto
-*.csproj   text=auto
-*.sln      text=auto
-*.slnx     text=auto
-*.props    text=auto
-*.targets  text=auto
-*.json     text=auto
-*.yml      text=auto
-*.yaml     text=auto
-*.md       text=auto
+# Protobuf compiled files
+*.pb.go binary

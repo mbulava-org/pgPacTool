@@ -48,8 +48,7 @@ public class CompositeTypeExtractionTests
     public async Task OneTimeTeardown()
     {
         NpgsqlConnection.ClearAllPools();
-        if (_pgContainer is not null)
-            await _pgContainer.DisposeAsync();
+        if (_pgContainer is not null) await _pgContainer.DisposeAsync();
     }
 
     private async Task SeedTestDataAsync()

@@ -10,10 +10,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="coverlet.collector" Version="8.0.0">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
     <PackageReference Include="Docker.DotNet" Version="3.125.15" />
     <PackageReference Include="FluentAssertions" Version="8.8.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.3.0" />
@@ -31,10 +27,12 @@
   </ItemGroup>
 
   <!-- Reference all test projects to ensure they're built -->
+  <!-- Note: Npgquery.Tests was removed - it was a reference to a project that does not exist
+       in the current repository layout. LinuxContainer.Tests is excluded from solution builds
+       (both Debug and Release) and is only intended for local multi-platform dev testing. -->
   <ItemGroup>
     <ProjectReference Include="..\mbulava.PostgreSql.Dac.Tests\mbulava.PostgreSql.Dac.Tests.csproj" />
     <ProjectReference Include="..\ProjectExtract-Tests\ProjectExtract-Tests.csproj" />
-    <ProjectReference Include="..\NpgqueryExtended.Tests\NpgqueryExtended.Tests.csproj" />
   </ItemGroup>
 
 </Project>

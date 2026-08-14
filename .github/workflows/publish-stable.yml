@@ -154,7 +154,6 @@ jobs:
         dotnet pack src/pgprojBuilder/pgprojBuilder.csproj `
           --configuration ${{ env.CONFIGURATION }} `
           --output ${{ env.PACKAGES_DIR }} `
-          --no-restore `
           /p:Version=${{ steps.get_version.outputs.VERSION }}
       shell: pwsh
     

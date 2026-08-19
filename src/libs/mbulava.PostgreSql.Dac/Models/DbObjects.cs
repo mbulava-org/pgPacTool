@@ -1,4 +1,4 @@
-﻿using PgQuery;
+using PgQuery;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -140,6 +140,9 @@ namespace mbulava.PostgreSql.Dac.Models
         // SQL definition from database
         public string Definition { get; set; } = string.Empty;
 
+        // Source file path if loaded from or extracted to project
+        public string? SourceFilePath { get; set; }
+
         // Parsed AST for programmatic access and comparison
         public CreateStmt? Ast { get; set; }
 
@@ -204,6 +207,9 @@ namespace mbulava.PostgreSql.Dac.Models
         // SQL definition from database (CREATE VIEW statement)
         public string Definition { get; set; } = string.Empty;
 
+        // Source file path if loaded from or extracted to project
+        public string? SourceFilePath { get; set; }
+
         // Parsed AST for programmatic access and comparison
         public ViewStmt? Ast { get; set; }
 
@@ -219,6 +225,9 @@ namespace mbulava.PostgreSql.Dac.Models
 
         // SQL definition from database (CREATE FUNCTION/PROCEDURE statement)
         public string Definition { get; set; } = string.Empty;
+
+        // Source file path if loaded from or extracted to project
+        public string? SourceFilePath { get; set; }
 
         // Parsed AST for programmatic access and comparison
         public CreateFunctionStmt? Ast { get; set; }
@@ -241,6 +250,9 @@ namespace mbulava.PostgreSql.Dac.Models
 
         // SQL definition from database (CREATE TYPE statement)
         public string Definition { get; set; }
+
+        // Source file path if loaded from or extracted to project
+        public string? SourceFilePath { get; set; }
 
         public string Owner { get; set; } = string.Empty;
 
@@ -276,6 +288,9 @@ namespace mbulava.PostgreSql.Dac.Models
         // SQL definition from database (CREATE SEQUENCE statement)
         public string Definition { get; set; }
 
+        // Source file path if loaded from or extracted to project
+        public string? SourceFilePath { get; set; }
+
         public string Owner { get; set; } = string.Empty;
 
         // Parsed AST for programmatic access and comparison
@@ -292,6 +307,9 @@ namespace mbulava.PostgreSql.Dac.Models
 
         // SQL definition from database (CREATE TRIGGER statement)
         public string Definition { get; set; } = string.Empty;
+
+        // Source file path if loaded from or extracted to project
+        public string? SourceFilePath { get; set; }
 
         // Parsed AST for programmatic access and comparison
         public CreateTrigStmt? Ast { get; set; }
@@ -587,5 +605,19 @@ namespace mbulava.PostgreSql.Dac.Models
         }
 
         public Dictionary<string, HashSet<string>> GetDependencies() => _dependencies;
+    }
+
+    /// <summary>
+    /// Metadata stored in target database (__pgpac_objects) to preserve original source code and file paths.
+    /// </summary>
+    public class PgPacObjectMetadata
+    {
+        public string SchemaName { get; set; } = string.Empty;
+        public string ObjectName { get; set; } = string.Empty;
+        public string ObjectType { get; set; } = string.Empty; // "FUNCTION", "PROCEDURE", "TYPE", "TABLE", "VIEW", "TRIGGER", "SEQUENCE"
+        public string? FilePath { get; set; }
+        public string SourceSql { get; set; } = string.Empty;
+        public string? AstHash { get; set; }
+        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     }
 }

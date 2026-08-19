@@ -1,4 +1,4 @@
-﻿using mbulava.PostgreSql.Dac.Models;
+using mbulava.PostgreSql.Dac.Models;
 using Npgquery;
 using Npgsql;
 using PgQuery;
@@ -20,11 +20,85 @@ namespace mbulava.PostgreSql.Dac.Extract
     {
         private readonly string _conn;
         private readonly bool _verbose;
+        private Dictionary<string, PgPacObjectMetadata> _metadata = new(StringComparer.OrdinalIgnoreCase);
 
         public PgProjectExtractor(string conString, bool verbose = false)
         {
             _conn = conString;
             _verbose = verbose;
+        }
+
+        private async Task<Dictionary<string, PgPacObjectMetadata>> LoadDeploymentMetadataAsync()
+        {
+            var metadata = new Dictionary<string, PgPacObjectMetadata>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                await using var conn = await CreateConnectionAsync();
+
+                await using var checkCmd = conn.CreateCommand();
+                checkCmd.CommandText = @"
+            SELECT 1 FROM information_schema.tables 
+            WHERE table_name = '__pgpac_objects' LIMIT 1;";
+                var exists = await checkCmd.ExecuteScalarAsync();
+                if (exists == null)
+                {
+                    return metadata;
+                }
+
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+            SELECT schema_name, object_name, object_type, file_path, source_sql, ast_hash, updated_at
+            FROM __pgpac_objects;";
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    var meta = new PgPacObjectMetadata
+                    {
+                        SchemaName = reader.GetString(0),
+                        ObjectName = reader.GetString(1),
+                        ObjectType = reader.GetString(2),
+                        FilePath = reader.IsDBNull(3) ? null : reader.GetString(3),
+                        SourceSql = reader.GetString(4),
+                        AstHash = reader.IsDBNull(5) ? null : reader.GetString(5),
+                        UpdatedAt = reader.IsDBNull(6) ? DateTime.UtcNow : reader.GetDateTime(6)
+                    };
+                    var key = $"{meta.SchemaName}.{meta.ObjectType}.{meta.ObjectName}";
+                    metadata[key] = meta;
+                }
+            }
+            catch (Exception ex)
+            {
+                if (_verbose)
+                {
+                    Console.WriteLine($"   ⚠️ Could not load __pgpac_objects metadata: {ex.Message}");
+                }
+            }
+
+            return metadata;
+        }
+
+        public static string CleanFunctionDecompiledDefinition(string definition)
+        {
+            if (string.IsNullOrWhiteSpace(definition)) return definition;
+
+            // Clean redundant type casts on NULL defaults from pg_get_functiondef:
+            // e.g. "DEFAULT NULL::character varying" -> "DEFAULT NULL"
+            // "DEFAULT NULL::integer" -> "DEFAULT NULL"
+            var cleaned = Regex.Replace(
+                definition,
+                @"\bDEFAULT\s+NULL::[a-zA-Z0-9_]+(?:\([^)]*\))?",
+                "DEFAULT NULL",
+                RegexOptions.IgnoreCase);
+
+            // Clean redundant empty string cast on defaults:
+            // "DEFAULT ''::character varying" -> "DEFAULT ''"
+            cleaned = Regex.Replace(
+                cleaned,
+                @"\bDEFAULT\s+('')(?:::character varying|::text|::varchar)",
+                "DEFAULT $1",
+                RegexOptions.IgnoreCase);
+
+            return cleaned;
         }
 
         /// <summary>
@@ -191,7 +265,8 @@ namespace mbulava.PostgreSql.Dac.Extract
                 DefaultTablespace = "pg_default"
             };
 
-
+            // Load deployment metadata if available
+            _metadata = await LoadDeploymentMetadataAsync();
 
             var schemas = await ExtractSchemasAsync();
             foreach (var schema in schemas)
@@ -519,7 +594,6 @@ namespace mbulava.PostgreSql.Dac.Extract
             return roles.Values.ToList();
         }
 
-        
         private async Task<List<PgTable>> ExtractTablesAsync(string schema)
         {
             var tables = new List<PgTable>();
@@ -537,7 +611,8 @@ namespace mbulava.PostgreSql.Dac.Extract
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
         JOIN pg_roles r ON r.oid = c.relowner
-        WHERE c.relkind IN ('r', 'p') AND n.nspname = @schema;";
+        WHERE c.relkind IN ('r', 'p') AND n.nspname = @schema
+          AND c.relname <> '__pgpac_objects';";
 
             cmd.Parameters.AddWithValue("schema", schema);
 
@@ -553,10 +628,6 @@ namespace mbulava.PostgreSql.Dac.Extract
                     reader.GetBoolean(4),
                     reader.GetBoolean(5),
                     reader.IsDBNull(6) ? null : reader.GetFieldValue<string[]>(6)));
-                //UInt32 oid = reader.GetDataTypeOID(0);   // ✅ OID-safe
-                //var name = reader.GetString(1);
-                //var owner = reader.GetString(2);
-                //tableOids.Add((oid, name, owner));
             }
             await reader.CloseAsync();
 
@@ -588,9 +659,6 @@ namespace mbulava.PostgreSql.Dac.Extract
                 CreateStmt? ast = null;
                 if (result.IsSuccess && result.ParseTree != null)
                 {
-                    // Assuming the ParseTree is a JsonDocument representing the parse tree,
-                    // and you want to deserialize it to a CreateStmt.
-                    // You may need to adjust this if your parser provides a different way to get the AST.
                     try
                     {
                         var json = result.ParseTree.RootElement.GetRawText();
@@ -616,9 +684,17 @@ namespace mbulava.PostgreSql.Dac.Extract
                     PartitionExpression = partitionExpression
                 };
 
+                if (_metadata.TryGetValue($"{schema}.TABLE.{name}", out var tableMeta))
+                {
+                    table.SourceFilePath = tableMeta.FilePath;
+                    if (Compare.PgSchemaComparer.AreDefinitionsEqual(tableMeta.SourceSql, sql))
+                    {
+                        table.Definition = tableMeta.SourceSql;
+                    }
+                }
+
                 var privilegesSql = "SELECT c.relacl::text[] FROM pg_class c WHERE c.oid = @oid;";
                 table.Privileges = await ExtractPrivilegesAsync(privilegesSql, "oid", (int)oid);
-
 
                 // Populate columns
                 table.Columns.AddRange(await ExtractColumnsAsync(oid));
@@ -1106,6 +1182,20 @@ namespace mbulava.PostgreSql.Dac.Extract
                         break;
                 }
 
+                if (_metadata.TryGetValue($"{schema}.TYPE.{name}", out var typeMeta))
+                {
+                    pgType.SourceFilePath = typeMeta.FilePath;
+                    if (Compare.PgSchemaComparer.AreDefinitionsEqual(typeMeta.SourceSql, pgType.Definition))
+                    {
+                        pgType.Definition = typeMeta.SourceSql;
+                    }
+                }
+                else if (pgType.Kind == PgTypeKind.Composite && pgType.CompositeAttributes != null && pgType.CompositeAttributes.Count > 0)
+                {
+                    var attrSql = string.Join(",\n    ", pgType.CompositeAttributes.Select(a => $"{a.Name} {a.DataType}"));
+                    pgType.Definition = $"CREATE TYPE {schema}.{name} AS (\n    {attrSql}\n);";
+                }
+
                 types.Add(pgType);
             }
 
@@ -1214,7 +1304,7 @@ namespace mbulava.PostgreSql.Dac.Extract
                     }
                 }
 
-                sequences.Add(new PgSequence
+                var seq = new PgSequence
                 {
                     Name = name,
                     Owner = owner,
@@ -1222,7 +1312,18 @@ namespace mbulava.PostgreSql.Dac.Extract
                     Ast = ast,
                     Options = options,
                     Privileges = privileges
-                });
+                };
+
+                if (_metadata.TryGetValue($"{schemaName}.SEQUENCE.{name}", out var seqMeta))
+                {
+                    seq.SourceFilePath = seqMeta.FilePath;
+                    if (Compare.PgSchemaComparer.AreDefinitionsEqual(seqMeta.SourceSql, definition))
+                    {
+                        seq.Definition = seqMeta.SourceSql;
+                    }
+                }
+
+                sequences.Add(seq);
             }
 
             return sequences;
@@ -1294,7 +1395,7 @@ namespace mbulava.PostgreSql.Dac.Extract
                     privileges = await ExtractPrivilegesAsync(privilegesSql, "oid", (int)oid);
                 }
 
-                views.Add(new PgView
+                var view = new PgView
                 {
                     Name = name,
                     Owner = owner,
@@ -1303,7 +1404,20 @@ namespace mbulava.PostgreSql.Dac.Extract
                     IsMaterialized = isMaterialized,
                     Privileges = privileges,
                     Dependencies = new List<string>() // TODO: Extract dependencies from pg_depend
-                });
+                };
+
+                var viewMetaKey = isMaterialized ? $"{schemaName}.MATERIALIZED VIEW.{name}" : $"{schemaName}.VIEW.{name}";
+                if (_metadata.TryGetValue(viewMetaKey, out var viewMeta))
+                {
+                    view.SourceFilePath = viewMeta.FilePath;
+                    if (Compare.PgSchemaComparer.AreDefinitionsEqual(viewMeta.SourceSql, createViewSql) ||
+                        Compare.PgSchemaComparer.AreDefinitionsEqual(viewMeta.SourceSql, definition))
+                    {
+                        view.Definition = viewMeta.SourceSql;
+                    }
+                }
+
+                views.Add(view);
             }
 
             return views;
@@ -1361,14 +1475,33 @@ namespace mbulava.PostgreSql.Dac.Extract
                     // Continue without AST - definition is still available
                 }
 
-                functions.Add(new PgFunction
+                var func = new PgFunction
                 {
                     Name = name,
                     Owner = owner,
                     Definition = definition,
                     Ast = ast,
                     Privileges = new List<PgPrivilege>()  // TODO: Extract function privileges
-                });
+                };
+
+                if (_metadata.TryGetValue($"{schemaName}.FUNCTION.{name}", out var funcMeta))
+                {
+                    func.SourceFilePath = funcMeta.FilePath;
+                    if (Compare.PgSchemaComparer.AreFunctionsEqual(funcMeta.SourceSql, definition))
+                    {
+                        func.Definition = funcMeta.SourceSql;
+                    }
+                    else
+                    {
+                        func.Definition = CleanFunctionDecompiledDefinition(definition);
+                    }
+                }
+                else
+                {
+                    func.Definition = CleanFunctionDecompiledDefinition(definition);
+                }
+
+                functions.Add(func);
             }
 
             return functions;
@@ -1424,14 +1557,25 @@ namespace mbulava.PostgreSql.Dac.Extract
                     // Continue without AST - definition is still available
                 }
 
-                triggers.Add(new PgTrigger
+                var trig = new PgTrigger
                 {
                     Name = name,
                     TableName = tableName,
                     Definition = definition,
                     Ast = ast,
                     Owner = "postgres"  // Triggers inherit table owner
-                });
+                };
+
+                if (_metadata.TryGetValue($"{schemaName}.TRIGGER.{name}", out var trigMeta))
+                {
+                    trig.SourceFilePath = trigMeta.FilePath;
+                    if (Compare.PgSchemaComparer.AreDefinitionsEqual(trigMeta.SourceSql, definition))
+                    {
+                        trig.Definition = trigMeta.SourceSql;
+                    }
+                }
+
+                triggers.Add(trig);
             }
 
             return triggers;

@@ -1,4 +1,4 @@
-﻿using mbulava.PostgreSql.Dac.Models;
+using mbulava.PostgreSql.Dac.Models;
 using Npgquery;
 using Npgsql;
 using PgQuery;
@@ -93,10 +93,13 @@ namespace mbulava.PostgreSql.Dac.Compare
         {
             var diffs = new List<PgTableDiff>();
 
-            foreach (var src in sourceTables)
+            var filteredSource = sourceTables.Where(t => !IsInternalMetadataTable(t.Name)).ToList();
+            var filteredTarget = targetTables.Where(t => !IsInternalMetadataTable(t.Name)).ToList();
+
+            foreach (var src in filteredSource)
             {
                 var qualifiedName = $"{schemaName}.{src.Name}";
-                var tgt = targetTables.FirstOrDefault(t => t.Name == src.Name);
+                var tgt = filteredTarget.FirstOrDefault(t => t.Name == src.Name);
                 if (tgt == null)
                 {
                     // Table missing in target - CREATE TABLE will include columns
@@ -107,6 +110,7 @@ namespace mbulava.PostgreSql.Dac.Compare
                         DefinitionChanged = true,
                         SourceDefinition = src.Definition,
                         TargetDefinition = null,
+                        SourceFilePath = src.SourceFilePath,
                         ColumnDiffs = new List<PgColumnDiff>(), // Empty - columns are in CREATE TABLE
                         ConstraintDiffs = CompareConstraints(src.Constraints, new List<PgConstraint>()),
                         IndexDiffs = CompareIndexes(src.Indexes, new List<PgIndex>()),
@@ -115,7 +119,11 @@ namespace mbulava.PostgreSql.Dac.Compare
                     continue;
                 }
 
-                var tableDiff = new PgTableDiff { TableName = qualifiedName };
+                var tableDiff = new PgTableDiff
+                {
+                    TableName = qualifiedName,
+                    SourceFilePath = src.SourceFilePath
+                };
 
                 // Owner change
                 if (options.CompareOwners && HasExplicitOwner(src.Owner) && src.Owner != tgt.Owner)
@@ -166,12 +174,17 @@ namespace mbulava.PostgreSql.Dac.Compare
                         DefinitionChanged = true, // missing in target
                         SourceDefinition = src.Definition,
                         TargetDefinition = null,
+                        SourceFilePath = src.SourceFilePath,
                         SourceKind = src.Kind
                     });
                     continue;
                 }
 
-                var typeDiff = new PgTypeDiff { TypeName = src.Name };
+                var typeDiff = new PgTypeDiff
+                {
+                    TypeName = src.Name,
+                    SourceFilePath = src.SourceFilePath
+                };
 
                 // Kind change
                 if (src.Kind != tgt.Kind)
@@ -185,14 +198,6 @@ namespace mbulava.PostgreSql.Dac.Compare
                 if (options.CompareOwners && HasExplicitOwner(src.Owner) && src.Owner != tgt.Owner)
                     typeDiff.OwnerChanged = (src.Owner, tgt.Owner);
 
-                // Definition change (compare SQL text)
-                if (src.Definition != tgt.Definition)
-                {
-                    typeDiff.DefinitionChanged = true;
-                    typeDiff.SourceDefinition = src.Definition;
-                    typeDiff.TargetDefinition = tgt.Definition;
-                }
-
                 // Enum labels
                 if (src.Kind == PgTypeKind.Enum)
                 {
@@ -201,11 +206,12 @@ namespace mbulava.PostgreSql.Dac.Compare
                         typeDiff.SourceEnumLabels = src.EnumLabels;
                         typeDiff.TargetEnumLabels = tgt.EnumLabels;
                         typeDiff.DefinitionChanged = true;
+                        typeDiff.SourceDefinition = src.Definition;
+                        typeDiff.TargetDefinition = tgt.Definition;
                     }
                 }
-
                 // Composite attributes
-                if (src.Kind == PgTypeKind.Composite)
+                else if (src.Kind == PgTypeKind.Composite)
                 {
                     if (!Enumerable.SequenceEqual(src.CompositeAttributes ?? new(), tgt.CompositeAttributes ?? new(),
                         new PgAttributeComparer()))
@@ -213,6 +219,18 @@ namespace mbulava.PostgreSql.Dac.Compare
                         typeDiff.SourceCompositeAttributes = src.CompositeAttributes;
                         typeDiff.TargetCompositeAttributes = tgt.CompositeAttributes;
                         typeDiff.DefinitionChanged = true;
+                        typeDiff.SourceDefinition = src.Definition;
+                        typeDiff.TargetDefinition = tgt.Definition;
+                    }
+                }
+                // Domain and other types
+                else
+                {
+                    if (!AreDefinitionsEqual(src.Definition, tgt.Definition))
+                    {
+                        typeDiff.DefinitionChanged = true;
+                        typeDiff.SourceDefinition = src.Definition;
+                        typeDiff.TargetDefinition = tgt.Definition;
                     }
                 }
 
@@ -243,6 +261,7 @@ namespace mbulava.PostgreSql.Dac.Compare
                         SequenceName = src.Name,
                         SourceDefinition = src.Definition,
                         TargetDefinition = null,
+                        SourceFilePath = src.SourceFilePath,
                         SourceOptions = src.Options,
                         DefinitionChanged = true
                     });
@@ -253,7 +272,8 @@ namespace mbulava.PostgreSql.Dac.Compare
                 {
                     SequenceName = src.Name,
                     SourceDefinition = src.Definition,
-                    TargetDefinition = tgt.Definition
+                    TargetDefinition = tgt.Definition,
+                    SourceFilePath = src.SourceFilePath
                 };
 
                 // Owner
@@ -471,13 +491,18 @@ namespace mbulava.PostgreSql.Dac.Compare
                         DefinitionChanged = true,
                         SourceDefinition = src.Definition,
                         TargetDefinition = null,
+                        SourceFilePath = src.SourceFilePath,
                         SourceIsMaterialized = src.IsMaterialized,
                         TargetIsMaterialized = null
                     });
                     continue;
                 }
 
-                var viewDiff = new PgViewDiff { ViewName = src.Name };
+                var viewDiff = new PgViewDiff
+                {
+                    ViewName = src.Name,
+                    SourceFilePath = src.SourceFilePath
+                };
 
                 // Owner change
                 if (options.CompareOwners && HasExplicitOwner(src.Owner) && src.Owner != tgt.Owner)
@@ -492,7 +517,7 @@ namespace mbulava.PostgreSql.Dac.Compare
                 }
 
                 // Definition change (compare normalized SQL)
-                if (src.Definition != tgt.Definition)
+                if (!AreDefinitionsEqual(src.Definition, tgt.Definition))
                 {
                     viewDiff.DefinitionChanged = true;
                     viewDiff.SourceDefinition = src.Definition;
@@ -541,19 +566,24 @@ namespace mbulava.PostgreSql.Dac.Compare
                         FunctionName = src.Name,
                         DefinitionChanged = true,
                         SourceDefinition = src.Definition,
-                        TargetDefinition = null
+                        TargetDefinition = null,
+                        SourceFilePath = src.SourceFilePath
                     });
                     continue;
                 }
 
-                var funcDiff = new PgFunctionDiff { FunctionName = src.Name };
+                var funcDiff = new PgFunctionDiff
+                {
+                    FunctionName = src.Name,
+                    SourceFilePath = src.SourceFilePath
+                };
 
                 // Owner change
                 if (options.CompareOwners && HasExplicitOwner(src.Owner) && src.Owner != tgt.Owner)
                     funcDiff.OwnerChanged = (src.Owner, tgt.Owner);
 
-                // Definition change (compare SQL text)
-                if (src.Definition != tgt.Definition)
+                // Definition change (compare normalized SQL)
+                if (!AreFunctionsEqual(src.Definition, tgt.Definition))
                 {
                     funcDiff.DefinitionChanged = true;
                     funcDiff.SourceDefinition = src.Definition;
@@ -591,6 +621,82 @@ namespace mbulava.PostgreSql.Dac.Compare
             return !string.IsNullOrWhiteSpace(owner);
         }
 
+        private static bool IsInternalMetadataTable(string tableName)
+        {
+            return tableName.Equals("__pgpac_objects", StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static bool AreFunctionsEqual(string? srcDef, string? tgtDef)
+        {
+            if (string.Equals(srcDef, tgtDef, StringComparison.Ordinal))
+                return true;
+
+            if (string.IsNullOrWhiteSpace(srcDef) || string.IsNullOrWhiteSpace(tgtDef))
+                return false;
+
+            var srcNorm = NormalizeFunctionDefinition(srcDef);
+            var tgtNorm = NormalizeFunctionDefinition(tgtDef);
+
+            return string.Equals(srcNorm, tgtNorm, StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static string NormalizeFunctionDefinition(string sql)
+        {
+            // Remove line comments (-- ...)
+            var cleaned = System.Text.RegularExpressions.Regex.Replace(sql, @"--[^\r\n]*", "");
+
+            // Normalize whitespace
+            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"\s+", " ").Trim();
+
+            // Trim trailing semicolon
+            cleaned = cleaned.TrimEnd(';').Trim();
+
+            // Normalize explicit casts on NULL defaults: DEFAULT NULL::type -> DEFAULT NULL
+            cleaned = System.Text.RegularExpressions.Regex.Replace(
+                cleaned,
+                @"\bDEFAULT\s+NULL::[a-zA-Z0-9_]+(?:\([^)]*\))?",
+                "DEFAULT NULL",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            // Normalize parameter '= NULL' to 'DEFAULT NULL'
+            cleaned = System.Text.RegularExpressions.Regex.Replace(
+                cleaned,
+                @"=\s*NULL\b",
+                "DEFAULT NULL",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            // Normalize type aliases in parameter signature
+            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"\bint\b", "integer", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"\bbool\b", "boolean", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"\bvarchar\b", "character varying", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            // Normalize dollar quotes: $function$ -> $$
+            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"\$(?:function|[a-zA-Z0-9_]*)\$", "$$");
+
+            return cleaned;
+        }
+
+        public static bool AreDefinitionsEqual(string? srcDef, string? tgtDef)
+        {
+            if (string.Equals(srcDef, tgtDef, StringComparison.Ordinal))
+                return true;
+
+            if (string.IsNullOrWhiteSpace(srcDef) || string.IsNullOrWhiteSpace(tgtDef))
+                return false;
+
+            var srcNorm = NormalizeDefinition(srcDef);
+            var tgtNorm = NormalizeDefinition(tgtDef);
+
+            return string.Equals(srcNorm, tgtNorm, StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static string NormalizeDefinition(string sql)
+        {
+            var cleaned = System.Text.RegularExpressions.Regex.Replace(sql, @"--[^\r\n]*", "");
+            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"\s+", " ").Trim();
+            return cleaned.TrimEnd(';').Trim();
+        }
+
         private List<PgTriggerDiff> CompareTriggers(List<PgTrigger> sourceTriggers, List<PgTrigger> targetTriggers, CompareOptions options)
         {
             var diffs = new List<PgTriggerDiff>();
@@ -606,7 +712,8 @@ namespace mbulava.PostgreSql.Dac.Compare
                         TableName = src.TableName,
                         DefinitionChanged = true,
                         SourceDefinition = src.Definition,
-                        TargetDefinition = null
+                        TargetDefinition = null,
+                        SourceFilePath = src.SourceFilePath
                     });
                     continue;
                 }
@@ -614,15 +721,16 @@ namespace mbulava.PostgreSql.Dac.Compare
                 var triggerDiff = new PgTriggerDiff
                 {
                     TriggerName = src.Name,
-                    TableName = src.TableName
+                    TableName = src.TableName,
+                    SourceFilePath = src.SourceFilePath
                 };
 
                 // Owner change (triggers inherit table ownership)
                 if (options.CompareOwners && HasExplicitOwner(src.Owner) && src.Owner != tgt.Owner)
                     triggerDiff.OwnerChanged = (src.Owner, tgt.Owner);
 
-                // Definition change (compare SQL text)
-                if (src.Definition != tgt.Definition)
+                // Definition change (compare normalized SQL text)
+                if (!AreDefinitionsEqual(src.Definition, tgt.Definition))
                 {
                     triggerDiff.DefinitionChanged = true;
                     triggerDiff.SourceDefinition = src.Definition;

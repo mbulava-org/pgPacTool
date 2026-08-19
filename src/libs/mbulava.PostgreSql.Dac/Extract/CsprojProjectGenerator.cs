@@ -73,43 +73,50 @@ public class CsprojProjectGenerator
         if (schema.Tables.Count > 0)
         {
             var tablesDir = Path.Combine(schemaDir, "Tables");
-            Directory.CreateDirectory(tablesDir);
 
             foreach (var table in schema.Tables)
             {
-                var filePath = Path.Combine(tablesDir, $"{table.Name}.sql");
-                var tableDefinition = new StringBuilder();
+                var filePath = ResolveObjectFilePath(table.SourceFilePath, tablesDir, table.Name);
 
-                // Add CREATE TABLE statement
-                tableDefinition.AppendLine(table.Definition);
-
-                // Add RLS statements when Row Level Security is enabled
-                if (table.RowLevelSecurity)
+                if (!string.IsNullOrWhiteSpace(table.SourceFilePath))
                 {
-                    tableDefinition.AppendLine();
-                    tableDefinition.AppendLine($"ALTER TABLE {schema.Name}.{table.Name} ENABLE ROW LEVEL SECURITY;");
+                    await File.WriteAllTextAsync(filePath, table.Definition, Encoding.UTF8);
                 }
-
-                if (table.ForceRowLevelSecurity)
+                else
                 {
-                    if (!table.RowLevelSecurity) tableDefinition.AppendLine(); // blank line if not already added
-                    tableDefinition.AppendLine($"ALTER TABLE {schema.Name}.{table.Name} FORCE ROW LEVEL SECURITY;");
-                }
+                    var tableDefinition = new StringBuilder();
 
-                // Add column comments if any exist
-                var columnsWithComments = table.Columns.Where(c => !string.IsNullOrWhiteSpace(c.Comment)).ToList();
-                if (columnsWithComments.Count > 0)
-                {
-                    tableDefinition.AppendLine();
-                    tableDefinition.AppendLine($"-- Column comments for {schema.Name}.{table.Name}");
-                    foreach (var column in columnsWithComments)
+                    // Add CREATE TABLE statement
+                    tableDefinition.AppendLine(table.Definition);
+
+                    // Add RLS statements when Row Level Security is enabled
+                    if (table.RowLevelSecurity)
                     {
-                        var escapedComment = column.Comment!.Replace("'", "''");
-                        tableDefinition.AppendLine($"COMMENT ON COLUMN {schema.Name}.{table.Name}.{column.Name} IS '{escapedComment}';");
+                        tableDefinition.AppendLine();
+                        tableDefinition.AppendLine($"ALTER TABLE {schema.Name}.{table.Name} ENABLE ROW LEVEL SECURITY;");
                     }
-                }
 
-                await File.WriteAllTextAsync(filePath, tableDefinition.ToString(), Encoding.UTF8);
+                    if (table.ForceRowLevelSecurity)
+                    {
+                        if (!table.RowLevelSecurity) tableDefinition.AppendLine(); // blank line if not already added
+                        tableDefinition.AppendLine($"ALTER TABLE {schema.Name}.{table.Name} FORCE ROW LEVEL SECURITY;");
+                    }
+
+                    // Add column comments if any exist
+                    var columnsWithComments = table.Columns.Where(c => !string.IsNullOrWhiteSpace(c.Comment)).ToList();
+                    if (columnsWithComments.Count > 0)
+                    {
+                        tableDefinition.AppendLine();
+                        tableDefinition.AppendLine($"-- Column comments for {schema.Name}.{table.Name}");
+                        foreach (var column in columnsWithComments)
+                        {
+                            var escapedComment = column.Comment!.Replace("'", "''");
+                            tableDefinition.AppendLine($"COMMENT ON COLUMN {schema.Name}.{table.Name}.{column.Name} IS '{escapedComment}';");
+                        }
+                    }
+
+                    await File.WriteAllTextAsync(filePath, tableDefinition.ToString(), Encoding.UTF8);
+                }
             }
         }
 
@@ -118,11 +125,10 @@ public class CsprojProjectGenerator
         if (allIndexes.Count > 0)
         {
             var indexesDir = Path.Combine(schemaDir, "Indexes");
-            Directory.CreateDirectory(indexesDir);
 
             foreach (var index in allIndexes)
             {
-                var filePath = Path.Combine(indexesDir, $"{index.Name}.sql");
+                var filePath = ResolveObjectFilePath(null, indexesDir, index.Name);
                 await File.WriteAllTextAsync(filePath, index.Definition, Encoding.UTF8);
             }
         }
@@ -131,11 +137,10 @@ public class CsprojProjectGenerator
         if (schema.Views.Count > 0)
         {
             var viewsDir = Path.Combine(schemaDir, "Views");
-            Directory.CreateDirectory(viewsDir);
             
             foreach (var view in schema.Views)
             {
-                var filePath = Path.Combine(viewsDir, $"{view.Name}.sql");
+                var filePath = ResolveObjectFilePath(view.SourceFilePath, viewsDir, view.Name);
                 await File.WriteAllTextAsync(filePath, view.Definition, Encoding.UTF8);
             }
         }
@@ -144,11 +149,10 @@ public class CsprojProjectGenerator
         if (schema.Functions.Count > 0)
         {
             var functionsDir = Path.Combine(schemaDir, "Functions");
-            Directory.CreateDirectory(functionsDir);
             
             foreach (var function in schema.Functions)
             {
-                var filePath = Path.Combine(functionsDir, $"{function.Name}.sql");
+                var filePath = ResolveObjectFilePath(function.SourceFilePath, functionsDir, function.Name);
                 await File.WriteAllTextAsync(filePath, function.Definition, Encoding.UTF8);
             }
         }
@@ -157,11 +161,10 @@ public class CsprojProjectGenerator
         if (schema.Types.Count > 0)
         {
             var typesDir = Path.Combine(schemaDir, "Types");
-            Directory.CreateDirectory(typesDir);
             
             foreach (var type in schema.Types)
             {
-                var filePath = Path.Combine(typesDir, $"{type.Name}.sql");
+                var filePath = ResolveObjectFilePath(type.SourceFilePath, typesDir, type.Name);
                 await File.WriteAllTextAsync(filePath, type.Definition, Encoding.UTF8);
             }
         }
@@ -170,11 +173,10 @@ public class CsprojProjectGenerator
         if (schema.Sequences.Count > 0)
         {
             var sequencesDir = Path.Combine(schemaDir, "Sequences");
-            Directory.CreateDirectory(sequencesDir);
             
             foreach (var sequence in schema.Sequences)
             {
-                var filePath = Path.Combine(sequencesDir, $"{sequence.Name}.sql");
+                var filePath = ResolveObjectFilePath(sequence.SourceFilePath, sequencesDir, sequence.Name);
                 await File.WriteAllTextAsync(filePath, sequence.Definition, Encoding.UTF8);
             }
         }
@@ -183,14 +185,31 @@ public class CsprojProjectGenerator
         if (schema.Triggers.Count > 0)
         {
             var triggersDir = Path.Combine(schemaDir, "Triggers");
-            Directory.CreateDirectory(triggersDir);
 
             foreach (var trigger in schema.Triggers)
             {
-                var filePath = Path.Combine(triggersDir, $"{trigger.Name}.sql");
+                var filePath = ResolveObjectFilePath(trigger.SourceFilePath, triggersDir, trigger.Name);
                 await File.WriteAllTextAsync(filePath, trigger.Definition, Encoding.UTF8);
             }
         }
+    }
+
+    private string ResolveObjectFilePath(string? sourceFilePath, string defaultDir, string objectName)
+    {
+        if (!string.IsNullOrWhiteSpace(sourceFilePath))
+        {
+            var cleanPath = sourceFilePath.Trim().Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+            var fullPath = Path.Combine(_projectDirectory, cleanPath);
+            var parentDir = Path.GetDirectoryName(fullPath);
+            if (!string.IsNullOrWhiteSpace(parentDir))
+            {
+                Directory.CreateDirectory(parentDir);
+            }
+            return fullPath;
+        }
+
+        Directory.CreateDirectory(defaultDir);
+        return Path.Combine(defaultDir, $"{objectName}.sql");
     }
 
     /// <summary>

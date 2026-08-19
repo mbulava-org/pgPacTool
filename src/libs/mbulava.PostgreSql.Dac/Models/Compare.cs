@@ -1,4 +1,4 @@
-﻿using PgQuery;
+using PgQuery;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -50,6 +50,7 @@ namespace mbulava.PostgreSql.Dac.Models
         // Source/target definitions for script generation (needed when table is missing/extra)
         public string? SourceDefinition { get; set; }
         public string? TargetDefinition { get; set; }
+        public string? SourceFilePath { get; set; }
 
         // Privilege changes
         public List<PgPrivilegeDiff> PrivilegeChanges { get; set; } = new();
@@ -97,6 +98,7 @@ namespace mbulava.PostgreSql.Dac.Models
         // Source/target definitions for script generation
         public string? SourceDefinition { get; set; }
         public string? TargetDefinition { get; set; }
+        public string? SourceFilePath { get; set; }
 
         // Kind-specific differences
         public List<string>? SourceEnumLabels { get; set; }
@@ -115,6 +117,7 @@ namespace mbulava.PostgreSql.Dac.Models
 
         public string? SourceDefinition { get; set; }
         public string? TargetDefinition { get; set; }
+        public string? SourceFilePath { get; set; }
 
         public (string SourceOwner, string TargetOwner)? OwnerChanged { get; set; }
         public bool DefinitionChanged { get; set; }
@@ -139,6 +142,7 @@ namespace mbulava.PostgreSql.Dac.Models
         // Source/target definitions for comparison
         public string? SourceDefinition { get; set; }
         public string? TargetDefinition { get; set; }
+        public string? SourceFilePath { get; set; }
 
         // Materialized flag change
         public bool? SourceIsMaterialized { get; set; }
@@ -161,6 +165,7 @@ namespace mbulava.PostgreSql.Dac.Models
         // Source/target definitions for comparison
         public string? SourceDefinition { get; set; }
         public string? TargetDefinition { get; set; }
+        public string? SourceFilePath { get; set; }
 
         // Privilege changes
         public List<PgPrivilegeDiff> PrivilegeChanges { get; set; } = new();
@@ -180,6 +185,7 @@ namespace mbulava.PostgreSql.Dac.Models
         // Source/target definitions for comparison
         public string? SourceDefinition { get; set; }
         public string? TargetDefinition { get; set; }
+        public string? SourceFilePath { get; set; }
     }
 
 }

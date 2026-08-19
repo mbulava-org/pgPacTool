@@ -1,4 +1,4 @@
-﻿using mbulava.PostgreSql.Dac.Models;
+using mbulava.PostgreSql.Dac.Models;
 using mbulava.PostgreSql.Dac.Deployment;
 using mbulava.PostgreSql.Dac.Compile.Ast;
 using System.Text;
@@ -82,24 +82,39 @@ public static class PublishScriptGenerator
             sb.AppendLine();
         }
 
+        var hasChanges = diff.TypeDiffs.Count > 0 ||
+                         diff.SequenceDiffs.Count > 0 ||
+                         diff.TableDiffs.Count > 0 ||
+                         diff.ViewDiffs.Count > 0 ||
+                         diff.FunctionDiffs.Count > 0 ||
+                         diff.TriggerDiffs.Count > 0 ||
+                         diff.PrivilegeChanges.Count > 0 ||
+                         diff.OwnerChanged != null;
+
+        // Initialize metadata table if tracking is enabled and there are schema changes
+        if (hasChanges)
+        {
+            GenerateMetadataTableCreation(sb, options);
+        }
+
         // Generate SQL for each object type in dependency order
         // 1. Types (must come first - used by tables/functions)
-        GenerateTypeScripts(diff.TypeDiffs, sb, options);
+        GenerateTypeScripts(diff.TypeDiffs, diff.SchemaName, sb, options);
 
         // 2. Sequences (may be used in table defaults)
-        GenerateSequenceScripts(diff.SequenceDiffs, sb, options);
+        GenerateSequenceScripts(diff.SequenceDiffs, diff.SchemaName, sb, options);
 
         // 3. Tables (structure changes)
-        GenerateTableScripts(diff.TableDiffs, sb, options);
+        GenerateTableScripts(diff.TableDiffs, diff.SchemaName, sb, options);
 
         // 4. Views (depend on tables)
-        GenerateViewScripts(diff.ViewDiffs, sb, options);
+        GenerateViewScripts(diff.ViewDiffs, diff.SchemaName, sb, options);
 
         // 5. Functions (may be used by triggers/views)
-        GenerateFunctionScripts(diff.FunctionDiffs, sb, options);
+        GenerateFunctionScripts(diff.FunctionDiffs, diff.SchemaName, sb, options);
 
         // 6. Triggers (depend on tables and functions)
-        GenerateTriggerScripts(diff.TriggerDiffs, sb, options);
+        GenerateTriggerScripts(diff.TriggerDiffs, diff.SchemaName, sb, options);
 
         // Post-deployment scripts
         if (options.PostDeploymentScripts.Count > 0)
@@ -176,15 +191,15 @@ public static class PublishScriptGenerator
     /// <summary>
     /// Splits a qualified table name into schema and name parts.
     /// </summary>
-    private static (string schema, string name) SplitQualifiedName(string qualifiedName)
+    private static (string schema, string name) SplitQualifiedName(string qualifiedName, string defaultSchema = "public")
     {
         var parts = qualifiedName.Split('.');
         return parts.Length == 2 
             ? (parts[0].Trim('"'), parts[1].Trim('"'))
-            : ("public", parts[0].Trim('"'));
+            : (defaultSchema, parts[0].Trim('"'));
     }
 
-    private static void GenerateTypeScripts(List<PgTypeDiff> diffs, StringBuilder sb, PublishOptions options)
+    private static void GenerateTypeScripts(List<PgTypeDiff> diffs, string schemaName, StringBuilder sb, PublishOptions options)
     {
         if (diffs.Count == 0) return;
 
@@ -196,18 +211,22 @@ public static class PublishScriptGenerator
 
         foreach (var diff in diffs)
         {
+            var (schema, typeName) = SplitQualifiedName(diff.TypeName, schemaName);
+
             if (diff.SourceDefinition == null && diff.TargetDefinition != null)
             {
                 // Type exists in target but not in source - DROP if configured
                 if (options.DropObjectsNotInSource)
                 {
                     sb.AppendLine($"DROP TYPE IF EXISTS {QuoteIdentifier(diff.TypeName)} CASCADE;");
+                    GenerateMetadataDelete(sb, schema, typeName, "TYPE", options);
                 }
             }
             else if (diff.SourceDefinition != null && diff.TargetDefinition == null)
             {
                 // Type missing in target - CREATE
                 sb.AppendLine($"{diff.SourceDefinition};");
+                GenerateMetadataUpsert(sb, schema, typeName, "TYPE", diff.SourceFilePath, diff.SourceDefinition, options);
             }
             else if (diff.DefinitionChanged)
             {
@@ -218,6 +237,7 @@ public static class PublishScriptGenerator
                 }
                 sb.AppendLine($"DROP TYPE IF EXISTS {QuoteIdentifier(diff.TypeName)} CASCADE;");
                 sb.AppendLine($"{diff.SourceDefinition};");
+                GenerateMetadataUpsert(sb, schema, typeName, "TYPE", diff.SourceFilePath, diff.SourceDefinition, options);
             }
 
             // Owner changes
@@ -233,7 +253,7 @@ public static class PublishScriptGenerator
         }
     }
 
-    private static void GenerateSequenceScripts(List<PgSequenceDiff> diffs, StringBuilder sb, PublishOptions options)
+    private static void GenerateSequenceScripts(List<PgSequenceDiff> diffs, string schemaName, StringBuilder sb, PublishOptions options)
     {
         if (diffs.Count == 0) return;
 
@@ -245,6 +265,8 @@ public static class PublishScriptGenerator
 
         foreach (var diff in diffs)
         {
+            var (schema, seqName) = SplitQualifiedName(diff.SequenceName, schemaName);
+
             if (diff.SourceDefinition != null && diff.TargetDefinition == null)
             {
                 if (options.IncludeComments)
@@ -253,6 +275,7 @@ public static class PublishScriptGenerator
                 }
 
                 sb.AppendLine(diff.SourceDefinition.TrimEnd());
+                GenerateMetadataUpsert(sb, schema, seqName, "SEQUENCE", diff.SourceFilePath, diff.SourceDefinition, options);
             }
             else if (diff.DefinitionChanged)
             {
@@ -269,6 +292,7 @@ public static class PublishScriptGenerator
                         sb.AppendLine($"ALTER SEQUENCE {QuoteIdentifier(diff.SequenceName)} {opt.OptionName} {opt.OptionValue};");
                     }
                 }
+                GenerateMetadataUpsert(sb, schema, seqName, "SEQUENCE", diff.SourceFilePath, diff.SourceDefinition, options);
             }
 
             // Owner changes
@@ -284,7 +308,7 @@ public static class PublishScriptGenerator
         }
     }
 
-    private static void GenerateTableScripts(List<PgTableDiff> diffs, StringBuilder sb, PublishOptions options)
+    private static void GenerateTableScripts(List<PgTableDiff> diffs, string schemaName, StringBuilder sb, PublishOptions options)
     {
         if (diffs.Count == 0) return;
 
@@ -296,6 +320,8 @@ public static class PublishScriptGenerator
 
         foreach (var diff in diffs)
         {
+            var (schema, tableName) = SplitQualifiedName(diff.TableName, schemaName);
+
             if (options.IncludeComments)
             {
                 sb.AppendLine($"-- Table: {diff.TableName}");
@@ -307,17 +333,16 @@ public static class PublishScriptGenerator
                 // Output original CREATE TABLE definition (don't modify it)
                 sb.AppendLine(diff.SourceDefinition.TrimEnd());
                 sb.AppendLine();
-                // Skip column processing - columns are already in CREATE TABLE
-                // Continue to process constraints and indexes below
+                GenerateMetadataUpsert(sb, schema, tableName, "TABLE", diff.SourceFilePath, diff.SourceDefinition, options);
             }
             else if (diff.SourceDefinition == null && diff.TargetDefinition != null)
             {
                 // Table exists in target but not in source - DROP if configured
                 if (options.DropObjectsNotInSource)
                 {
-                    var (schema, tableName) = SplitQualifiedName(diff.TableName);
                     var ast = AstBuilder.DropTable(schema, tableName, ifExists: true, cascade: true);
                     AppendAstSql(sb, ast);
+                    GenerateMetadataDelete(sb, schema, tableName, "TABLE", options);
                 }
                 sb.AppendLine();
                 continue; // Skip column/constraint/index processing for dropped tables
@@ -327,14 +352,11 @@ public static class PublishScriptGenerator
                 // Table exists in both - process column changes
                 foreach (var colDiff in diff.ColumnDiffs)
                 {
-                    var (schema, tableName) = SplitQualifiedName(diff.TableName);
-
                     if (colDiff.SourceDataType == null && colDiff.TargetDataType != null)
                     {
                         // Column exists in target but not in source - DROP if configured
                         if (options.DropObjectsNotInSource)
                         {
-                            // ✅ Using AST builder
                             var ast = AstBuilder.AlterTableDropColumn(schema, tableName, colDiff.ColumnName, ifExists: true);
                             AppendAstSql(sb, ast);
                         }
@@ -342,7 +364,6 @@ public static class PublishScriptGenerator
                     else if (colDiff.SourceDataType != null && colDiff.TargetDataType == null)
                     {
                         // Column missing in target - ADD
-                        // ✅ Using AST builder
                         var notNull = colDiff.SourceIsNotNull == true;
                         var defaultValue = !string.IsNullOrEmpty(colDiff.SourceDefault) ? colDiff.SourceDefault : null;
 
@@ -362,13 +383,11 @@ public static class PublishScriptGenerator
                         // Column changed - ALTER
                         if (colDiff.SourceDataType != colDiff.TargetDataType)
                         {
-                            // ✅ Using AST builder with parse-extract pattern for TypeName
                             var ast = AstBuilder.AlterTableAlterColumnType(schema, tableName, colDiff.ColumnName, colDiff.SourceDataType!);
                             AppendAstSql(sb, ast);
                         }
                         if (colDiff.SourceIsNotNull != colDiff.TargetIsNotNull)
                         {
-                            // ✅ Using AST builder
                             if (colDiff.SourceIsNotNull == true)
                             {
                                 var ast = AstBuilder.AlterTableAlterColumnSetNotNull(schema, tableName, colDiff.ColumnName);
@@ -382,7 +401,6 @@ public static class PublishScriptGenerator
                         }
                         if (colDiff.SourceDefault != colDiff.TargetDefault)
                         {
-                            // ✅ Using AST builder
                             if (string.IsNullOrEmpty(colDiff.SourceDefault))
                             {
                                 var ast = AstBuilder.AlterTableAlterColumnDropDefault(schema, tableName, colDiff.ColumnName);
@@ -396,73 +414,43 @@ public static class PublishScriptGenerator
                         }
                     }
                 }
-            }
 
-            // Constraint changes
-            foreach (var constDiff in diff.ConstraintDiffs)
-            {
-                var (schema, tableName) = SplitQualifiedName(diff.TableName);
-
-                if (constDiff.SourceDefinition == null && constDiff.TargetDefinition != null)
+                if (diff.SourceDefinition != null)
                 {
-                    // Constraint in target but not source - DROP if configured
-                    if (options.DropObjectsNotInSource)
-                    {
-                        // ✅ Using AST builder
-                        var ast = AstBuilder.AlterTableDropConstraint(schema, tableName, constDiff.ConstraintName, ifExists: true);
-                        AppendAstSql(sb, ast);
-                    }
-                }
-                else if (constDiff.SourceDefinition != null && constDiff.TargetDefinition == null)
-                {
-                    // Constraint missing in target - ADD
-                    // ✅ Using AST builder
-                    var ast = AstBuilder.AlterTableAddConstraint(schema, tableName, constDiff.ConstraintName, constDiff.SourceDefinition!);
-                    AppendAstSql(sb, ast);
-                }
-                else if (constDiff.SourceDefinition != constDiff.TargetDefinition)
-                {
-                    // Constraint changed - DROP and recreate
-                    // ✅ Using AST builder (both operations)
-                    var dropAst = AstBuilder.AlterTableDropConstraint(schema, tableName, constDiff.ConstraintName, ifExists: true);
-                    AppendAstSql(sb, dropAst);
-
-                    var addAst = AstBuilder.AlterTableAddConstraint(schema, tableName, constDiff.ConstraintName, constDiff.SourceDefinition!);
-                    AppendAstSql(sb, addAst);
+                    GenerateMetadataUpsert(sb, schema, tableName, "TABLE", diff.SourceFilePath, diff.SourceDefinition, options);
                 }
             }
 
-            // Index changes
-            foreach (var idxDiff in diff.IndexDiffs)
+            // Process table constraints
+            foreach (var constraintDiff in diff.ConstraintDiffs)
             {
-                if (idxDiff.SourceDefinition == null && idxDiff.TargetDefinition != null)
+                if (constraintDiff.SourceDefinition != null && constraintDiff.TargetDefinition == null)
                 {
-                    // Index in target but not source - DROP if configured
-                    if (options.DropObjectsNotInSource)
-                    {
-                        sb.AppendLine($"DROP INDEX IF EXISTS {QuoteIdentifier(idxDiff.IndexName)};");
-                    }
+                    sb.AppendLine($"ALTER TABLE {QuoteIdentifier(diff.TableName)} ADD CONSTRAINT {QuoteIdentifier(constraintDiff.ConstraintName)} {constraintDiff.SourceDefinition};");
                 }
-                else if (idxDiff.SourceDefinition != null && idxDiff.TargetDefinition == null)
+                else if (constraintDiff.SourceDefinition == null && constraintDiff.TargetDefinition != null && options.DropObjectsNotInSource)
                 {
-                    // Index missing in target - CREATE
-                    sb.AppendLine($"{idxDiff.SourceDefinition};");
+                    sb.AppendLine($"ALTER TABLE {QuoteIdentifier(diff.TableName)} DROP CONSTRAINT IF EXISTS {QuoteIdentifier(constraintDiff.ConstraintName)};");
                 }
-                else if (idxDiff.SourceDefinition != idxDiff.TargetDefinition)
+            }
+
+            // Process table indexes
+            foreach (var indexDiff in diff.IndexDiffs)
+            {
+                if (indexDiff.SourceDefinition != null && indexDiff.TargetDefinition == null)
                 {
-                    // Index changed - DROP and recreate
-                    sb.AppendLine($"DROP INDEX IF EXISTS {QuoteIdentifier(idxDiff.IndexName)};");
-                    sb.AppendLine($"{idxDiff.SourceDefinition};");
+                    sb.AppendLine($"{indexDiff.SourceDefinition};");
+                }
+                else if (indexDiff.SourceDefinition == null && indexDiff.TargetDefinition != null && options.DropObjectsNotInSource)
+                {
+                    sb.AppendLine($"DROP INDEX IF EXISTS {QuoteIdentifier(indexDiff.IndexName)};");
                 }
             }
 
             // Owner changes
             if (diff.OwnerChanged != null)
             {
-                var (schema, tableName) = SplitQualifiedName(diff.TableName);
-                // ✅ Using AST builder
-                var ast = AstBuilder.AlterTableOwner(schema, tableName, diff.OwnerChanged.Value.SourceOwner);
-                AppendAstSql(sb, ast);
+                sb.AppendLine($"ALTER TABLE {QuoteIdentifier(diff.TableName)} OWNER TO {QuoteIdentifier(diff.OwnerChanged.Value.SourceOwner)};");
             }
 
             // Privileges
@@ -472,7 +460,7 @@ public static class PublishScriptGenerator
         }
     }
 
-    private static void GenerateViewScripts(List<PgViewDiff> diffs, StringBuilder sb, PublishOptions options)
+    private static void GenerateViewScripts(List<PgViewDiff> diffs, string schemaName, StringBuilder sb, PublishOptions options)
     {
         if (diffs.Count == 0) return;
 
@@ -484,29 +472,29 @@ public static class PublishScriptGenerator
 
         foreach (var diff in diffs)
         {
-            var (schema, viewName) = SplitQualifiedName(diff.ViewName);
+            var (schema, viewName) = SplitQualifiedName(diff.ViewName, schemaName);
 
             if (diff.SourceDefinition == null && diff.TargetDefinition != null)
             {
                 // View in target but not source - DROP if configured
                 if (options.DropObjectsNotInSource)
                 {
-                    // ✅ Using AST builder
                     var ast = AstBuilder.DropView(schema, viewName, ifExists: true, cascade: true);
                     AppendAstSql(sb, ast);
+                    GenerateMetadataDelete(sb, schema, viewName, diff.TargetIsMaterialized == true ? "MATERIALIZED VIEW" : "VIEW", options);
                 }
             }
             else if (diff.SourceDefinition != null && diff.TargetDefinition == null)
             {
                 // View missing in target - CREATE
                 sb.AppendLine($"{diff.SourceDefinition};");
+                GenerateMetadataUpsert(sb, schema, viewName, diff.SourceIsMaterialized == true ? "MATERIALIZED VIEW" : "VIEW", diff.SourceFilePath, diff.SourceDefinition, options);
             }
             else if (diff.DefinitionChanged)
             {
                 // View changed - CREATE OR REPLACE (or DROP/CREATE for materialized views)
                 if (diff.SourceIsMaterialized == true)
                 {
-                    // ✅ Using AST builder for DROP (CREATE still uses definition string)
                     var ast = AstBuilder.DropView(schema, viewName, ifExists: true, cascade: true);
                     AppendAstSql(sb, ast);
                     sb.AppendLine($"{diff.SourceDefinition};");
@@ -515,6 +503,7 @@ public static class PublishScriptGenerator
                 {
                     sb.AppendLine($"CREATE OR REPLACE {diff.SourceDefinition.Replace("CREATE VIEW", "VIEW")};");
                 }
+                GenerateMetadataUpsert(sb, schema, viewName, diff.SourceIsMaterialized == true ? "MATERIALIZED VIEW" : "VIEW", diff.SourceFilePath, diff.SourceDefinition, options);
             }
 
             // Owner changes
@@ -531,7 +520,7 @@ public static class PublishScriptGenerator
         }
     }
 
-    private static void GenerateFunctionScripts(List<PgFunctionDiff> diffs, StringBuilder sb, PublishOptions options)
+    private static void GenerateFunctionScripts(List<PgFunctionDiff> diffs, string schemaName, StringBuilder sb, PublishOptions options)
     {
         if (diffs.Count == 0) return;
 
@@ -543,29 +532,28 @@ public static class PublishScriptGenerator
 
         foreach (var diff in diffs)
         {
-            var (schema, functionName) = SplitQualifiedName(diff.FunctionName);
+            var (schema, functionName) = SplitQualifiedName(diff.FunctionName, schemaName);
 
             if (diff.SourceDefinition == null && diff.TargetDefinition != null)
             {
                 // Function in target but not source - DROP if configured
                 if (options.DropObjectsNotInSource)
                 {
-                    // ✅ Using AST builder
                     var ast = AstBuilder.DropFunction(schema, functionName, ifExists: true, cascade: true);
                     AppendAstSql(sb, ast);
+                    GenerateMetadataDelete(sb, schema, functionName, "FUNCTION", options);
                 }
             }
             else if (diff.SourceDefinition != null)
             {
                 // Function missing or changed - CREATE OR REPLACE
                 sb.AppendLine($"{diff.SourceDefinition};");
+                GenerateMetadataUpsert(sb, schema, functionName, "FUNCTION", diff.SourceFilePath, diff.SourceDefinition, options);
             }
 
             // Owner changes
             if (diff.OwnerChanged != null)
             {
-                // Note: ALTER FUNCTION OWNER is not implemented in AstBuilder yet
-                // TODO: Add AstBuilder.AlterFunctionOwner()
                 sb.AppendLine($"ALTER FUNCTION {QuoteIdentifier(diff.FunctionName)} OWNER TO {QuoteIdentifier(diff.OwnerChanged.Value.SourceOwner)};");
             }
 
@@ -576,7 +564,7 @@ public static class PublishScriptGenerator
         }
     }
 
-    private static void GenerateTriggerScripts(List<PgTriggerDiff> diffs, StringBuilder sb, PublishOptions options)
+    private static void GenerateTriggerScripts(List<PgTriggerDiff> diffs, string schemaName, StringBuilder sb, PublishOptions options)
     {
         if (diffs.Count == 0) return;
 
@@ -588,34 +576,102 @@ public static class PublishScriptGenerator
 
         foreach (var diff in diffs)
         {
-            var (schema, tableName) = SplitQualifiedName(diff.TableName);
+            var (schema, tableName) = SplitQualifiedName(diff.TableName, schemaName);
 
             if (diff.SourceDefinition == null && diff.TargetDefinition != null)
             {
                 // Trigger in target but not source - DROP if configured
                 if (options.DropObjectsNotInSource)
                 {
-                    // ✅ Using AST builder
                     var ast = AstBuilder.DropTrigger(diff.TriggerName, schema, tableName, ifExists: true);
                     AppendAstSql(sb, ast);
+                    GenerateMetadataDelete(sb, schema, diff.TriggerName, "TRIGGER", options);
                 }
             }
             else if (diff.SourceDefinition != null && diff.TargetDefinition == null)
             {
                 // Trigger missing in target - CREATE
                 sb.AppendLine($"{diff.SourceDefinition};");
+                GenerateMetadataUpsert(sb, schema, diff.TriggerName, "TRIGGER", diff.SourceFilePath, diff.SourceDefinition, options);
             }
             else if (diff.DefinitionChanged)
             {
                 // Trigger changed - DROP and recreate
-                // ✅ Using AST builder for DROP
                 var ast = AstBuilder.DropTrigger(diff.TriggerName, schema, tableName, ifExists: true);
                 AppendAstSql(sb, ast);
                 sb.AppendLine($"{diff.SourceDefinition};");
+                GenerateMetadataUpsert(sb, schema, diff.TriggerName, "TRIGGER", diff.SourceFilePath, diff.SourceDefinition, options);
             }
 
             sb.AppendLine();
         }
+    }
+
+    private static void GenerateMetadataTableCreation(StringBuilder sb, PublishOptions options)
+    {
+        if (!options.TrackDeploymentMetadata) return;
+
+        var metaTable = $"{QuoteIdentifier(options.MetadataSchema)}.{QuoteIdentifier(options.MetadataTableName)}";
+        sb.AppendLine($"CREATE TABLE IF NOT EXISTS {metaTable} (");
+        sb.AppendLine("    schema_name VARCHAR(128) NOT NULL,");
+        sb.AppendLine("    object_name VARCHAR(128) NOT NULL,");
+        sb.AppendLine("    object_type VARCHAR(32) NOT NULL,");
+        sb.AppendLine("    file_path VARCHAR(512),");
+        sb.AppendLine("    source_sql TEXT NOT NULL,");
+        sb.AppendLine("    ast_hash VARCHAR(64),");
+        sb.AppendLine("    updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),");
+        sb.AppendLine("    PRIMARY KEY (schema_name, object_name, object_type)");
+        sb.AppendLine(");");
+        sb.AppendLine();
+    }
+
+    private static void GenerateMetadataUpsert(
+        StringBuilder sb,
+        string schemaName,
+        string objectName,
+        string objectType,
+        string? filePath,
+        string? sourceSql,
+        PublishOptions options)
+    {
+        if (!options.TrackDeploymentMetadata || string.IsNullOrWhiteSpace(sourceSql)) return;
+
+        var metaTable = $"{QuoteIdentifier(options.MetadataSchema)}.{QuoteIdentifier(options.MetadataTableName)}";
+        var hash = ComputeSqlHash(sourceSql);
+
+        sb.AppendLine($"INSERT INTO {metaTable} (schema_name, object_name, object_type, file_path, source_sql, ast_hash, updated_at)");
+        sb.AppendLine($"VALUES ({EscapeSqlString(schemaName)}, {EscapeSqlString(objectName)}, {EscapeSqlString(objectType)}, {EscapeSqlString(filePath)}, {EscapeSqlString(sourceSql)}, {EscapeSqlString(hash)}, clock_timestamp())");
+        sb.AppendLine($"ON CONFLICT (schema_name, object_name, object_type)");
+        sb.AppendLine($"DO UPDATE SET file_path = EXCLUDED.file_path, source_sql = EXCLUDED.source_sql, ast_hash = EXCLUDED.ast_hash, updated_at = clock_timestamp();");
+        sb.AppendLine();
+    }
+
+    private static void GenerateMetadataDelete(
+        StringBuilder sb,
+        string schemaName,
+        string objectName,
+        string objectType,
+        PublishOptions options)
+    {
+        if (!options.TrackDeploymentMetadata) return;
+
+        var metaTable = $"{QuoteIdentifier(options.MetadataSchema)}.{QuoteIdentifier(options.MetadataTableName)}";
+        sb.AppendLine($"DELETE FROM {metaTable} WHERE schema_name = {EscapeSqlString(schemaName)} AND object_name = {EscapeSqlString(objectName)} AND object_type = {EscapeSqlString(objectType)};");
+        sb.AppendLine();
+    }
+
+    private static string ComputeSqlHash(string sql)
+    {
+        using var sha = System.Security.Cryptography.SHA256.Create();
+        var bytes = System.Text.Encoding.UTF8.GetBytes(sql.Trim());
+        var hash = sha.ComputeHash(bytes);
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    private static string EscapeSqlString(string? value)
+    {
+        if (value == null) return "NULL";
+        return "'" + value.Replace("'", "''") + "'";
     }
 
     private static void GeneratePrivilegeScripts(List<PgPrivilegeDiff> diffs, string objectType, string objectName, StringBuilder sb)

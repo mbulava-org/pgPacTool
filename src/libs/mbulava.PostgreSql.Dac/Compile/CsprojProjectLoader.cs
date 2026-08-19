@@ -754,7 +754,8 @@ public class CsprojProjectLoader
             {
                 Name = tableName,
                 Definition = tableDefinition ?? fullSql.Trim(),
-                Owner = _defaultOwner
+                Owner = _defaultOwner,
+                SourceFilePath = fileName
             };
 
             schema.Tables.Add(table);
@@ -789,7 +790,8 @@ public class CsprojProjectLoader
                 Name = viewName,
                 Definition = viewDefinition ?? fullSql.Trim(),
                 Owner = _defaultOwner,
-                IsMaterialized = isMaterialized
+                IsMaterialized = isMaterialized,
+                SourceFilePath = fileName
             };
 
             schema.Views.Add(view);
@@ -819,7 +821,8 @@ public class CsprojProjectLoader
             {
                 Name = functionName,
                 Definition = functionDefinition ?? fullSql.Trim(),
-                Owner = _defaultOwner
+                Owner = _defaultOwner,
+                SourceFilePath = fileName
             };
 
             schema.Functions.Add(function);
@@ -850,7 +853,8 @@ public class CsprojProjectLoader
                 Name = typeName,
                 Definition = typeDefinition ?? fullSql.Trim(),
                 Owner = _defaultOwner,
-                Kind = PgTypeKind.Composite
+                Kind = PgTypeKind.Composite,
+                SourceFilePath = fileName
             };
 
             schema.Types.Add(type);
@@ -881,7 +885,8 @@ public class CsprojProjectLoader
                 Name = typeName,
                 Definition = typeDefinition ?? fullSql.Trim(),
                 Owner = _defaultOwner,
-                Kind = PgTypeKind.Enum
+                Kind = PgTypeKind.Enum,
+                SourceFilePath = fileName
             };
 
             schema.Types.Add(type);
@@ -912,7 +917,8 @@ public class CsprojProjectLoader
                 Name = typeName,
                 Definition = typeDefinition ?? fullSql.Trim(),
                 Owner = _defaultOwner,
-                Kind = PgTypeKind.Domain
+                Kind = PgTypeKind.Domain,
+                SourceFilePath = fileName
             };
 
             schema.Types.Add(type);
@@ -942,7 +948,8 @@ public class CsprojProjectLoader
             {
                 Name = sequenceName,
                 Definition = sequenceDefinition ?? fullSql.Trim(),
-                Owner = _defaultOwner
+                Owner = _defaultOwner,
+                SourceFilePath = fileName
             };
 
             schema.Sequences.Add(sequence);
@@ -980,7 +987,8 @@ public class CsprojProjectLoader
                 Name = triggerName,
                 TableName = tableName,
                 Definition = triggerDefinition ?? fullSql.Trim(),
-                Owner = _defaultOwner
+                Owner = _defaultOwner,
+                SourceFilePath = fileName
             };
 
             schema.Triggers.Add(trigger);

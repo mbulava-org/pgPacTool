@@ -193,6 +193,24 @@ public class PublishOptions
     /// </summary>
     [JsonPropertyName("commandTimeout")]
     public int CommandTimeout { get; set; } = 300; // 5 minutes default
+
+    /// <summary>
+    /// Whether to track and store original object source code and file paths in the target database (__pgpac_objects) for lossless round-tripping.
+    /// </summary>
+    [JsonPropertyName("trackDeploymentMetadata")]
+    public bool TrackDeploymentMetadata { get; set; } = true;
+
+    /// <summary>
+    /// Schema in which to create the deployment metadata table (defaults to "public").
+    /// </summary>
+    [JsonPropertyName("metadataSchema")]
+    public string MetadataSchema { get; set; } = "public";
+
+    /// <summary>
+    /// Name of the deployment metadata table (defaults to "__pgpac_objects").
+    /// </summary>
+    [JsonPropertyName("metadataTableName")]
+    public string MetadataTableName { get; set; } = "__pgpac_objects";
 }
 
 /// <summary>
